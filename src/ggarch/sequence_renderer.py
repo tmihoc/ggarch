@@ -334,7 +334,7 @@ def _render_arrow(
         lw = len(label) * 6.5
         g.append(dw.Rectangle(
             mx - lw / 2 - 3, y - 13, lw + 6, 13,
-            fill=label_bg, stroke="none", fill_opacity=0.85,
+            fill=label_bg, stroke="none", fill_opacity=1,
         ))
         g.append(dw.Text(
             label, 11, mx, y - 6,
@@ -376,7 +376,7 @@ def _render_self_step(
         lw = len(step.label) * 6.5
         g.append(dw.Rectangle(
             mx - lw / 2 - 3, y - 13, lw + 6, 13,
-            fill=label_bg, stroke="none", fill_opacity=0.85,
+            fill=label_bg, stroke="none", fill_opacity=1,
         ))
         g.append(dw.Text(
             step.label, 11, mx, y - 6,

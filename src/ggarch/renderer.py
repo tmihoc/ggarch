@@ -378,7 +378,7 @@ def _render_edge(
         lw = len(edge.label) * 6.5
         g.append(dw.Rectangle(lx - lw / 2 - 3, ly - 9, lw + 6, 14,
                                fill=label_bg, stroke="none",
-                               fill_opacity=0.85))
+                               fill_opacity=1))
         g.append(dw.Text(
             edge.label, es.font_size, lx, ly,
             font_family=LABEL_FONT,
