@@ -147,41 +147,92 @@ separate pictures.
 
 ---
 
-## Core idea: layers
+## Core idea: model and views
 
-A ggarch file contains a `model` (declared once, shared by all views) and one
-or more `diagram` blocks (each a view into the model). Each diagram is a stack
-of layers applied in order.
+### The model is complete
+
+A ggarch file contains one `model` block and one or more view blocks. The
+model is the single source of truth for everything the system *is* and
+*does*. It has four sub-blocks:
 
 ```
-// Declared once — the system model
 model "Juju" {
-  nodes { ... }    // what exists, with types, lifecycle, cardinality
-  edges { ... }    // relationships, with semantic types
-  style { ... }    // visual grammar for node types and edge types
-}
-
-// A topology view
-diagram "Deployment topology" from "Juju" {
-  select { ... }       // which model nodes to include
-  positions { ... }    // spatial constraints for this view
-  annotations { ... }  // overlaid regions and callouts for this view
-}
-
-// A sequence view of the same model
-sequence "Hook execution" from "Juju" {
-  select { ... }   // which model nodes are lifelines
-  steps { ... }    // the interaction steps
+  nodes { ... }      // what exists: types, lifecycle, cardinality
+  edges { ... }      // relationships: semantic types, protocols
+  behaviours { ... } // named interaction sequences between model entities
+  style { ... }      // visual grammar for node types and edge types
 }
 ```
 
-Layers within a `diagram` are evaluated in this order:
+**The strict rule: everything that describes the system belongs in the model.
+Views may not introduce new system facts.** A view that declares a node, edge,
+or interaction step that does not exist in the model is a parse error.
+
+This is the principle Structurizr stated but did not enforce. Structurizr's
+`dynamic view` re-declared interaction steps at the view level — breaking
+declare-once and making sequence diagrams orphans that diverged silently from
+the model. In ggarch, `behaviour` blocks in the model are first-class
+declarations on equal footing with `nodes` and `edges`. Views project
+behaviours; they do not define them.
+
+### Views are projections only
+
+A view selects from the model, controls spatial layout, and adds visual
+annotations. That is all it can do.
+
+```
+// Topology view — selects nodes, declares positions and annotations
+diagram "K8s deployment" from "Juju" {
+  select {
+    nodes: controller_pod unit_pod
+    edges: type api type stream   // filter by edge type
+    environment: kubernetes
+  }
+  positions { ... }    // spatial constraints for this view only
+  annotations { ... }  // overlaid regions and callouts for this view only
+}
+
+// Sequence view — selects a behaviour, optionally filters participants
+sequence "Hook execution" from "Juju" {
+  select {
+    behaviour: "hook execution"
+    // participants: unit_agent charm controller  // optional filter
+  }
+  annotations { ... }  // optional: highlight regions on the sequence
+}
+
+// Environment view — same model, different deployment surface
+diagram "Machine deployment" from "Juju" {
+  select {
+    nodes: controller_machine unit_machine
+    environment: machine
+  }
+  positions { ... }
+}
+```
+
+Views have exactly three optional blocks: `select`, `positions`, `annotations`.
+No `nodes`. No `edges`. No `behaviours`. No `style`. If a view needs to show
+something not in the model, the model must be extended — not the view.
+
+This means:
+- Renaming a node in the model renames it in every view and every behaviour
+  automatically.
+- A sequence view and a topology view that reference the same model entities
+  are provably consistent.
+- The JSON export of the model is a complete, queryable description of the
+  system independent of any rendering.
+- An agent reading the model block understands the full system; an agent
+  reading a view block understands only a perspective on it.
+
+### Layers within a diagram view
+
+When a `diagram` view is rendered, layers are evaluated in this order:
 1. `select` — filter model nodes and edges for this view
-2. `positions` — constraint solver produces coordinates
-3. edges are routed using solved positions
+2. `positions` — constraint solver produces node coordinates
+3. edge routing — uses solved positions, never influences them
 4. `annotations` — drawn last, on top, without affecting layout
 
----
 
 ## Design principles
 
@@ -293,7 +344,7 @@ visual grouping hint; it does not imply edges or constraint priority.
 
 ---
 
-## Layer 2: positions
+## Layer 2: positions (in views)
 
 Declares spatial constraints. The constraint solver (kiwisolver/Cassowary)
 produces x/y coordinates that satisfy all constraints. Constraints are
@@ -333,11 +384,9 @@ Supported constraint types:
 
 ## Layer 3: edges (in the model)
 
-Declares relationships. In the model, edges carry a semantic `type` in
-addition to a label. Edge types are not just visual — they are queryable and
-can be filtered per view. Edges in a `diagram` view inherit the model edges
-for the selected nodes; additional view-local edges can be declared in the
-view's own `edges` block.
+Declares relationships between model nodes. Edges carry a semantic `type`
+in addition to a label. Edge types are not just visual — they are queryable
+and can be filtered by type in a view's `select` block.
 
 ```
 edges {
@@ -372,7 +421,77 @@ adaptagrams libavoid.
 
 ---
 
-## Layer 4: annotations
+## Layer 4: behaviours (in the model)
+
+Declares named interaction sequences between model entities. Behaviours are
+first-class model declarations — not view-level constructs. Every participant
+in a behaviour must be a node declared in `nodes`. Every interaction must
+traverse an edge declared in `edges`. Violations are parse errors.
+
+```
+behaviours {
+  behaviour "hook execution" {
+    unit_agent -> charm: call "exec dispatch"
+    loop "during hook" {
+      charm -> unit_agent: call "hook command (unix socket)"
+      unit_agent -> controller: call "serve via API"
+      controller -> unit_agent: return
+      unit_agent -> charm: return
+    }
+    alt "exit 0" {
+      charm -> unit_agent: return "success"
+      unit_agent -> controller: call "flush writes"
+    } else "failure" {
+      charm -> unit_agent: return "failure"
+      unit_agent -> controller: call "discard writes"
+      unit_agent -> controller: call "set unit error"
+    }
+  }
+
+  behaviour "bootstrap k8s" {
+    client -> k8s: call "authenticate"
+    k8s -> client: return "OK"
+    client -> k8s: call "create namespace, deploy controller pod"
+    k8s -> client: return "pod scheduled"
+    config_seed -> config_seed: self "run once" [lifecycle: init]
+    charm_init -> charm_init: self "run once" [lifecycle: init]
+    jujud -> jujud: self "start API server"
+    jujud -> controller_db: call "initialise database"
+    jujud -> client: return "API ready"
+  }
+
+  behaviour "unit deploy" {
+    client -> controller: call "deploy application"
+    controller -> controller_db: call "write goal state"
+    controller -> clouds: call "provision machine/pod"
+    controller -> charmhub: call "fetch charm"
+    controller -> unit_agent: async "watcher fires"
+    unit_agent -> charm: call "install hook"
+    charm -> workload: call "install workload"
+    charm -> unit_agent: return "success"
+    unit_agent -> controller: call "flush writes"
+  }
+}
+```
+
+Behaviour step types:
+- `call` — synchronous invocation; renders as solid arrow
+- `return` — response to a prior call; renders as dashed return arrow
+- `async` — fire-and-forget notification; renders as open arrowhead
+- `self` — self-call (a node acting on itself); renders as loop arrow
+- `loop "label" { ... }` — repeated sequence
+- `alt "condition" { ... } else "condition" { ... }` — conditional branches
+- `par { ... }` — parallel steps
+
+Because behaviours are in the model, they are:
+- **Consistent** — renaming `unit_agent` renames it in every behaviour
+- **Validatable** — a step referencing a node not in `nodes` is a parse error
+- **Queryable** — "which nodes participate in bootstrap?" answerable from JSON
+- **Projectable** — a `sequence` view selects a behaviour and renders it with
+  no re-declaration
+
+
+## Layer 5: annotations (in views)
 
 Overlaid on top of the solved layout. Annotations do not affect node positions
 or edge routing.
@@ -403,7 +522,7 @@ and applied selectively to the same base layout.
 
 ---
 
-## Layer 5: style
+## Layer 6: style (in the model)
 
 Declares the visual grammar. Node types map to style rules. Defined once,
 applied everywhere. Ships with a built-in `juju` preset.
@@ -505,8 +624,9 @@ The extension:
 
 ### Phase 1 — parser + data model
 Parse the model/view syntax into a Python data structure. Validate: node ids
-unique, edge endpoints exist, constraint targets exist, view `select` targets
-exist in model. Library: `lark` (MIT).
+unique, edge endpoints exist, behaviour participants exist in nodes, behaviour
+steps traverse declared edges, view `select` targets exist in model.
+Library: `lark` (MIT).
 
 ### Phase 2 — constraint solver
 Translate position constraints into kiwisolver expressions. Solve to produce
