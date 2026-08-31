@@ -86,7 +86,7 @@ _JUJU_LIGHT_NODES: dict[str, NodeStyle] = {
         shape="cylinder",
     ),
     "container": NodeStyle(
-        fill="#F5F5F5", stroke="#CCCCCC", font_color="#333333",
+        fill="#FFF3EE", stroke="#E0956A", font_color="#5A2800",
         border_radius=6,
     ),
     "infrastructure": NodeStyle(
@@ -94,7 +94,6 @@ _JUJU_LIGHT_NODES: dict[str, NodeStyle] = {
     ),
     "external": NodeStyle(
         fill="#F5F5F5", stroke="#AAAAAA", font_color="#444444",
-        stroke_dash="4",
     ),
     "unit": NodeStyle(
         fill="#EEF2FF", stroke="#9999AA", font_color="#333333",
@@ -140,7 +139,7 @@ _JUJU_DARK_NODES: dict[str, NodeStyle] = {
         shape="cylinder",
     ),
     "container": NodeStyle(
-        fill="#1E1E2E", stroke="#555555", font_color="#CDD6F4",
+        fill="#2D1A0E", stroke="#C07040", font_color="#FFD0A0",
         border_radius=6,
     ),
     "infrastructure": NodeStyle(
@@ -148,7 +147,6 @@ _JUJU_DARK_NODES: dict[str, NodeStyle] = {
     ),
     "external": NodeStyle(
         fill="#2A2A2A", stroke="#666666", font_color="#CCCCCC",
-        stroke_dash="4",
     ),
     "unit": NodeStyle(
         fill="#2A2A3E", stroke="#9999AA", font_color="#CDD6F4",

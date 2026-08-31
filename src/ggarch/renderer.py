@@ -225,12 +225,18 @@ def _render_person(
     style: NodeStyle,
     label: str,
 ) -> None:
-    """Stick-figure person icon, fixed size, centred in the allocated rect."""
+    """Stick-figure person icon, fixed size, centred in allocated rect.
+
+    The label is placed below the legs, not inside the figure area.
+    The allocated rect height may be larger than the figure (solver
+    gives the person node the same height as its row neighbours);
+    the figure itself is drawn at the top of the allocated rect and
+    the label sits below the legs with a small gap.
+    """
     cx  = x + w / 2
-    # Centre the fixed-size figure vertically in the allocated space.
-    fy  = y + (h - _PERSON_SIZE) / 2   # top of the figure area
-    fh  = _PERSON_SIZE
-    fw  = fh * 0.7                      # proportional width
+    fy  = y                         # figure starts at top of allocated rect
+    fh  = _PERSON_SIZE * 0.78       # figure body height (no label in fh)
+    fw  = fh * 0.7
 
     head_r  = fh * 0.18
     head_cy = fy + head_r + 2
@@ -243,11 +249,14 @@ def _render_person(
     arm_y = body_top + (body_bot - body_top) * 0.35
     g.append(dw.Line(cx - fw * 0.35, arm_y, cx + fw * 0.35, arm_y,
                      stroke=style.font_color, stroke_width=1.5))
-    g.append(dw.Line(cx, body_bot, cx - fw * 0.30, fy + fh * 0.88,
+    leg_bot = fy + fh * 0.95
+    g.append(dw.Line(cx, body_bot, cx - fw * 0.30, leg_bot,
                      stroke=style.font_color, stroke_width=1.5))
-    g.append(dw.Line(cx, body_bot, cx + fw * 0.30, fy + fh * 0.88,
+    g.append(dw.Line(cx, body_bot, cx + fw * 0.30, leg_bot,
                      stroke=style.font_color, stroke_width=1.5))
-    _render_label(g, cx, fy + fh - 2, label, style, anchor="middle", baseline="auto")
+    # Label below the legs with a small gap.
+    _render_label(g, cx, leg_bot + 10, label, style,
+                  anchor="middle", baseline="hanging")
 
 
 def _render_cylinder(
