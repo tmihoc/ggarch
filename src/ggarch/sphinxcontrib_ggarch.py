@@ -43,6 +43,8 @@ from ggarch.validator import validate
 from ggarch.sequence_renderer import render_sequence
 from ggarch import __version__
 
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Custom node
