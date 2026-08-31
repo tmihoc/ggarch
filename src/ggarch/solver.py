@@ -188,6 +188,14 @@ def _add_min_size_for_node(
     solver.addConstraint((v.w >= min_w) | "strong")
     solver.addConstraint((v.h >= min_h) | "strong")
 
+    # Person nodes: cap height at a fixed size so they don't expand to fill
+    # the row height set by taller neighbours. STRONG so same-height/align
+    # constraints can still override if the diagram author requests it.
+    if node.type == "person":
+        from ggarch.renderer import _PERSON_SIZE
+        solver.addConstraint((v.h <= _PERSON_SIZE) | "strong")
+        solver.addConstraint((v.w <= _PERSON_SIZE) | "strong")
+
     if not collapsed:
         for child in node.children:
             _add_min_size_for_node(solver, child, vars_by_id, select)

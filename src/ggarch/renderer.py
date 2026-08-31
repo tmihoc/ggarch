@@ -215,35 +215,39 @@ def _render_box(
         _render_label(g, x + w / 2, y + h / 2, label, style)
 
 
+# Fixed size for the person figure — independent of solver-allocated height.
+_PERSON_SIZE = 56   # px total height (figure + label)
+
+
 def _render_person(
     g: dw.Group,
     x: float, y: float, w: float, h: float,
     style: NodeStyle,
     label: str,
 ) -> None:
-    """Stick-figure person icon above the label."""
-    cx = x + w / 2
-    # Head.
-    head_r = min(w, h) * 0.18
-    head_cy = y + head_r + 4
+    """Stick-figure person icon, fixed size, centred in the allocated rect."""
+    cx  = x + w / 2
+    # Centre the fixed-size figure vertically in the allocated space.
+    fy  = y + (h - _PERSON_SIZE) / 2   # top of the figure area
+    fh  = _PERSON_SIZE
+    fw  = fh * 0.7                      # proportional width
+
+    head_r  = fh * 0.18
+    head_cy = fy + head_r + 2
     g.append(dw.Circle(cx, head_cy, head_r,
                        fill="none", stroke=style.font_color, stroke_width=1.5))
-    # Body.
     body_top = head_cy + head_r
-    body_bot = y + h * 0.62
+    body_bot = fy + fh * 0.60
     g.append(dw.Line(cx, body_top, cx, body_bot,
                      stroke=style.font_color, stroke_width=1.5))
-    # Arms.
     arm_y = body_top + (body_bot - body_top) * 0.35
-    g.append(dw.Line(cx - w * 0.22, arm_y, cx + w * 0.22, arm_y,
+    g.append(dw.Line(cx - fw * 0.35, arm_y, cx + fw * 0.35, arm_y,
                      stroke=style.font_color, stroke_width=1.5))
-    # Legs.
-    g.append(dw.Line(cx, body_bot, cx - w * 0.2, y + h * 0.88,
+    g.append(dw.Line(cx, body_bot, cx - fw * 0.30, fy + fh * 0.88,
                      stroke=style.font_color, stroke_width=1.5))
-    g.append(dw.Line(cx, body_bot, cx + w * 0.2, y + h * 0.88,
+    g.append(dw.Line(cx, body_bot, cx + fw * 0.30, fy + fh * 0.88,
                      stroke=style.font_color, stroke_width=1.5))
-    # Label below figure.
-    _render_label(g, cx, y + h - 4, label, style, anchor="middle", baseline="auto")
+    _render_label(g, cx, fy + fh - 2, label, style, anchor="middle", baseline="auto")
 
 
 def _render_cylinder(
