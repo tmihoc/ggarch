@@ -126,30 +126,57 @@ def _best_anchors(src_rect: Rect, tgt_rect: Rect) -> tuple[Point, Point]:
 # Path routing
 # ---------------------------------------------------------------------------
 
-_SAME_LEVEL_THRESHOLD = 10   # px — centres closer than this → same-level elbow
-_ELBOW_CLEARANCE      = 16   # px — offset from node face for above/below routing
+_SAME_LEVEL_THRESHOLD = 10   # px — centres closer than this → straight horizontal
+_ELBOW_CLEARANCE      = 16   # px — offset from node face for L-shaped routing
 
 
-def _route_elbow(
+def _route_straight_horizontal(
     src_rect: Rect,
     tgt_rect: Rect,
 ) -> list[Point]:
-    """Two-segment elbow for horizontally-connected same-level nodes.
+    """Straight horizontal line between two same-level nodes.
 
-    Routes above when there is space, otherwise below. Exits and enters
-    from the top/bottom face so the path does not cut through node boxes.
+    Exits the right or left face, enters the opposite face of the target.
+    No bends — correct for sequential chains like user→client→controller.
     """
-    top_y = min(src_rect.y, tgt_rect.y)
-    bot_y = max(src_rect.y2, tgt_rect.y2)
-
-    if top_y >= _ELBOW_CLEARANCE:
-        mid_y  = top_y - _ELBOW_CLEARANCE
-        src_pt = _face_point(src_rect, "top")
-        tgt_pt = _face_point(tgt_rect, "top")
+    if tgt_rect.cx > src_rect.cx:
+        return [_face_point(src_rect, "right"), _face_point(tgt_rect, "left")]
     else:
-        mid_y  = bot_y + _ELBOW_CLEARANCE
+        return [_face_point(src_rect, "left"), _face_point(tgt_rect, "right")]
+
+
+def _route_orthogonal(
+    src_rect: Rect,
+    tgt_rect: Rect,
+) -> list[Point]:
+    """L-shaped orthogonal route for nodes at different vertical levels.
+
+    Exits the bottom/top face, travels vertically to a mid-point between
+    the two nodes, then horizontally to the target's x-centre, then
+    vertically into the target's top/bottom face. All segments axis-aligned.
+    """
+    src_cx, src_cy = src_rect.cx, src_rect.cy
+    tgt_cx, tgt_cy = tgt_rect.cx, tgt_rect.cy
+
+    # Same column — straight vertical.
+    if abs(src_cx - tgt_cx) < 4:
+        if tgt_cy > src_cy:
+            return [_face_point(src_rect, "bottom"), _face_point(tgt_rect, "top")]
+        else:
+            return [_face_point(src_rect, "top"), _face_point(tgt_rect, "bottom")]
+
+    if tgt_cy >= src_cy:
         src_pt = _face_point(src_rect, "bottom")
+        tgt_pt = _face_point(tgt_rect, "top")
+        mid_y  = src_rect.y2 + (tgt_rect.y - src_rect.y2) / 2
+        mid_y  = max(mid_y, src_rect.y2 + 6)
+        mid_y  = min(mid_y, tgt_rect.y  - 6)
+    else:
+        src_pt = _face_point(src_rect, "top")
         tgt_pt = _face_point(tgt_rect, "bottom")
+        mid_y  = tgt_rect.y2 + (src_rect.y - tgt_rect.y2) / 2
+        mid_y  = max(mid_y, tgt_rect.y2 + 6)
+        mid_y  = min(mid_y, src_rect.y  - 6)
 
     return [
         src_pt,
@@ -159,63 +186,14 @@ def _route_elbow(
     ]
 
 
-def _route_orthogonal(
-    src_rect: Rect,
-    tgt_rect: Rect,
-) -> list[Point]:
-    """L-shaped orthogonal route for vertically-separated nodes.
-
-    Strategy: exit from the closest face, travel horizontally to the
-    target's x-centre, then vertically to the target face. This keeps
-    all segments axis-aligned (grid) with a single corner.
-
-    For top→bottom: exit src bottom, horizontal jog at src.cy + (tgt.y - src.y2)/2,
-    enter tgt top.
-    For bottom→top: mirror.
-    For the same column (x-centres aligned): straight vertical.
-    """
-    src_cx, src_cy = src_rect.cx, src_rect.cy
-    tgt_cx, tgt_cy = tgt_rect.cx, tgt_rect.cy
-
-    # Already horizontally aligned — straight vertical line.
-    if abs(src_cx - tgt_cx) < 4:
-        if tgt_cy > src_cy:
-            return [_face_point(src_rect, "bottom"), _face_point(tgt_rect, "top")]
-        else:
-            return [_face_point(src_rect, "top"), _face_point(tgt_rect, "bottom")]
-
-    # Exit from bottom face if target is below, top if above.
-    if tgt_cy >= src_cy:
-        src_pt = _face_point(src_rect, "bottom")
-        tgt_pt = _face_point(tgt_rect, "top")
-        # Mid-y: halfway between src bottom and tgt top.
-        mid_y = src_rect.y2 + (tgt_rect.y - src_rect.y2) / 2
-        # Clamp so we don't stray into a node.
-        mid_y = max(mid_y, src_rect.y2 + 6)
-        mid_y = min(mid_y, tgt_rect.y - 6)
-    else:
-        src_pt = _face_point(src_rect, "top")
-        tgt_pt = _face_point(tgt_rect, "bottom")
-        mid_y = tgt_rect.y2 + (src_rect.y - tgt_rect.y2) / 2
-        mid_y = max(mid_y, tgt_rect.y2 + 6)
-        mid_y = min(mid_y, src_rect.y - 6)
-
-    return [
-        src_pt,
-        Point(src_pt.x,  mid_y),
-        Point(tgt_pt.x,  mid_y),
-        tgt_pt,
-    ]
-
-
 def _route_edge(
     src_rect: Rect,
     tgt_rect: Rect,
 ) -> list[Point]:
-    """Route from src_rect to tgt_rect using orthogonal (grid) paths."""
+    """Choose routing strategy based on relative position."""
     same_level = abs(src_rect.cy - tgt_rect.cy) < _SAME_LEVEL_THRESHOLD
     if same_level:
-        return _route_elbow(src_rect, tgt_rect)
+        return _route_straight_horizontal(src_rect, tgt_rect)
     return _route_orthogonal(src_rect, tgt_rect)
 
 # ---------------------------------------------------------------------------

@@ -95,62 +95,27 @@ class TestRouting:
         assert e.target_id == "b"
         assert len(e.points) >= 2
 
-    def test_edge_exits_source_bottom_when_same_level(self):
-        """For same-level left-of nodes the elbow exits from the bottom face."""
+    def test_edge_exits_source_right_face_when_same_level(self):
+        """For same-level left-of nodes the edge exits the right face of a."""
         rl, _, _ = solve_and_route(SIMPLE_TWO)
         e = rl.edges[0]
         src_node = rl.layout.find("a")
-        # Elbow exits bottom face: start.y == src_node.rect.y2
-        assert abs(e.start.y - src_node.rect.y2) < 1.0
+        assert abs(e.start.x - src_node.rect.x2) < 1.0
 
-    def test_edge_enters_target_bottom_when_same_level(self):
-        """For same-level left-of nodes the elbow enters from the bottom face."""
+    def test_edge_enters_target_left_face_when_same_level(self):
+        """For same-level left-of nodes the edge enters the left face of b."""
         rl, _, _ = solve_and_route(SIMPLE_TWO)
         e = rl.edges[0]
         tgt_node = rl.layout.find("b")
-        # Elbow enters bottom face: end.y == tgt_node.rect.y2
-        assert abs(e.end.y - tgt_node.rect.y2) < 1.0
+        assert abs(e.end.x - tgt_node.rect.x) < 1.0
 
-    def test_straight_line_for_vertically_separated_nodes(self):
-        """Nodes clearly separated vertically → exactly 2 waypoints."""
-        src = """\
-model "M" {
-  nodes {
-    a [type: t, label: "A"]
-    b [type: t, label: "B"]
-  }
-  edges { a -> b [type: api, label: "calls"] }
-}
-diagram "D" from "M" {
-  select { nodes: a b }
-  positions { a above b gap: 80 }
-}
-"""
-        rl, _, _ = solve_and_route(src)
+    def test_straight_horizontal_for_same_level_nodes(self):
+        """Same-level nodes → exactly 2 waypoints (straight horizontal)."""
+        rl, _, _ = solve_and_route(SIMPLE_TWO)
         e = rl.edges[0]
         assert len(e.points) == 2
-
-    def test_elbow_for_same_level_nodes(self):
-        """Nodes at the same y-centre → elbow (4 waypoints)."""
-        src = """\
-model "M" {
-  nodes {
-    a [type: t, label: "A"]
-    b [type: t, label: "B"]
-  }
-  edges { a -> b [type: api, label: "x"] }
-}
-diagram "D" from "M" {
-  select { nodes: a b }
-  positions {
-    a left-of b gap: 40
-    a align-middle b
-  }
-}
-"""
-        rl, _, _ = solve_and_route(src)
-        e = rl.edges[0]
-        assert len(e.points) == 4
+        # Both points at the same y (horizontal line).
+        assert abs(e.start.y - e.end.y) < 1.0
 
     def test_edge_label_preserved(self):
         rl, _, _ = solve_and_route(SIMPLE_TWO)
@@ -218,22 +183,9 @@ diagram "D" from "M" {
         assert len(rl.edges) == 1
         assert rl.edges[0].target_id == "b"
 
-    def test_mid_point_straight(self):
-        """Mid of a straight 2-point edge is the geometric midpoint."""
-        src = """\
-model "M" {
-  nodes {
-    a [type: t, label: "A"]
-    b [type: t, label: "B"]
-  }
-  edges { a -> b [type: api, label: "calls"] }
-}
-diagram "D" from "M" {
-  select { nodes: a b }
-  positions { a above b gap: 80 }
-}
-"""
-        rl, _, _ = solve_and_route(src)
+    def test_mid_point_horizontal(self):
+        """Mid of a same-level 2-point edge is the geometric midpoint."""
+        rl, _, _ = solve_and_route(SIMPLE_TWO)
         e = rl.edges[0]
         assert len(e.points) == 2
         expected_mx = (e.start.x + e.end.x) / 2
