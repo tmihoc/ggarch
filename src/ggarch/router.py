@@ -126,19 +126,11 @@ def _best_anchors(src_rect: Rect, tgt_rect: Rect) -> tuple[Point, Point]:
 # Path routing
 # ---------------------------------------------------------------------------
 
-_SAME_LEVEL_THRESHOLD = 10   # px — centres closer than this → straight horizontal
-_ELBOW_CLEARANCE      = 16   # px — offset from node face for L-shaped routing
-
-
 def _route_straight_horizontal(
     src_rect: Rect,
     tgt_rect: Rect,
 ) -> list[Point]:
-    """Straight horizontal line between two same-level nodes.
-
-    Exits the right or left face, enters the opposite face of the target.
-    No bends — correct for sequential chains like user→client→controller.
-    """
+    """Straight horizontal line. Exits right/left face, enters opposite face."""
     if tgt_rect.cx > src_rect.cx:
         return [_face_point(src_rect, "right"), _face_point(tgt_rect, "left")]
     else:
@@ -149,11 +141,9 @@ def _route_orthogonal(
     src_rect: Rect,
     tgt_rect: Rect,
 ) -> list[Point]:
-    """L-shaped orthogonal route for nodes at different vertical levels.
+    """L-shaped orthogonal route for primarily-vertical travel.
 
-    Exits the bottom/top face, travels vertically to a mid-point between
-    the two nodes, then horizontally to the target's x-centre, then
-    vertically into the target's top/bottom face. All segments axis-aligned.
+    Exits bottom/top face, horizontal jog at midpoint, enters top/bottom face.
     """
     src_cx, src_cy = src_rect.cx, src_rect.cy
     tgt_cx, tgt_cy = tgt_rect.cx, tgt_rect.cy
@@ -190,9 +180,12 @@ def _route_edge(
     src_rect: Rect,
     tgt_rect: Rect,
 ) -> list[Point]:
-    """Choose routing strategy based on relative position."""
-    same_level = abs(src_rect.cy - tgt_rect.cy) < _SAME_LEVEL_THRESHOLD
-    if same_level:
+    """Route by primary direction: horizontal travel → straight, vertical → L."""
+    dx = abs(tgt_rect.cx - src_rect.cx)
+    dy = abs(tgt_rect.cy - src_rect.cy)
+
+    # Primary direction is horizontal — straight line regardless of y offset.
+    if dx >= dy:
         return _route_straight_horizontal(src_rect, tgt_rect)
     return _route_orthogonal(src_rect, tgt_rect)
 
