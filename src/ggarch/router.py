@@ -127,7 +127,7 @@ def _best_anchors(src_rect: Rect, tgt_rect: Rect) -> tuple[Point, Point]:
 # ---------------------------------------------------------------------------
 
 _SAME_LEVEL_THRESHOLD = 10   # px — centres closer than this → use elbow
-_ELBOW_CLEARANCE      = 20   # px — elbow offset from node face
+_ELBOW_CLEARANCE      = 16   # px — elbow offset from node face
 
 
 def _route_straight(src: Point, tgt: Point) -> list[Point]:
@@ -135,27 +135,35 @@ def _route_straight(src: Point, tgt: Point) -> list[Point]:
 
 
 def _route_elbow(
-    src: Point,
-    tgt: Point,
     src_rect: Rect,
     tgt_rect: Rect,
 ) -> list[Point]:
-    """Two-segment elbow when source and target are at roughly the same height.
+    """Two-segment elbow for horizontally-connected same-level nodes.
 
-    Routes above or below depending on which direction has more clearance.
+    Routes above the nodes when there is space (top_y - clearance > 0),
+    otherwise below. The elbow always exits from the bottom of each node
+    when routing below, or the top when routing above, so the path
+    does not cut through the node boxes.
     """
-    # Route above if there is space; otherwise below.
-    clearance_above = min(src_rect.y, tgt_rect.y) - _ELBOW_CLEARANCE
-    if clearance_above > 0:
-        mid_y = clearance_above
+    top_y  = min(src_rect.y, tgt_rect.y)
+    bot_y  = max(src_rect.y2, tgt_rect.y2)
+
+    if top_y >= _ELBOW_CLEARANCE:
+        # Enough space above — route above the nodes.
+        mid_y = top_y - _ELBOW_CLEARANCE
+        src_pt = _face_point(src_rect, "top")
+        tgt_pt = _face_point(tgt_rect, "top")
     else:
-        mid_y = max(src_rect.y2, tgt_rect.y2) + _ELBOW_CLEARANCE
+        # Route below the nodes.
+        mid_y = bot_y + _ELBOW_CLEARANCE
+        src_pt = _face_point(src_rect, "bottom")
+        tgt_pt = _face_point(tgt_rect, "bottom")
 
     return [
-        src,
-        Point(src.x, mid_y),
-        Point(tgt.x, mid_y),
-        tgt,
+        src_pt,
+        Point(src_pt.x, mid_y),
+        Point(tgt_pt.x, mid_y),
+        tgt_pt,
     ]
 
 
@@ -164,15 +172,12 @@ def _route_edge(
     tgt_rect: Rect,
 ) -> list[Point]:
     """Route from src_rect to tgt_rect."""
-    src_pt, tgt_pt = _best_anchors(src_rect, tgt_rect)
-
     # Use elbow if centres are at roughly the same height.
     same_level = abs(src_rect.cy - tgt_rect.cy) < _SAME_LEVEL_THRESHOLD
     if same_level:
-        return _route_elbow(src_pt, tgt_pt, src_rect, tgt_rect)
-
+        return _route_elbow(src_rect, tgt_rect)
+    src_pt, tgt_pt = _best_anchors(src_rect, tgt_rect)
     return _route_straight(src_pt, tgt_pt)
-
 
 # ---------------------------------------------------------------------------
 # Main entry point

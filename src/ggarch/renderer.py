@@ -46,8 +46,9 @@ from ggarch.router import RoutedEdge, RoutedLayout
 
 MARGIN          = 20    # px — white-space margin around the diagram
 ARROWHEAD_SIZE  = 8     # px
-LABEL_FONT      = "system-ui, -apple-system, sans-serif"
-ANNOTATION_FONT = "system-ui, -apple-system, sans-serif"
+LABEL_FONT      = "'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif"
+ANNOTATION_FONT = "'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif"
+
 
 
 # ---------------------------------------------------------------------------
@@ -79,14 +80,11 @@ def render(
     bg = "#1E1E2E" if dark else "#FFFFFF"
     drawing = dw.Drawing(vw, vh, origin=(0, 0))
     drawing.append(dw.Rectangle(0, 0, vw, vh, fill=bg))
-
     _add_arrowhead_defs(drawing, dark, preset)
 
     nodes_g = dw.Group(id="ggarch-nodes")
     edges_g = dw.Group(id="ggarch-edges")
     ann_g   = dw.Group(id="ggarch-annotations")
-
-    # Render containers before leaves so containers are in the background.
     _render_nodes(nodes_g, layout.nodes, node_styles, ox, oy, view)
 
     # Render edges.

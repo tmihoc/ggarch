@@ -95,20 +95,21 @@ class TestRouting:
         assert e.target_id == "b"
         assert len(e.points) >= 2
 
-    def test_edge_start_near_source_right_face(self):
-        """For a left-of layout the edge starts at the right face of a."""
+    def test_edge_exits_source_bottom_when_same_level(self):
+        """For same-level left-of nodes the elbow exits from the bottom face."""
         rl, _, _ = solve_and_route(SIMPLE_TWO)
         e = rl.edges[0]
         src_node = rl.layout.find("a")
-        # Start x should be at or near the right edge of 'a'.
-        assert abs(e.start.x - src_node.rect.x2) < 1.0
+        # Elbow exits bottom face: start.y == src_node.rect.y2
+        assert abs(e.start.y - src_node.rect.y2) < 1.0
 
-    def test_edge_end_near_target_left_face(self):
-        """For a left-of layout the edge ends at the left face of b."""
+    def test_edge_enters_target_bottom_when_same_level(self):
+        """For same-level left-of nodes the elbow enters from the bottom face."""
         rl, _, _ = solve_and_route(SIMPLE_TWO)
         e = rl.edges[0]
         tgt_node = rl.layout.find("b")
-        assert abs(e.end.x - tgt_node.rect.x) < 1.0
+        # Elbow enters bottom face: end.y == tgt_node.rect.y2
+        assert abs(e.end.y - tgt_node.rect.y2) < 1.0
 
     def test_straight_line_for_vertically_separated_nodes(self):
         """Nodes clearly separated vertically → exactly 2 waypoints."""
