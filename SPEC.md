@@ -145,7 +145,104 @@ which nodes are present and how they map to infrastructure. The K8s topology
 and machine topology of Juju are two environment views of one model, not two
 separate pictures.
 
----
+### 7. Types vs instances — the same software deployed many times
+
+Structurizr treats every declared entity as unique. To show two application
+units with the same software, you had to declare `App1Charm` and `App2Charm`
+as separate containers — abandoning the declare-once principle and making them
+visually unrelated despite being the same software.
+
+In ggarch the model's `nodes` block declares *types*, not instances. A node
+with `cardinality: one-per-unit` is a type that exists N times in a live
+deployment. A view can render that type as:
+
+- A single abstract box (the archetype) — for diagrams where you want to show
+  the structure without committing to a specific number of instances
+- N labelled instances — for diagrams where the specific instances matter
+  (e.g. "App 1 / Unit 0" and "App 2 / Unit 0")
+
+```
+// In the model — declared once
+unit_pod [type: container, label: "Unit pod", cardinality: one-per-unit] {
+  unit_agent [type: juju-software, label: "Unit agent"]
+  charm [type: charm, label: "Charm"]
+  workload [type: workload, label: "Workload"]
+}
+
+// In a view — render two specific instances
+diagram "Two-application deployment" from "Juju" {
+  select {
+    nodes: controller_pod unit_pod
+    instances: unit_pod [
+      { id: app1_unit0, label: "App 1 / Unit 0" },
+      { id: app2_unit0, label: "App 2 / Unit 0" }
+    ]
+  }
+  positions {
+    app1_unit0 left-of app2_unit0 gap: 40
+    app1_unit0 below controller_pod gap: 60
+    app2_unit0 below controller_pod gap: 60
+  }
+}
+```
+
+The charm type is declared once. Its label, lifecycle, cardinality, and style
+are defined once. Individual instances inherit everything and can optionally
+override their label in the view. Renaming the type renames all instances.
+
+### 8. Cross-layer edges — software to infrastructure
+
+Structurizr's C4 layers (Person / Software System / Container / Component)
+are architectural zoom levels, not semantic types, and they implicitly forbid
+certain connections. Dynamic views could not use deployment or infrastructure
+nodes as sequence participants at all. "Provider provisions machine",
+"Kubernetes schedules pod", "bootstrap installs jujud" are real statements
+about how systems work — but C4 has no representation for them.
+
+In ggarch there are no artificial restrictions on what can connect to what.
+Infrastructure nodes are declared in the model the same way as software nodes
+(`type: infrastructure`, `type: cloud`, `type: k8s-cluster`). Any declared
+node can be an edge endpoint or a behaviour participant. The only constraint
+is that both endpoints are declared in the model. "K8s schedules controller
+pod" is a `control` edge from `k8s` to `controller_pod`, declared in `edges`
+and reusable in any `behaviour` that involves provisioning.
+
+This makes bootstrap sequences fully expressible: the behaviour participants
+include both the software being installed and the infrastructure doing the
+installing, connected by the same declared edges.
+
+### 9. Selective zoom — mixing levels of detail in one view
+
+Structurizr's C4 levels enforce uniform zoom. At container level, every system
+opens to its containers; at context level, everything is a blob. You cannot
+show the controller as a single opaque box while simultaneously showing the
+unit pod fully expanded — even though this is often exactly what a diagram
+needs. The interesting detail is in one place; the rest is context.
+
+In ggarch, `expand` and `collapse` are per-node instructions in the view's
+`select` block. By default a node renders at the depth it has in the model.
+`collapse` closes a container to a single box regardless of whether it has
+children. `expand` opens it to show all children. You mix freely in one view.
+
+```
+diagram "Unit focus" from "Juju" {
+  select {
+    nodes: controller_pod unit_pod
+    collapse: controller_pod   // opaque — context only
+    expand: unit_pod           // fully open — show all children
+  }
+  positions {
+    controller_pod above unit_pod gap: 80
+  }
+}
+```
+
+This means a single diagram can simultaneously show high-level context (the
+controller as a blob) and fine-grained detail (the unit pod's internal
+structure) — without requiring separate diagrams or a zoom/drill-down
+interaction. The reader sees the relationship between the two levels of
+abstraction in one picture.
+
 
 ## Core idea: model and views
 
