@@ -185,15 +185,15 @@ def render_sequence(
             text_anchor="middle",
             dominant_baseline="central",
         ))
-        # Vertical dashed lifeline.
+        # Vertical lifeline — visually distinct from arrows: thinner, lighter.
         lifeline_top = MARGIN_TOP + LIFELINE_HEADER_H
         lifeline_bot = MARGIN_TOP + lifeline_h - MARGIN_BOTTOM
-        line_color = "#888888" if dark else "#AAAAAA"
+        line_color = "#666666" if dark else "#CCCCCC"
         content.append(dw.Line(
             cx, lifeline_top, cx, lifeline_bot,
             stroke=line_color,
             stroke_width=1,
-            stroke_dasharray="4,4",
+            stroke_dasharray="6,4",
         ))
 
     # Steps — rendered top-down, tracking current y offset.
@@ -362,15 +362,15 @@ def _render_arrow(
 
     if label:
         mx = (x1 + x2) / 2
-        # Label slightly above the arrow line.
         label_bg = "#1E1E2E" if ctx.dark else "#FFFFFF"
         lw = len(label) * 6.5
+        # Pill sits 2px above the line so its bottom edge doesn't touch it.
         g.append(dw.Rectangle(
-            mx - lw / 2 - 3, y - 13, lw + 6, 13,
+            mx - lw / 2 - 3, y - 15, lw + 6, 13,
             fill=label_bg, stroke="none", fill_opacity=1,
         ))
         g.append(dw.Text(
-            label, 11, mx, y - 6,
+            label, 11, mx, y - 8,
             font_family=LABEL_FONT,
             fill=ctx.text_color,
             text_anchor="middle",
@@ -385,34 +385,41 @@ def _render_self_step(
     y: float,
     ctx: _RenderCtx,
 ) -> None:
-    """Self-call: right-angled loop on the right side of the lifeline.
-
-    Label sits above the loop line, centred on the loop midpoint,
-    so it never overflows the diagram width.
-    """
-    lx = cx + SELF_LOOP_W
-    loop_bot = y + STEP_HEIGHT * 0.6
-    g.append(dw.Lines(
-        cx, y,
-        lx, y,
-        lx, loop_bot,
-        cx, loop_bot,
+    """Self-call: rounded rectangular loop on the right of the lifeline."""
+    r   = 6       # corner radius
+    w   = SELF_LOOP_W
+    h   = STEP_HEIGHT * 0.6
+    x0  = cx      # left edge (on lifeline)
+    x1b = cx + w  # right edge
+    y0  = y
+    y1b = y + h
+    # Path: start at (x0, y0), go right, curve down-right, go down,
+    # curve down-left, go left back to lifeline.
+    d = (
+        f"M {x0},{y0} "
+        f"L {x1b - r},{y0} "
+        f"Q {x1b},{y0} {x1b},{y0 + r} "
+        f"L {x1b},{y1b - r} "
+        f"Q {x1b},{y1b} {x1b - r},{y1b} "
+        f"L {x0},{y1b}"
+    )
+    g.append(dw.Path(
+        d=d,
+        fill="none",
         stroke=ctx.arrow_color,
         stroke_width=1,
         marker_end="url(#seq-arrow)",
-        fill="none",
-        close=False,
     ))
     if step.label:
-        mx = cx + SELF_LOOP_W / 2
+        mx = cx + w / 2
         label_bg = "#1E1E2E" if ctx.dark else "#FFFFFF"
         lw = len(step.label) * 6.5
         g.append(dw.Rectangle(
-            mx - lw / 2 - 3, y - 13, lw + 6, 13,
+            mx - lw / 2 - 3, y - 15, lw + 6, 13,
             fill=label_bg, stroke="none", fill_opacity=1,
         ))
         g.append(dw.Text(
-            step.label, 11, mx, y - 6,
+            step.label, 11, mx, y - 8,
             font_family=LABEL_FONT,
             fill=ctx.text_color,
             text_anchor="middle",
