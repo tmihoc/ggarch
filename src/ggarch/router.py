@@ -180,13 +180,36 @@ def _route_edge(
     src_rect: Rect,
     tgt_rect: Rect,
 ) -> list[Point]:
-    """Route by primary direction: horizontal travel → straight, vertical → L."""
+    """Choose routing strategy based on relative position and face alignment.
+
+    - Truly horizontal (face points at same y within 4px) → straight 2-point.
+    - Primarily horizontal (dx >= dy) but different y → ⌐-shape 3-point:
+        exit source right/left face horizontally, then drop/rise vertically
+        at the target's near edge to enter the target face.
+    - Primarily vertical (dy > dx) → L-shaped 4-point orthogonal.
+    """
     dx = abs(tgt_rect.cx - src_rect.cx)
     dy = abs(tgt_rect.cy - src_rect.cy)
 
-    # Primary direction is horizontal — straight line regardless of y offset.
+    going_right = tgt_rect.cx >= src_rect.cx
+
     if dx >= dy:
-        return _route_straight_horizontal(src_rect, tgt_rect)
+        src_face = "right" if going_right else "left"
+        tgt_face = "left"  if going_right else "right"
+        src_pt = _face_point(src_rect, src_face)
+        tgt_pt = _face_point(tgt_rect, tgt_face)
+
+        if abs(src_pt.y - tgt_pt.y) < 4:
+            # Face points genuinely at the same height — pure horizontal.
+            return [src_pt, tgt_pt]
+
+        # Different y: go horizontal at source height, then vertical to target.
+        return [
+            src_pt,
+            Point(tgt_pt.x, src_pt.y),
+            tgt_pt,
+        ]
+
     return _route_orthogonal(src_rect, tgt_rect)
 
 # ---------------------------------------------------------------------------
