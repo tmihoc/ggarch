@@ -159,12 +159,14 @@ def _render_node(
     r = node.rect
     x, y, w, h = r.x + ox, r.y + oy, r.w, r.h
 
+    has_children = bool(node.children)
     if style.shape == "person":
         _render_person(g, x, y, w, h, style, node.label)
     elif style.shape == "cylinder":
         _render_cylinder(g, x, y, w, h, style, node.label)
     else:
-        _render_box(g, x, y, w, h, style, node.label, node.lifecycle)
+        _render_box(g, x, y, w, h, style, node.label, node.lifecycle,
+                    is_container=has_children)
 
     # Render children on top.
     if node.children:
@@ -178,20 +180,21 @@ def _render_node(
 def _lifecycle_stroke_dash(lifecycle: str) -> str:
     return {"init": "6,3", "ephemeral": "2,2"}.get(lifecycle, "")
 
-
 def _render_box(
     g: dw.Group,
     x: float, y: float, w: float, h: float,
     style: NodeStyle,
     label: str,
     lifecycle: str = "persistent",
+    is_container: bool = False,
 ) -> None:
+    from ggarch.layout import CONTAINER_PAD_TOP
     fill   = style.fill if style.fill != "none" else "none"
     stroke = style.stroke
     stroke_dash = style.stroke_dash or _lifecycle_stroke_dash(lifecycle)
     stroke_width = style.stroke_width
 
-    rect_kwargs = dict(
+    rect_kwargs: dict = dict(
         fill=fill,
         stroke=stroke,
         stroke_width=stroke_width,
@@ -202,7 +205,13 @@ def _render_box(
         rect_kwargs["stroke_dasharray"] = stroke_dash
 
     g.append(dw.Rectangle(x, y, w, h, **rect_kwargs))
-    _render_label(g, x + w / 2, y + h / 2, label, style)
+
+    if is_container:
+        # Label in the header strip above children.
+        label_y = y + CONTAINER_PAD_TOP / 2
+        _render_label(g, x + w / 2, label_y, label, style)
+    else:
+        _render_label(g, x + w / 2, y + h / 2, label, style)
 
 
 def _render_person(
@@ -349,24 +358,29 @@ def _render_edge(
 
     g.append(dw.Path(d=d, **path_kwargs))
 
-    # Edge label at the midpoint.
+    # Edge label: offset 12px perpendicular to the edge direction.
     if edge.label:
         mid = edge.mid
         mx, my = mid.x + ox, mid.y + oy
-        # Small white/dark background pill behind the label.
+        dx = edge.end.x - edge.start.x
+        dy = edge.end.y - edge.start.y
+        length = max(abs(dx) + abs(dy), 1)
+        # Perpendicular unit vector (rotate 90° CCW).
+        nx, ny = -dy / length, dx / length
+        lx = mx + nx * 12
+        ly = my + ny * 12
         label_bg = "#1E1E2E" if dark else "#FFFFFF"
         lw = len(edge.label) * 6.5
-        g.append(dw.Rectangle(mx - lw / 2 - 3, my - 9, lw + 6, 14,
+        g.append(dw.Rectangle(lx - lw / 2 - 3, ly - 9, lw + 6, 14,
                                fill=label_bg, stroke="none",
                                fill_opacity=0.85))
         g.append(dw.Text(
-            edge.label, es.font_size, mx, my,
+            edge.label, es.font_size, lx, ly,
             font_family=LABEL_FONT,
             fill=es.font_color,
             text_anchor="middle",
             dominant_baseline="central",
         ))
-
 
 # ---------------------------------------------------------------------------
 # Annotation rendering
