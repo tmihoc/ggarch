@@ -126,12 +126,8 @@ def _best_anchors(src_rect: Rect, tgt_rect: Rect) -> tuple[Point, Point]:
 # Path routing
 # ---------------------------------------------------------------------------
 
-_SAME_LEVEL_THRESHOLD = 10   # px — centres closer than this → use elbow
-_ELBOW_CLEARANCE      = 16   # px — elbow offset from node face
-
-
-def _route_straight(src: Point, tgt: Point) -> list[Point]:
-    return [src, tgt]
+_SAME_LEVEL_THRESHOLD = 10   # px — centres closer than this → same-level elbow
+_ELBOW_CLEARANCE      = 16   # px — offset from node face for above/below routing
 
 
 def _route_elbow(
@@ -140,22 +136,18 @@ def _route_elbow(
 ) -> list[Point]:
     """Two-segment elbow for horizontally-connected same-level nodes.
 
-    Routes above the nodes when there is space (top_y - clearance > 0),
-    otherwise below. The elbow always exits from the bottom of each node
-    when routing below, or the top when routing above, so the path
-    does not cut through the node boxes.
+    Routes above when there is space, otherwise below. Exits and enters
+    from the top/bottom face so the path does not cut through node boxes.
     """
-    top_y  = min(src_rect.y, tgt_rect.y)
-    bot_y  = max(src_rect.y2, tgt_rect.y2)
+    top_y = min(src_rect.y, tgt_rect.y)
+    bot_y = max(src_rect.y2, tgt_rect.y2)
 
     if top_y >= _ELBOW_CLEARANCE:
-        # Enough space above — route above the nodes.
-        mid_y = top_y - _ELBOW_CLEARANCE
+        mid_y  = top_y - _ELBOW_CLEARANCE
         src_pt = _face_point(src_rect, "top")
         tgt_pt = _face_point(tgt_rect, "top")
     else:
-        # Route below the nodes.
-        mid_y = bot_y + _ELBOW_CLEARANCE
+        mid_y  = bot_y + _ELBOW_CLEARANCE
         src_pt = _face_point(src_rect, "bottom")
         tgt_pt = _face_point(tgt_rect, "bottom")
 
@@ -167,17 +159,64 @@ def _route_elbow(
     ]
 
 
+def _route_orthogonal(
+    src_rect: Rect,
+    tgt_rect: Rect,
+) -> list[Point]:
+    """L-shaped orthogonal route for vertically-separated nodes.
+
+    Strategy: exit from the closest face, travel horizontally to the
+    target's x-centre, then vertically to the target face. This keeps
+    all segments axis-aligned (grid) with a single corner.
+
+    For top→bottom: exit src bottom, horizontal jog at src.cy + (tgt.y - src.y2)/2,
+    enter tgt top.
+    For bottom→top: mirror.
+    For the same column (x-centres aligned): straight vertical.
+    """
+    src_cx, src_cy = src_rect.cx, src_rect.cy
+    tgt_cx, tgt_cy = tgt_rect.cx, tgt_rect.cy
+
+    # Already horizontally aligned — straight vertical line.
+    if abs(src_cx - tgt_cx) < 4:
+        if tgt_cy > src_cy:
+            return [_face_point(src_rect, "bottom"), _face_point(tgt_rect, "top")]
+        else:
+            return [_face_point(src_rect, "top"), _face_point(tgt_rect, "bottom")]
+
+    # Exit from bottom face if target is below, top if above.
+    if tgt_cy >= src_cy:
+        src_pt = _face_point(src_rect, "bottom")
+        tgt_pt = _face_point(tgt_rect, "top")
+        # Mid-y: halfway between src bottom and tgt top.
+        mid_y = src_rect.y2 + (tgt_rect.y - src_rect.y2) / 2
+        # Clamp so we don't stray into a node.
+        mid_y = max(mid_y, src_rect.y2 + 6)
+        mid_y = min(mid_y, tgt_rect.y - 6)
+    else:
+        src_pt = _face_point(src_rect, "top")
+        tgt_pt = _face_point(tgt_rect, "bottom")
+        mid_y = tgt_rect.y2 + (src_rect.y - tgt_rect.y2) / 2
+        mid_y = max(mid_y, tgt_rect.y2 + 6)
+        mid_y = min(mid_y, src_rect.y - 6)
+
+    return [
+        src_pt,
+        Point(src_pt.x,  mid_y),
+        Point(tgt_pt.x,  mid_y),
+        tgt_pt,
+    ]
+
+
 def _route_edge(
     src_rect: Rect,
     tgt_rect: Rect,
 ) -> list[Point]:
-    """Route from src_rect to tgt_rect."""
-    # Use elbow if centres are at roughly the same height.
+    """Route from src_rect to tgt_rect using orthogonal (grid) paths."""
     same_level = abs(src_rect.cy - tgt_rect.cy) < _SAME_LEVEL_THRESHOLD
     if same_level:
         return _route_elbow(src_rect, tgt_rect)
-    src_pt, tgt_pt = _best_anchors(src_rect, tgt_rect)
-    return _route_straight(src_pt, tgt_pt)
+    return _route_orthogonal(src_rect, tgt_rect)
 
 # ---------------------------------------------------------------------------
 # Main entry point
