@@ -364,13 +364,13 @@ def _render_arrow(
         mx = (x1 + x2) / 2
         label_bg = "#1E1E2E" if ctx.dark else "#FFFFFF"
         lw = len(label) * 6.5
-        # Pill sits 2px above the line so its bottom edge doesn't touch it.
+        # Pill bottom sits 8px above the line — clear of the arrowhead.
         g.append(dw.Rectangle(
-            mx - lw / 2 - 3, y - 15, lw + 6, 13,
+            mx - lw / 2 - 3, y - 21, lw + 6, 13,
             fill=label_bg, stroke="none", fill_opacity=1,
         ))
         g.append(dw.Text(
-            label, 11, mx, y - 8,
+            label, 11, mx, y - 14,
             font_family=LABEL_FONT,
             fill=ctx.text_color,
             text_anchor="middle",
