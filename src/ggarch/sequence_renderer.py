@@ -131,8 +131,7 @@ def render_sequence(
     total_rows = _count_rows(behaviour.steps)
 
     col_step  = LIFELINE_WIDTH + LIFELINE_SPACING
-    # Add right margin for self-step labels that extend past the last lifeline.
-    diagram_w = MARGIN_SIDE * 2 + n * col_step - LIFELINE_SPACING + SELF_LOOP_W + 80
+    diagram_w = MARGIN_SIDE * 2 + n * col_step - LIFELINE_SPACING
     lifeline_h = LIFELINE_HEADER_H + total_rows * STEP_HEIGHT + MARGIN_BOTTOM
     diagram_h = MARGIN_TOP + lifeline_h
 
@@ -353,13 +352,18 @@ def _render_self_step(
     y: float,
     ctx: _RenderCtx,
 ) -> None:
-    """Self-call: right-angled loop on the right side of the lifeline."""
+    """Self-call: right-angled loop on the right side of the lifeline.
+
+    Label sits above the loop line, centred on the loop midpoint,
+    so it never overflows the diagram width.
+    """
     lx = cx + SELF_LOOP_W
+    loop_bot = y + STEP_HEIGHT * 0.6
     g.append(dw.Lines(
         cx, y,
         lx, y,
-        lx, y + STEP_HEIGHT * 0.6,
-        cx, y + STEP_HEIGHT * 0.6,
+        lx, loop_bot,
+        cx, loop_bot,
         stroke=ctx.arrow_color,
         stroke_width=1,
         marker_end="url(#seq-arrow)",
@@ -367,10 +371,18 @@ def _render_self_step(
         close=False,
     ))
     if step.label:
+        mx = cx + SELF_LOOP_W / 2
+        label_bg = "#1E1E2E" if ctx.dark else "#FFFFFF"
+        lw = len(step.label) * 6.5
+        g.append(dw.Rectangle(
+            mx - lw / 2 - 3, y - 13, lw + 6, 13,
+            fill=label_bg, stroke="none", fill_opacity=0.85,
+        ))
         g.append(dw.Text(
-            step.label, 11, lx + 4, y + STEP_HEIGHT * 0.3,
+            step.label, 11, mx, y - 6,
             font_family=LABEL_FONT,
             fill=ctx.text_color,
+            text_anchor="middle",
             dominant_baseline="central",
         ))
 
