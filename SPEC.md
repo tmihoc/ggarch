@@ -22,8 +22,8 @@ meaningfully protecting the project.
 
 ## Motivation
 
-Every mainstream text-based diagram tool (Mermaid, D2, Graphviz) conflates
-three concerns in a single syntax:
+Every mainstream text-based diagram tool (Mermaid, D2, Graphviz, PlantUML)
+conflates three concerns in a single syntax:
 
 1. **What nodes exist and what they are**
 2. **Where nodes are positioned**
@@ -34,28 +34,152 @@ spatial intent is routinely overridden by global edge-crossing optimisation.
 Annotations (dashed boxes, callout labels, region shading) have no first-class
 home and either distort layout or don't exist at all.
 
-ggarch separates these concerns into independent, composable layers — the same
-insight that made ggplot2 productive for statistical graphics.
+But there is a deeper problem that no general-purpose tool addresses: **a
+distributed system is not one diagram, it is a system that can be viewed from
+many angles**. The same controller, unit agent, and charm appear in a
+deployment topology, a control-flow diagram, a data-model diagram, and a
+sequence diagram. Every existing tool makes you re-declare these entities for
+each diagram, which means the diagrams diverge over time and an agent or reader
+cannot tell that the "controller" in the topology is the same entity as the
+"Controller" lifeline in the sequence diagram.
+
+The closest existing tools are **Structurizr** (C4 model/view separation,
+native deployment cardinality) and **Ilograph** (single-file declare-once,
+multi-perspective with composable sequence views). Both score 3-4 out of 6 on
+the capabilities distributed systems documentation actually requires. The two
+universal gaps across every existing tool:
+
+- **Lifecycle/temporal node properties** — no tool natively models 'runs once
+  at startup and exits' vs 'runs continuously'. This distinction is central to
+  understanding systems like Juju (init containers, bootstrap sequences) and
+  has no representation anywhere.
+- **Cross-cutting semantic annotation regions** — no text-based tool lets you
+  draw a semantic boundary (e.g. 'intent & persistence') that cuts across a
+  containment hierarchy without distorting layout or remodelling the tree.
+
+ggarch addresses all of this by separating a diagram into independent,
+composable layers — the same insight that made ggplot2 productive for
+statistical graphics — and by making the system model a first-class,
+separately declared artefact that all views share.
+
+---
+
+## Distributed systems capabilities
+
+These six capabilities are what distributed systems documentation specifically
+requires. They are first-class in ggarch; none are fully covered by any
+existing text-based tool.
+
+### 1. Multiple views of one model
+
+A system is declared once in a `model` block. Views reference it. The
+controller in the topology view and the Controller lifeline in the sequence
+view are the same declared entity — not two drawings that happen to share a
+label. Views can be topology, control-flow, data-model, or sequence; all draw
+from the same model.
+
+### 2. Typed edges
+
+Edges have a semantic `type` drawn from a declared taxonomy. Types are not
+just visual styles — they carry meaning that can be queried. Built-in types
+for distributed systems:
+
+- `api` — RPC or REST over a network protocol
+- `stream` — long-lived connection (websocket, gRPC stream)
+- `event` — one-way notification
+- `data` — data read/write (database, object store)
+- `control` — process control (exec, signal, lifecycle management)
+- `ipc` — local inter-process (Unix socket, pipe, shared memory)
+- `pebble` — Pebble HTTP API (Juju-specific; illustrates custom types)
+
+Custom types can be declared in the `model` and mapped to styles.
+
+### 3. Lifecycle and cardinality on nodes
+
+Every node can declare:
+
+- `lifecycle: persistent | init | ephemeral`
+  - `persistent` — runs continuously (default)
+  - `init` — runs once at startup, then exits (K8s init containers, bootstrap
+    steps)
+  - `ephemeral` — runs on demand, exits (hook dispatch, one-off jobs)
+- `cardinality: one-per-deployment | one-per-model | one-per-application |
+  one-per-unit | one-per-host | N`
+  — expresses the multiplicity of the entity in a live deployment. Rendered
+  as a badge or visual multiplicity cue. Queryable from the JSON export.
+
+Lifecycle maps directly to visual grammar: init nodes render with a dashed
+border by default; ephemeral nodes with a dotted border. Both can be
+overridden in the style layer.
+
+### 4. Cross-cutting annotation regions
+
+The `annotations` layer draws semantic regions on top of the solved layout
+without participating in layout at all. A region can span any set of nodes
+regardless of their position in the containment hierarchy. This is how
+'intent & persistence boundary' and 'execution boundary' are expressed —
+as annotations, not containers.
+
+Multiple annotation sets can be defined and rendered selectively, giving
+different 'lenses' onto the same base diagram.
+
+### 5. Composable sequence diagrams
+
+A `sequence` view references the same model entities as a `topology` view.
+The lifelines in a sequence diagram are not re-declared — they are the same
+nodes, resolved from the model. This means a sequence diagram is automatically
+consistent with the topology: renaming a node in the model renames it in every
+view.
+
+Sequence steps support: `call`, `return`, `async`, `loop`, `alt` (condition
+branches). The unit agent's wait/snapshot/resolve/dispatch/commit loop, the
+bootstrap sequences for K8s and machine clouds, and the hook execution sequence
+in the Juju docs are all expressible as sequence views over the same model.
+
+### 6. Deployment environments as views
+
+A system can be deployed in multiple environments (Kubernetes, machine cloud,
+LXD). These are not separate systems — they are different deployment views of
+the same model. ggarch treats them as `environment` variants, each specifying
+which nodes are present and how they map to infrastructure. The K8s topology
+and machine topology of Juju are two environment views of one model, not two
+separate pictures.
 
 ---
 
 ## Core idea: layers
 
-A ggarch diagram is a stack of layers applied in order. Each layer is
-independently declared and does not affect the concerns of other layers.
+A ggarch file contains a `model` (declared once, shared by all views) and one
+or more `diagram` blocks (each a view into the model). Each diagram is a stack
+of layers applied in order.
 
 ```
-diagram "Juju architecture" {
-  nodes { ... }        // layer 1: what exists
-  positions { ... }    // layer 2: where things go
-  edges { ... }        // layer 3: how things connect
-  annotations { ... }  // layer 4: overlaid callouts and regions
-  style { ... }        // layer 5: visual grammar
+// Declared once — the system model
+model "Juju" {
+  nodes { ... }    // what exists, with types, lifecycle, cardinality
+  edges { ... }    // relationships, with semantic types
+  style { ... }    // visual grammar for node types and edge types
+}
+
+// A topology view
+diagram "Deployment topology" from "Juju" {
+  select { ... }       // which model nodes to include
+  positions { ... }    // spatial constraints for this view
+  annotations { ... }  // overlaid regions and callouts for this view
+}
+
+// A sequence view of the same model
+sequence "Hook execution" from "Juju" {
+  select { ... }   // which model nodes are lifelines
+  steps { ... }    // the interaction steps
 }
 ```
 
-Layers are always evaluated in this order. Positions are solved before edges
-are routed. Annotations are drawn last, on top of everything else.
+Layers within a `diagram` are evaluated in this order:
+1. `select` — filter model nodes and edges for this view
+2. `positions` — constraint solver produces coordinates
+3. edges are routed using solved positions
+4. `annotations` — drawn last, on top, without affecting layout
 
 ---
 
@@ -117,33 +241,55 @@ are routed. Annotations are drawn last, on top of everything else.
 
 ---
 
-## Layer 1: nodes
+## Layer 1: nodes (in the model)
 
-Declares what exists. Nodes have an id, a label, and an optional type.
-Types map to the style grammar. Nesting creates containment.
+Declares what exists. Nodes have an id, a label, a type, an optional
+lifecycle, and an optional cardinality. Types map to the style grammar.
+Nesting creates containment. These are declared in the `model`, not per
+diagram — so every view shares the same node definitions.
 
 ```
 nodes {
   user [type: person, label: "User"]
 
-  juju [type: juju-software, label: "Juju"] {
-    client [type: juju-software, label: "Client"]
-    controller [type: juju-software, label: "Controller"]
+  controller_pod [type: container, label: "Controller pod",
+                  cardinality: one-per-model] {
+    jujud [type: juju-software, label: "jujud",
+           cardinality: one-per-model]
+    config_seed [type: juju-software, label: "controller-config-seed",
+                 lifecycle: init, cardinality: one-per-model]
+    charm_init [type: juju-software, label: "charm-init",
+                lifecycle: init, cardinality: one-per-model]
+    apiserver [type: juju-software, label: "API-server container",
+               cardinality: one-per-model]
+    pebble [type: pebble, label: "Pebble",
+            cardinality: one-per-unit]
   }
 
-  clouds [type: external, label: "Clouds\n(AWS, GCP, K8s…)"]
-  charmhub [type: external, label: "Charmhub"]
-
-  app1 [type: unit, label: "Application 1 unit"] {
-    agent1 [type: juju-software, label: "Unit agent"]
-    charm1 [type: charm, label: "Charm"]
-    workload1 [type: workload, label: "Workload"]
+  unit_pod [type: container, label: "Unit pod",
+            cardinality: one-per-unit] {
+    unit_agent [type: juju-software, label: "Unit agent (containeragent)",
+                cardinality: one-per-unit]
+    charm [type: charm, label: "Charm",
+           lifecycle: ephemeral, cardinality: one-per-unit]
+    workload [type: workload, label: "Workload container",
+              cardinality: one-per-unit]
   }
 }
 ```
 
-Nodes are pure declarations — no position, no edges. Containment is a visual
-grouping hint; it does not imply edges or constraint priority.
+Node attributes:
+- `type` — maps to the style grammar; also used to filter nodes into views
+- `label` — display text; `\n` for line breaks
+- `lifecycle: persistent | init | ephemeral` — persistent (default) renders
+  with a solid border; init with a dashed border; ephemeral with a dotted
+  border. Can be overridden in the style layer.
+- `cardinality: one-per-deployment | one-per-model | one-per-application |
+  one-per-unit | one-per-host | N` — rendered as a badge or multiplicity cue;
+  queryable from JSON export
+
+Nodes are pure model declarations — no position, no edges. Containment is a
+visual grouping hint; it does not imply edges or constraint priority.
 
 ---
 
@@ -185,32 +331,44 @@ Supported constraint types:
 
 ---
 
-## Layer 3: edges
+## Layer 3: edges (in the model)
 
-Declares relationships. Edges are routed after positions are solved, so
-routing never influences layout.
+Declares relationships. In the model, edges carry a semantic `type` in
+addition to a label. Edge types are not just visual — they are queryable and
+can be filtered per view. Edges in a `diagram` view inherit the model edges
+for the selected nodes; additional view-local edges can be declared in the
+view's own `edges` block.
 
 ```
 edges {
-  user -> juju.client [label: "declares intent"]
-  juju.client -> juju.controller [label: "Juju API"]
-  juju.controller -> clouds [label: "provisions infrastructure"]
-  juju.controller -> charmhub [label: "fetches charms"]
-  juju.controller -> app1.agent1 [label: "Juju API\n(websocket)"]
-  app1.agent1 -> app1.charm1 [label: "dispatch"]
-  app1.charm1 -> app1.workload1 [label: "operates"]
+  user -> controller [type: api, label: "declares intent"]
+  client -> controller [type: api, label: "Juju API (websocket)",
+                        protocol: "websocket-rpc"]
+  controller -> clouds [type: control, label: "provisions infrastructure"]
+  controller -> charmhub [type: api, label: "fetches charms"]
+  controller -> unit_agent [type: stream, label: "watcher (websocket)"]
+  unit_agent -> charm [type: control, label: "exec dispatch"]
+  charm -> unit_agent [type: ipc, label: "hook commands (unix socket)"]
+  charm -> pebble [type: api, label: "Pebble API (HTTP)",
+                   protocol: "http"]
+  pebble -> workload [type: control, label: "manages services"]
 }
 ```
 
 Edge attributes:
-- `label` — text on the edge
-- `style` — dashed, dotted, solid (default)
+- `type` — semantic type from the built-in taxonomy or a custom declared type:
+  `api`, `stream`, `event`, `data`, `control`, `ipc`, `pebble`
+- `protocol` — optional protocol detail (e.g. `websocket-rpc`, `http`,
+  `unix-socket`); rendered as a secondary label or tooltip
+- `label` — primary display text
+- `style` — dashed, dotted, solid; defaults from type via style grammar
 - `arrow` — none, forward (default), back, both
-- `color` — override style grammar colour
 
-Routing strategy: straight lines by default. Orthogonal routing (horizontal/
-vertical segments only) as an opt-in per diagram or per edge, pending a
-production-ready Python binding for adaptagrams libavoid.
+Custom edge types are declared in the `style` block and map to a visual style.
+
+Routing strategy: straight lines by default. Orthogonal routing as an opt-in
+per diagram or per edge, pending a production-ready Python binding for
+adaptagrams libavoid.
 
 ---
 
@@ -346,28 +504,34 @@ The extension:
 ## Implementation plan
 
 ### Phase 1 — parser + data model
-Parse the five-layer syntax into a Python data structure. Validate: node ids
-unique, edge endpoints exist, constraint targets exist. Library: `lark` (MIT).
+Parse the model/view syntax into a Python data structure. Validate: node ids
+unique, edge endpoints exist, constraint targets exist, view `select` targets
+exist in model. Library: `lark` (MIT).
 
 ### Phase 2 — constraint solver
 Translate position constraints into kiwisolver expressions. Solve to produce
-(x, y, width, height) for every node. Handle containment (parent bounds
-contain all children). Library: `kiwisolver` (BSD).
+(x, y, width, height) for every node in a view. Handle containment (parent
+bounds contain all children). Library: `kiwisolver` (BSD).
 
 ### Phase 3 — straight-line edge routing
 Compute start/end anchor points on node boundaries. Route straight lines (or
 two-segment elbows for same-axis nodes). No external dependency.
 
 ### Phase 4 — SVG renderer
-Render nodes, edges, annotations to SVG using `drawsvg` (MIT). Light and dark
+Render nodes (with lifecycle and cardinality visual cues), edges (with type
+styling), and annotations to SVG using `drawsvg` (MIT). Light and dark
 variants. Correct font sizing, text wrapping, multi-line labels. JSON export.
 
-### Phase 5 — Sphinx extension
-`sphinxcontrib_ggarch.py` following the pattern of `sphinxcontrib_d2.py`.
-`{ggarch}` directive, required `:alt:`, light/dark pair output, markdown
-visitor that emits source verbatim.
+### Phase 5 — sequence view renderer
+Render `sequence` views as sequence diagrams with lifelines sourced from the
+model. Steps: `call`, `return`, `async`, `loop`, `alt`.
 
-### Phase 6 — orthogonal routing (optional)
+### Phase 6 — Sphinx extension
+`sphinxcontrib_ggarch.py` following the pattern of `sphinxcontrib_d2.py`.
+`{ggarch}` directive with `view` selector, required `:alt:`, light/dark pair
+output, markdown visitor that emits source verbatim.
+
+### Phase 7 — orthogonal routing (optional)
 Plug in adaptagrams libavoid when a production-ready Python binding exists.
 Straight-line routing remains the default.
 
@@ -388,18 +552,27 @@ No copyleft. No binary builds. No npm. No network at build time.
 
 ## Open questions
 
-1. **Shorthand syntax.** The five-section structure is verbose for small
-   diagrams. Consider allowing `positions`, `edges`, `annotations`, `style`
-   to be omitted, defaulting to auto-layout (top-down), no edges, no
-   annotations, and the `juju` style preset.
+1. **Shorthand syntax.** The model/view structure is verbose for simple
+   one-off diagrams. Consider a `diagram` block without an explicit `model`
+   that inlines all five layers — equivalent to the original spec, for cases
+   where multi-view reuse is not needed.
 
-2. **Multi-diagram files.** A single `.ggarch` file containing multiple named
-   diagrams referenceable by name from different doc pages.
+2. **Model file vs inline.** Should the model be declarable in a separate
+   `.ggarch` file and referenced by multiple doc pages? This would let all
+   the Juju architecture diagrams share one canonical model file.
 
 3. **Constraint relaxation policy.** If constraints conflict: error (current
-   plan) or relax lowest-priority constraint with a warning? Leaning toward
-   error — silent relaxation is how ELK and dagre caused problems in practice.
+   plan) or relax lowest-priority constraint with a warning? Error — silent
+   relaxation is how ELK and dagre caused problems in practice.
 
-4. **Style presets.** `juju` ships built-in. Mechanism for
-   third-party presets distributed as Python packages
-   (`ggarch-style-juju`)?
+4. **Cardinality rendering.** Badge vs multiplicity cue (stacked boxes) vs
+   text annotation. Stacked boxes (like UML instance notation) may be clearest
+   but add visual noise. Start with a badge and revisit.
+
+5. **Edge type taxonomy.** The built-in types (`api`, `stream`, `event`,
+   `data`, `control`, `ipc`) cover the Juju case. Are they general enough for
+   other distributed systems? Should the built-in set be smaller (fewer
+   assumptions) or richer?
+
+6. **Style presets.** `juju` ships built-in. Mechanism for third-party presets
+   distributed as Python packages (`ggarch-style-juju`)?
