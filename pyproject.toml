@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ggarch"
+version = "0.1.0"
+description = "Grammar of Architecture Diagrams"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+dependencies = [
+    "lark>=1.1",
+    "kiwisolver>=1.4",
+    "drawsvg>=2.0",
+]
+
+[project.optional-dependencies]
+sphinx = ["sphinx>=7.0"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+]
+
+[project.scripts]
+ggarch = "ggarch.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

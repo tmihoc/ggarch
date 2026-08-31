@@ -1,0 +1,129 @@
+// ggarch grammar
+// Lark LALR(1) grammar for .ggarch files.
+
+start: (model | diagram | sequence)*
+
+// -----------------------------------------------------------------------
+// Model
+// -----------------------------------------------------------------------
+
+model: "model" STRING "{" model_body "}"
+
+model_body: (nodes_block | edges_block | behaviours_block | style_block)*
+
+nodes_block: "nodes" "{" node* "}"
+
+node: ID attrs_inline? "{" node* "}"  -> node_with_children
+    | ID attrs_inline?                -> node_leaf
+
+attrs_inline: "[" attr ("," attr)* "]"
+
+attr: ID ":" attr_value
+
+attr_value: STRING    -> attr_string
+          | ID        -> attr_id
+          | INT       -> attr_int
+
+edges_block: "edges" "{" edge* "}"
+
+edge: ID "->" ID attrs_inline?
+
+behaviours_block: "behaviours" "{" behaviour* "}"
+
+behaviour: "behaviour" STRING "{" behaviour_step* "}"
+
+behaviour_step: step_line   -> bstep
+              | loop_block  -> bstep
+              | alt_block   -> bstep
+              | par_block   -> bstep
+
+step_line: ID "->" ID ":" STEP_KIND STRING attrs_inline?
+         | ID "->" ID ":" STEP_KIND         attrs_inline?
+
+STEP_KIND: "call" | "return" | "async" | "self"
+
+loop_block: "loop" STRING "{" behaviour_step* "}"
+
+alt_block: "alt" STRING "{" behaviour_step* "}" else_clause*
+
+else_clause: "else" STRING "{" behaviour_step* "}"
+
+par_block: "par" "{" behaviour_step* "}"
+
+style_block: "style" "{" style_item* "}"
+
+style_item: "extends" ":" ID                      -> style_extends
+          | ID "{" style_rule* "}"                -> style_type_rule
+          | "@dark" "{" style_dark_item* "}"      -> style_dark
+
+style_dark_item: ID "{" style_rule* "}"
+
+style_rule: ID ":" attr_value
+
+// -----------------------------------------------------------------------
+// Diagram view
+// -----------------------------------------------------------------------
+
+diagram: "diagram" STRING "from" STRING "{" diagram_body "}"
+
+diagram_body: (select_block | positions_block | annotations_block)*
+
+select_block: "select" "{" select_item* "}"
+
+select_item: "nodes" ":" id_list                         -> select_nodes
+           | "edges" ":" edge_filter_list                -> select_edges
+           | "environment" ":" ID                        -> select_environment
+           | "collapse" ":" id_list                      -> select_collapse
+           | "expand" ":" id_list                        -> select_expand
+           | "instances" ":" ID "[" instance_spec ("," instance_spec)* "]"  -> select_instances
+           | "behaviour" ":" STRING                      -> select_behaviour
+           | "participants" ":" id_list                  -> select_participants
+
+instance_spec: "{" "id" ":" ID "," "label" ":" STRING "}"
+
+edge_filter_list: edge_filter+
+
+edge_filter: "type" ID
+
+id_list: ID+
+
+positions_block: "positions" "{" constraint* "}"
+
+constraint: ID CARDINAL_KW ID ("gap" ":" INT)?  -> constraint_cardinal
+          | ID ALIGN_KW    ID                   -> constraint_align
+          | ID SAME_KW     ID                   -> constraint_same
+          | ID "direction" ":" ID               -> constraint_direction
+          | ID "grid" ":" INT INT               -> constraint_grid
+          | ID "min-width" ":" INT              -> constraint_min_width
+          | ID "min-height" ":" INT             -> constraint_min_height
+
+CARDINAL_KW: "left-of" | "right-of" | "above" | "below"
+ALIGN_KW: "align-top" | "align-bottom" | "align-left" | "align-right" | "align-middle" | "align-centre"
+SAME_KW: "same-width" | "same-height" | "same-size"
+
+annotations_block: "annotations" "{" annotation* "}"
+
+annotation: "box"       attrs_inline -> ann_box
+          | "callout"   attrs_inline -> ann_callout
+          | "separator" attrs_inline -> ann_separator
+          | "badge"     attrs_inline -> ann_badge
+
+// -----------------------------------------------------------------------
+// Sequence view
+// -----------------------------------------------------------------------
+
+sequence: "sequence" STRING "from" STRING "{" sequence_body "}"
+
+sequence_body: (select_block | annotations_block)*
+
+// -----------------------------------------------------------------------
+// Terminals
+// -----------------------------------------------------------------------
+
+ID: /[a-zA-Z_][a-zA-Z0-9_-]*/
+STRING: "\"" /[^"]*/ "\""
+INT: /[0-9]+/
+
+COMMENT: /\/\/[^\n]*/
+%ignore COMMENT
+%ignore /\s+/
