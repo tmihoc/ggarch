@@ -131,7 +131,7 @@ def render_sequence(
     total_rows = _count_rows(behaviour.steps)
 
     col_step  = LIFELINE_WIDTH + LIFELINE_SPACING
-    diagram_w = MARGIN_SIDE * 2 + n * col_step - LIFELINE_SPACING
+    diagram_w = MARGIN_SIDE * 2 + n * col_step - LIFELINE_SPACING + SELF_LOOP_W + 100
     lifeline_h = LIFELINE_HEADER_H + total_rows * STEP_HEIGHT + MARGIN_BOTTOM
     diagram_h  = MARGIN_TOP + lifeline_h + LIFELINE_HEADER_H
 
@@ -385,16 +385,14 @@ def _render_self_step(
     y: float,
     ctx: _RenderCtx,
 ) -> None:
-    """Self-call: rounded rectangular loop on the right of the lifeline."""
-    r   = 6       # corner radius
+    """Self-call: compact rounded loop, label to the right of the loop."""
+    r   = 5        # corner radius
     w   = SELF_LOOP_W
-    h   = STEP_HEIGHT * 0.6
-    x0  = cx      # left edge (on lifeline)
-    x1b = cx + w  # right edge
-    y0  = y
-    y1b = y + h
-    # Path: start at (x0, y0), go right, curve down-right, go down,
-    # curve down-left, go left back to lifeline.
+    h   = r * 2 + 4   # just enough for two curves — tight, not tall
+    x0  = cx
+    x1b = cx + w
+    y0  = y - h / 2   # centre the loop vertically on y
+    y1b = y0 + h
     d = (
         f"M {x0},{y0} "
         f"L {x1b - r},{y0} "
@@ -411,18 +409,13 @@ def _render_self_step(
         marker_end="url(#seq-arrow)",
     ))
     if step.label:
-        mx = cx + w / 2
-        label_bg = "#1E1E2E" if ctx.dark else "#FFFFFF"
-        lw = len(step.label) * 6.5
-        g.append(dw.Rectangle(
-            mx - lw / 2 - 3, y - 15, lw + 6, 13,
-            fill=label_bg, stroke="none", fill_opacity=1,
-        ))
+        # Label to the right of the loop, vertically centred.
+        lx = x1b + 4
         g.append(dw.Text(
-            step.label, 11, mx, y - 8,
+            step.label, 11, lx, y,
             font_family=LABEL_FONT,
             fill=ctx.text_color,
-            text_anchor="middle",
+            text_anchor="start",
             dominant_baseline="central",
         ))
 
