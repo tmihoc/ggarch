@@ -44,7 +44,7 @@ BLOCK_PAD          = 8     # px — padding inside loop/alt regions
 MARGIN_TOP         = 20    # px
 MARGIN_SIDE        = 20    # px
 MARGIN_BOTTOM      = 30    # px
-SELF_LOOP_W        = 24    # px — width of self-call loop
+SELF_LOOP_W        = 20    # px — width of self-call loop
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +130,9 @@ def render_sequence(
     n = len(participants)
     total_rows = _count_rows(behaviour.steps)
 
-    col_step = LIFELINE_WIDTH + LIFELINE_SPACING
-    diagram_w = MARGIN_SIDE * 2 + n * col_step - LIFELINE_SPACING
+    col_step  = LIFELINE_WIDTH + LIFELINE_SPACING
+    # Add right margin for self-step labels that extend past the last lifeline.
+    diagram_w = MARGIN_SIDE * 2 + n * col_step - LIFELINE_SPACING + SELF_LOOP_W + 80
     lifeline_h = LIFELINE_HEADER_H + total_rows * STEP_HEIGHT + MARGIN_BOTTOM
     diagram_h = MARGIN_TOP + lifeline_h
 
