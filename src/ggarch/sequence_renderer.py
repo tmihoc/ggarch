@@ -133,7 +133,7 @@ def render_sequence(
     col_step  = LIFELINE_WIDTH + LIFELINE_SPACING
     diagram_w = MARGIN_SIDE * 2 + n * col_step - LIFELINE_SPACING
     lifeline_h = LIFELINE_HEADER_H + total_rows * STEP_HEIGHT + MARGIN_BOTTOM
-    diagram_h = MARGIN_TOP + lifeline_h
+    diagram_h  = MARGIN_TOP + lifeline_h + LIFELINE_HEADER_H
 
     # Column centre positions.
     col_cx: dict[str, float] = {}
@@ -208,6 +208,39 @@ def render_sequence(
     y_start = MARGIN_TOP + LIFELINE_HEADER_H + STEP_HEIGHT / 2
     _render_steps(content, behaviour.steps, y_start, ctx)
 
+    # Closing boxes at the bottom of each lifeline — same style as headers.
+    lifeline_bot_y = MARGIN_TOP + lifeline_h - MARGIN_BOTTOM
+    for pid in participants:
+        cx   = col_cx[pid]
+        node = model.find_node(pid)
+        label = node.label if node else pid
+        lifecycle = node.lifecycle if node else Lifecycle.PERSISTENT
+        style = node_styles.get(
+            node.type if node else "default",
+            node_styles.get("default"),
+        )
+        rect_kwargs: dict = dict(
+            fill=style.fill if style.fill != "none" else ("#2A2A3E" if dark else "#F5F5F5"),
+            stroke=style.stroke,
+            stroke_width=1,
+            rx=4, ry=4,
+        )
+        if lifecycle == Lifecycle.INIT:
+            rect_kwargs["stroke_dasharray"] = "4,3"
+        content.append(dw.Rectangle(
+            cx - LIFELINE_WIDTH / 2, lifeline_bot_y,
+            LIFELINE_WIDTH, LIFELINE_HEADER_H,
+            **rect_kwargs,
+        ))
+        text_color = style.font_color or ("#CDD6F4" if dark else "#333333")
+        content.append(dw.Text(
+            label, 12,
+            cx, lifeline_bot_y + LIFELINE_HEADER_H / 2,
+            font_family=LABEL_FONT,
+            fill=text_color,
+            text_anchor="middle",
+            dominant_baseline="central",
+        ))
     drawing.append(content)
     return drawing.as_svg()
 
