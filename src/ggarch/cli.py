@@ -29,6 +29,16 @@ def main() -> None:
     route_cmd.add_argument("file", type=Path)
     route_cmd.add_argument("--view", help="diagram view name (default: first)")
 
+    render_cmd = sub.add_parser("render", help="render diagram to SVG file(s)")
+    render_cmd.add_argument("file", type=Path)
+    render_cmd.add_argument("--view", help="diagram view name (default: first)")
+    render_cmd.add_argument("--out", type=Path, default=None,
+                            help="output path stem (default: <file>-<view>)")
+    render_cmd.add_argument("--dark", action="store_true",
+                            help="render dark mode only")
+    render_cmd.add_argument("--light", action="store_true",
+                            help="render light mode only (default: both)")
+
     args = p.parse_args()
     if args.cmd is None:
         p.print_help()
@@ -121,3 +131,42 @@ def main() -> None:
             print(f"  {e.source_id} -> {e.target_id} [{e.edge_type}/{e.style}]"
                   f"  {pts}"
                   + (f'  "{e.label}"' if e.label else ""))
+
+    elif args.cmd == "render":
+        from ggarch.solver import solve
+        from ggarch.router import route
+        from ggarch.renderer import render
+        if not f.diagrams:
+            print("error: no diagram views in file", file=sys.stderr)
+            sys.exit(1)
+        if args.view:
+            diagram = next((d for d in f.diagrams if d.name == args.view), None)
+            if diagram is None:
+                names = [d.name for d in f.diagrams]
+                print(f"error: view {args.view!r} not found; available: {names}",
+                      file=sys.stderr)
+                sys.exit(1)
+        else:
+            diagram = f.diagrams[0]
+        model = f.get_model(diagram.model_name)
+        # Build output path stem.
+        if args.out:
+            stem = args.out
+        else:
+            view_slug = diagram.name.lower().replace(" ", "-")
+            stem = args.file.parent / f"{args.file.stem}-{view_slug}"
+        try:
+            layout = solve(diagram, model)
+            rl = route(layout, model, diagram.select)
+        except GgarchError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        both = not args.dark and not args.light
+        if both or args.light:
+            light_path = Path(str(stem) + "-light.svg")
+            light_path.write_text(render(rl, model, diagram, dark=False), encoding="utf-8")
+            print(f"wrote {light_path}")
+        if both or args.dark:
+            dark_path = Path(str(stem) + "-dark.svg")
+            dark_path.write_text(render(rl, model, diagram, dark=True), encoding="utf-8")
+            print(f"wrote {dark_path}")

@@ -44,7 +44,8 @@ class SolvedNode:
     rect: Rect
     # Children solved recursively; empty for leaf nodes.
     children: list[SolvedNode] = field(default_factory=list)
-    # The original model node (for type/lifecycle/cardinality lookups).
+    # Carry through model node properties for the renderer.
+    label: str = ""
     type: str = ""
     lifecycle: str = "persistent"
     cardinality: str = ""

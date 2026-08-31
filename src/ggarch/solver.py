@@ -487,6 +487,7 @@ def _build_solved_node(
         id=node.id,
         rect=rect,
         children=children,
+        label=node.label,
         type=node.type,
         lifecycle=node.lifecycle.value,
         cardinality=node.cardinality.value
