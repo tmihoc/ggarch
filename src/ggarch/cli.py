@@ -25,6 +25,10 @@ def main() -> None:
     solve_cmd.add_argument("file", type=Path)
     solve_cmd.add_argument("--view", help="diagram view name (default: first)")
 
+    route_cmd = sub.add_parser("route", help="solve layout and print routed edges")
+    route_cmd.add_argument("file", type=Path)
+    route_cmd.add_argument("--view", help="diagram view name (default: first)")
+
     args = p.parse_args()
     if args.cmd is None:
         p.print_help()
@@ -87,3 +91,33 @@ def main() -> None:
         print(f"bounds: {layout.bounds.w:.0f} x {layout.bounds.h:.0f}")
         for node in layout.nodes:
             _fmt_node(node)
+
+    elif args.cmd == "route":
+        from ggarch.solver import solve
+        from ggarch.router import route
+        if not f.diagrams:
+            print("error: no diagram views in file", file=sys.stderr)
+            sys.exit(1)
+        if args.view:
+            diagram = next((d for d in f.diagrams if d.name == args.view), None)
+            if diagram is None:
+                names = [d.name for d in f.diagrams]
+                print(f"error: view {args.view!r} not found; available: {names}",
+                      file=sys.stderr)
+                sys.exit(1)
+        else:
+            diagram = f.diagrams[0]
+        model = f.get_model(diagram.model_name)
+        try:
+            layout = solve(diagram, model)
+            rl = route(layout, model, diagram.select)
+        except GgarchError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        print(f"view: {diagram.name!r}")
+        print(f"edges: {len(rl.edges)}")
+        for e in rl.edges:
+            pts = "  ".join(f"({p.x:.0f},{p.y:.0f})" for p in e.points)
+            print(f"  {e.source_id} -> {e.target_id} [{e.edge_type}/{e.style}]"
+                  f"  {pts}"
+                  + (f'  "{e.label}"' if e.label else ""))

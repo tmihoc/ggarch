@@ -111,6 +111,11 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     # Without this the system is under-constrained (translatable).
     _add_origin_anchor(solver, selected, vars_by_id)
 
+    # Auto-layout container children using direction constraints.
+    # This runs before user constraints so user constraints can override.
+    direction_map = _collect_directions(diagram.constraints)
+    _add_auto_layout_pass(solver, selected, vars_by_id, diagram.select, direction_map)
+
     # Add user-declared constraints.
     _add_user_constraints(solver, diagram.constraints, vars_by_id, diagram.name)
 
@@ -249,6 +254,41 @@ def _add_origin_anchor(
     first = vars_by_id[nodes[0].id]
     solver.addConstraint((first.x == 0) | "weak")
     solver.addConstraint((first.y == 0) | "weak")
+
+
+# ---------------------------------------------------------------------------
+# Auto-layout pass — sequential child placement
+# ---------------------------------------------------------------------------
+
+def _collect_directions(constraints: list[Constraint]) -> dict[str, str]:
+    """Return a map of node_id -> direction from direction constraints."""
+    d: dict[str, str] = {}
+    for c in constraints:
+        if c.kind == "direction" and c.value:
+            d[c.subject] = c.value
+    return d
+
+
+def _add_auto_layout_pass(
+    solver: Solver,
+    nodes: list[Node],
+    vars_by_id: dict[str, _NodeVars],
+    select: SelectClause,
+    direction_map: dict[str, str],
+) -> None:
+    """Add MEDIUM-priority sequential placement for container children.
+
+    Uses the direction declared in the positions block (default: right).
+    MEDIUM priority means user REQUIRED constraints override these.
+    """
+    for node in nodes:
+        if node.children and node.id not in select.collapse:
+            direction = direction_map.get(node.id, "right")
+            _auto_layout_children(solver, node, vars_by_id, direction)
+            # Recurse into children that are themselves containers.
+            _add_auto_layout_pass(
+                solver, node.children, vars_by_id, select, direction_map
+            )
 
 
 # ---------------------------------------------------------------------------
