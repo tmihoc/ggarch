@@ -216,27 +216,30 @@ def _route_edge(
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
-    """Compute routed edges for all model edges whose endpoints are in layout.
+def _effective_rect(node: SolvedNode) -> Rect:
+    """Return the rect used for anchor-point calculation.
 
-    select: SelectClause — used to filter edge types if specified.
+    Person nodes are given an exact width matching their visual figure by
+    the solver, so no adjustment is needed here. This function is a no-op
+    but kept for future shape-specific overrides.
     """
+    return node.rect
+
+def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
+    """Compute routed edges for all model edges whose endpoints are in layout."""
     routed_edges: list[RoutedEdge] = []
 
     for edge in model.edges:
-        # Skip edges whose endpoints are not in the layout.
         src_node = layout.find(edge.source)
         tgt_node = layout.find(edge.target)
         if src_node is None or tgt_node is None:
             continue
 
-        # Filter by edge type if the view specifies a type filter.
         if select.edge_types and edge.type not in select.edge_types:
             continue
 
-        points = _route_edge(src_node.rect, tgt_node.rect)
+        points = _route_edge(_effective_rect(src_node), _effective_rect(tgt_node))
 
-        # Default style from edge type.
         style = _default_style(edge.type.value)
 
         routed_edges.append(RoutedEdge(

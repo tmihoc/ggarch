@@ -178,6 +178,18 @@ def _add_min_size_for_node(
     is_container = bool(node.children)
     collapsed = node.id in select.collapse
 
+    # Person nodes: pin to exact figure width early, before any REQUIRED mins
+    # that would conflict.
+    if node.type == "person":
+        from ggarch.renderer import _PERSON_SIZE
+        fig_w = round(_PERSON_SIZE * 0.78 * 0.7) + 16
+        fig_h = _PERSON_SIZE
+        solver.addConstraint((v.x >= 0)       | "required")
+        solver.addConstraint((v.y >= 0)       | "required")
+        solver.addConstraint((v.w == fig_w)   | "required")
+        solver.addConstraint((v.h == fig_h)   | "required")
+        return  # skip generic min-size — person has exact dimensions
+
     # Non-negativity — REQUIRED.
     solver.addConstraint((v.x >= 0) | "required")
     solver.addConstraint((v.y >= 0) | "required")
@@ -187,14 +199,6 @@ def _add_min_size_for_node(
     min_w, min_h = min_size(node.label, is_container and not collapsed)
     solver.addConstraint((v.w >= min_w) | "strong")
     solver.addConstraint((v.h >= min_h) | "strong")
-
-    # Person nodes: cap height at a fixed size so they don't expand to fill
-    # the row height set by taller neighbours. STRONG so same-height/align
-    # constraints can still override if the diagram author requests it.
-    if node.type == "person":
-        from ggarch.renderer import _PERSON_SIZE
-        solver.addConstraint((v.h <= _PERSON_SIZE) | "strong")
-        solver.addConstraint((v.w <= _PERSON_SIZE) | "strong")
 
     if not collapsed:
         for child in node.children:
