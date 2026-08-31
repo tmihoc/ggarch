@@ -66,40 +66,60 @@ class GgarchDirective(SphinxDirective):
     optional_arguments = 0
     option_spec = {
         "view":     directives.unchanged,
-        "sequence": directives.unchanged,  # sequence view name
+        "sequence": directives.unchanged,
+        "file":     directives.unchanged,   # path to .ggarch file, relative to source doc
         "alt":      directives.unchanged,
         "class":    directives.unchanged,
     }
     def run(self) -> list[nodes.Node]:
-        code = "\n".join(self.content)
+        file_opt = self.options.get("file", "")
+        if file_opt:
+            # Resolve path relative to the document's source directory.
+            src_dir = os.path.dirname(self.env.docname)
+            abs_path = os.path.join(self.env.srcdir, src_dir, file_opt)
+            try:
+                code = open(abs_path, encoding="utf-8").read()
+            except OSError as exc:
+                return [self.reporter.error(
+                    f"ggarch: cannot read {abs_path}: {exc}", line=self.lineno
+                )]
+            # Register as a dependency so changes trigger a rebuild.
+            self.env.note_dependency(abs_path)
+        else:
+            code = "\n".join(self.content)
         node = ggarch()
-        node["code"] = code
-        node["view"] = self.options.get("view", "")
-        node["sequence"] = self.options.get("sequence", "")
-        node["alt"]  = self.options.get("alt", "Architecture diagram")
+        node["code"]      = code
+        node["file_path"] = abs_path if file_opt else ""
+        node["view"]      = self.options.get("view", "")
+        node["sequence"]  = self.options.get("sequence", "")
+        node["alt"]       = self.options.get("alt", "Architecture diagram")
         node["css_class"] = self.options.get("class", "ggarch-diagram")
         self.set_source_info(node)
         return [node]
 
-
-# ---------------------------------------------------------------------------
-# Render helpers
-# ---------------------------------------------------------------------------
 
 def render_ggarch_pair(
     self: object,
     code: str,
     view_name: str,
     sequence_name: str = "",
+    file_path: str = "",
     prefix: str = "ggarch",
 ) -> tuple[tuple[str, str] | None, tuple[str, str] | None]:
     """Compile ggarch source to light and dark SVGs.
 
     If sequence_name is given, renders a sequence view instead of a diagram.
+    file_path, if given, is included in the cache hash so edits to the
+    .ggarch file invalidate cached SVGs automatically.
     Returns ((relfn, outfn), (relfn, outfn)) — same shape as D2.
     """
     outdir = os.path.join(self.builder.outdir, self.builder.imagedir)
     ensuredir(outdir)
+
+    # Include file mtime in hash so edits invalidate the cache.
+    mtime = ""
+    if file_path and os.path.isfile(file_path):
+        mtime = str(os.path.getmtime(file_path))
 
     try:
         f = parse(code)
@@ -119,7 +139,7 @@ def render_ggarch_pair(
         model = f.get_model(seq.model_name)
         results = []
         for suffix, dark in (("light", False), ("dark", True)):
-            hashkey = (code + sequence_name + suffix + __version__).encode("utf-8")
+            hashkey = (code + sequence_name + suffix + __version__ + mtime).encode("utf-8")
             basename = f"{prefix}-{hashlib.sha1(hashkey).hexdigest()}"  # noqa: S324
             fname = f"{basename}.svg"
             relfn = posixpath.join(self.builder.imgpath, fname)
@@ -163,7 +183,7 @@ def render_ggarch_pair(
 
     results = []
     for suffix, dark in (("light", False), ("dark", True)):
-        hashkey = (code + (view_name or "") + suffix + __version__).encode("utf-8")
+        hashkey = (code + (view_name or "") + suffix + __version__ + mtime).encode("utf-8")
         basename = f"{prefix}-{hashlib.sha1(hashkey).hexdigest()}"  # noqa: S324
         fname = f"{basename}.svg"
         relfn = posixpath.join(self.builder.imgpath, fname)
@@ -212,10 +232,13 @@ def html_visit_ggarch(self: object, node: ggarch) -> None:
     code          = node["code"]
     view_name     = node.get("view", "")
     sequence_name = node.get("sequence", "")
+    file_path     = node.get("file_path", "")
     alt           = node.get("alt", "") or "Architecture diagram"
     css_class     = node.get("css_class", "ggarch-diagram")
 
-    light, dark = render_ggarch_pair(self, code, view_name, sequence_name)
+    light, dark = render_ggarch_pair(
+        self, code, view_name, sequence_name, file_path
+    )
 
     if light is None and dark is None:
         self.body.append(
