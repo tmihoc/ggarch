@@ -7,7 +7,18 @@ inspired by the Grammar of Graphics (Wilkinson 2005) and its R implementation
 ggplot2. Like ggplot2, ggarch separates a diagram into independent, composable
 layers that are declared separately and rendered in a defined order.
 
+**Licence: Apache-2.0.** ggarch is an open source project. Apache-2.0 is
+Canonical's standard licence for infrastructure and developer tooling (Juju,
+LXD, and most of the ecosystem use it). It permits unrestricted use,
+modification, and embedding — including in commercial docs pipelines — with no
+conditions beyond attribution and preserving the licence notice. It includes an
+explicit patent grant. Generated SVG output is not a derived work of the tool
+and carries no licence obligations regardless. GPL-3 was considered; Apache-2.0
+was chosen because copyleft friction on embedding would limit adoption without
+meaningfully protecting the project.
+
 ---
+
 
 ## Motivation
 
@@ -237,11 +248,11 @@ and applied selectively to the same base layout.
 ## Layer 5: style
 
 Declares the visual grammar. Node types map to style rules. Defined once,
-applied everywhere. Ships with a built-in `canonical-juju` preset.
+applied everywhere. Ships with a built-in `juju` preset.
 
 ```
 style {
-  extends: canonical-juju   // built-in preset; override below
+  extends: juju   // built-in preset; override below
 
   person {
     shape: person
@@ -380,7 +391,7 @@ No copyleft. No binary builds. No npm. No network at build time.
 1. **Shorthand syntax.** The five-section structure is verbose for small
    diagrams. Consider allowing `positions`, `edges`, `annotations`, `style`
    to be omitted, defaulting to auto-layout (top-down), no edges, no
-   annotations, and the `canonical-juju` style preset.
+   annotations, and the `juju` style preset.
 
 2. **Multi-diagram files.** A single `.ggarch` file containing multiple named
    diagrams referenceable by name from different doc pages.
@@ -389,6 +400,6 @@ No copyleft. No binary builds. No npm. No network at build time.
    plan) or relax lowest-priority constraint with a warning? Leaning toward
    error — silent relaxation is how ELK and dagre caused problems in practice.
 
-4. **Style presets.** `canonical-juju` ships built-in. Mechanism for
+4. **Style presets.** `juju` ships built-in. Mechanism for
    third-party presets distributed as Python packages
-   (`ggarch-style-canonical-juju`)?
+   (`ggarch-style-juju`)?
