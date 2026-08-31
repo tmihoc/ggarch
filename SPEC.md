@@ -816,9 +816,10 @@ No copyleft. No binary builds. No npm. No network at build time.
    that inlines all five layers — equivalent to the original spec, for cases
    where multi-view reuse is not needed.
 
-2. **Model file vs inline.** Should the model be declarable in a separate
-   `.ggarch` file and referenced by multiple doc pages? This would let all
-   the Juju architecture diagrams share one canonical model file.
+2. **Model file `:file:` option — implemented.** The Sphinx extension now
+   supports `:file: path/to/model.ggarch` so all diagrams on a page reference
+   one canonical model file. File mtime is included in the SVG cache hash so
+   edits automatically invalidate cached renders.
 
 3. **Constraint relaxation policy.** If constraints conflict: error (current
    plan) or relax lowest-priority constraint with a warning? Error — silent
@@ -835,3 +836,17 @@ No copyleft. No binary builds. No npm. No network at build time.
 
 6. **Style presets.** `juju` ships built-in. Mechanism for third-party presets
    distributed as Python packages (`ggarch-style-juju`)?
+
+7. **`abstracts:` rendering.** Currently `abstracts:` only affects validation
+   (abstract ids are accepted in edges and behaviours). Next step: view
+   selection should automatically substitute a concrete node when an abstract
+   id is selected — so `select { nodes: controller }` in a detailed view
+   renders `controller_pod` instead.
+
+8. **Data model nodes.** The Juju data model (Dqlite tables: `application`,
+   `unit`, `charm`, `relation`, etc.) should be represented as nodes in
+   `juju.ggarch` with `type: record` or `type: database`. Runtime nodes
+   (unit agent, jujud) would then declare `abstracts:` pointing at the
+   corresponding data model records, making the runtime/data-model
+   correspondence formal and queryable. This is the "level 2" anchor to the
+   SQL schema discussed in session.
