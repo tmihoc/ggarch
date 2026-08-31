@@ -89,17 +89,21 @@ def _cardinality(s: str) -> Cardinality | int:
 
 def _make_node(node_id: str, attrs: dict, children: list) -> Node:
     attrs = dict(attrs)  # copy — we pop from it
-    label = attrs.pop("label", node_id)
-    node_type = attrs.pop("type", "default")
-    lifecycle = _lifecycle(attrs.pop("lifecycle", "persistent"))
-    raw_card = attrs.pop("cardinality", None)
+    label      = attrs.pop("label", node_id)
+    node_type  = attrs.pop("type", "default")
+    lifecycle  = _lifecycle(attrs.pop("lifecycle", "persistent"))
+    raw_card   = attrs.pop("cardinality", None)
     cardinality = _cardinality(raw_card) if raw_card is not None else None
+    # abstracts: space-separated list of abstract node ids this node concretises
+    raw_abs    = attrs.pop("abstracts", "")
+    abstracts  = [a.strip() for a in raw_abs.split() if a.strip()] if raw_abs else []
     return Node(
         id=node_id,
         label=label,
         type=node_type,
         lifecycle=lifecycle,
         cardinality=cardinality,
+        abstracts=abstracts,
         children=children,
         attrs=attrs,
     )

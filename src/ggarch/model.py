@@ -64,8 +64,8 @@ class Node:
     type: str                                 # maps to style grammar
     lifecycle: Lifecycle = Lifecycle.PERSISTENT
     cardinality: Cardinality | int | None = None
+    abstracts: list[str] = field(default_factory=list)  # ids of abstract nodes this concretises
     children: list[Node] = field(default_factory=list)
-    # Arbitrary extra attributes declared in the source (future extension).
     attrs: dict[str, Any] = field(default_factory=dict)
 
     def all_ids(self) -> set[str]:
@@ -220,6 +220,38 @@ class Model:
             if b.name == name:
                 return b
         return None
+
+    def abstractions_map(self) -> dict[str, str]:
+        """Return {abstract_id: concrete_id} for every abstracts relationship.
+
+        If multiple concrete nodes abstract the same abstract id, the last
+        one declared wins (ambiguous; the validator will warn).
+        """
+        result: dict[str, str] = {}
+        for node in self.nodes:
+            self._collect_abstractions(node, result)
+        return result
+
+    def _collect_abstractions(
+        self, node: Node, result: dict[str, str]
+    ) -> None:
+        for abstract_id in node.abstracts:
+            result[abstract_id] = node.id
+        for child in node.children:
+            self._collect_abstractions(child, result)
+
+    def resolve_id(self, node_id: str) -> str:
+        """Resolve an abstract node id to its concrete id, if one exists.
+
+        Returns the original id if no abstraction is declared.
+        """
+        return self.abstractions_map().get(node_id, node_id)
+
+    def all_valid_ids(self) -> set[str]:
+        """Declared node ids PLUS abstract ids covered by abstracts relationships."""
+        ids = self.all_node_ids()
+        ids |= set(self.abstractions_map().keys())
+        return ids
 
 
 # ---------------------------------------------------------------------------

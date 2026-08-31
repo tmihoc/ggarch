@@ -243,6 +243,45 @@ structure) — without requiring separate diagrams or a zoom/drill-down
 interaction. The reader sees the relationship between the two levels of
 abstraction in one picture.
 
+### 10. Abstraction relationships — surviving multiple zoom levels
+
+When a system is documented at multiple levels of abstraction (e.g. "Controller"
+in an overview and "Controller pod" in a deployment topology), the model would
+normally accumulate parallel nodes with no formal relationship. A change at
+one zoom level doesn't propagate to the other — silent drift.
+
+The `abstracts:` attribute declares that a concrete node is the realisation of
+one or more abstract nodes. This is a model-level relationship, not a visual one.
+
+```
+nodes {
+  controller     [type: juju-software, label: "Controller"]    // abstract
+  controller_pod [type: container, label: "Controller pod",
+                  abstracts: "controller"] {                   // concrete
+    jujud [type: juju-software, label: "jujud"]
+  }
+}
+```
+
+**What `abstracts` enables:**
+
+- **Edge validity** — edges and behaviour steps declared using `controller`
+  are valid even though only `controller_pod` is a declared node. The
+  validator accepts abstract ids that are covered by at least one `abstracts:`
+  relationship.
+- **Consistent renaming** — `controller` can be used in overview diagrams
+  and `controller_pod` in topology diagrams. They are the same thing at
+  different zoom levels. The model knows this; diagrams don't have to.
+- **Drift detection** — if you add a new behaviour step using `controller`
+  and forget to update the concrete deployment model, the validator catches
+  it immediately (no concrete node abstracts the id).
+- **Queryable** — `model.abstractions_map()` returns `{abstract_id: concrete_id}`
+  for programmatic queries and agent tooling.
+
+A node can abstract multiple ids: `abstracts: "controller model_agent"`.
+Multiple concrete nodes can abstract the same abstract id (K8s controller pod
+and machine controller both abstract `controller`).
+
 
 ## Core idea: model and views
 
@@ -435,6 +474,9 @@ Node attributes:
 - `cardinality: one-per-deployment | one-per-model | one-per-application |
   one-per-unit | one-per-host | N` — rendered as a badge or multiplicity cue;
   queryable from JSON export
+- `abstracts: "id1 id2 ..."` — space-separated list of abstract node ids this
+  concrete node realises. Enables edges and behaviour steps to use the abstract
+  id while the concrete node is declared. See capability 10.
 
 Nodes are pure model declarations — no position, no edges. Containment is a
 visual grouping hint; it does not imply edges or constraint priority.

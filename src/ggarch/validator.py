@@ -40,35 +40,43 @@ def validate(f: GgarchFile) -> None:
 # ---------------------------------------------------------------------------
 
 def _validate_model(model: Model) -> None:
-    node_ids = model.all_node_ids()
+    node_ids  = model.all_node_ids()
+    valid_ids = model.all_valid_ids()   # includes abstract ids covered by abstracts:
+    abs_map   = model.abstractions_map()  # {abstract_id: concrete_id}
 
-    # Check edge endpoints.
+    # Check edge endpoints (edges may reference abstract ids).
     for edge in model.edges:
-        if edge.source not in node_ids:
+        if edge.source not in valid_ids:
             raise ValidationError(
                 f"model {model.name!r}: edge source {edge.source!r} is not a declared node",
                 hint=f"declared nodes: {sorted(node_ids)}",
             )
-        if edge.target not in node_ids:
+        if edge.target not in valid_ids:
             raise ValidationError(
                 f"model {model.name!r}: edge target {edge.target!r} is not a declared node",
                 hint=f"declared nodes: {sorted(node_ids)}",
             )
 
-    # Build the set of (source, target) pairs from declared edges (both directions).
+    # Build resolved edge pairs: also expand abstract ids to their concrete ids.
     edge_pairs: set[tuple[str, str]] = set()
     for e in model.edges:
+        src = abs_map.get(e.source, e.source)
+        tgt = abs_map.get(e.target, e.target)
+        edge_pairs.add((src, tgt))
+        edge_pairs.add((tgt, src))
+        # Also keep the abstract form so steps using abstract ids match.
         edge_pairs.add((e.source, e.target))
-        edge_pairs.add((e.target, e.source))  # return steps travel in reverse
+        edge_pairs.add((e.target, e.source))
 
-    # Check behaviour participants and steps.
+    # Check behaviour participants (may use abstract ids if abstracted by a concrete node).
     for behaviour in model.behaviours:
         participants = behaviour.all_participants()
         for pid in participants:
-            if pid not in node_ids:
+            if pid not in valid_ids:
                 raise ValidationError(
                     f"model {model.name!r}, behaviour {behaviour.name!r}: "
-                    f"participant {pid!r} is not a declared node",
+                    f"participant {pid!r} is not a declared node "
+                    f"(and not covered by any abstracts: relationship)",
                     hint=f"declared nodes: {sorted(node_ids)}",
                 )
         _validate_steps(behaviour.steps, edge_pairs, model.name, behaviour.name)
@@ -77,7 +85,6 @@ def _validate_model(model: Model) -> None:
 def _validate_steps(steps, edge_pairs, model_name, behaviour_name):
     for item in steps:
         if isinstance(item, Step):
-            # Self-steps (src == tgt) never need a declared edge.
             if item.source != item.target:
                 if (item.source, item.target) not in edge_pairs:
                     raise ValidationError(
@@ -109,29 +116,30 @@ def _resolve_model(view_name: str, model_name: str, f: GgarchFile) -> Model:
 
 
 def _validate_select(select: SelectClause, model: Model, view_name: str) -> None:
-    node_ids = model.all_node_ids()
+    valid_ids = model.all_valid_ids()   # includes abstract ids covered by abstracts:
+    node_ids  = model.all_node_ids()    # concrete only (for error messages)
 
     for nid in select.node_ids:
-        if nid not in node_ids:
+        if nid not in valid_ids:
             raise ValidationError(
                 f"view {view_name!r}: selected node {nid!r} is not declared in model {model.name!r}",
                 hint=f"declared nodes: {sorted(node_ids)}",
             )
 
     for nid in select.collapse:
-        if nid not in node_ids:
+        if nid not in valid_ids:
             raise ValidationError(
                 f"view {view_name!r}: collapse target {nid!r} is not declared in model {model.name!r}",
             )
 
     for nid in select.expand:
-        if nid not in node_ids:
+        if nid not in valid_ids:
             raise ValidationError(
                 f"view {view_name!r}: expand target {nid!r} is not declared in model {model.name!r}",
             )
 
     for spec in select.instances:
-        if spec.type_id and spec.type_id not in node_ids:
+        if spec.type_id and spec.type_id not in valid_ids:
             raise ValidationError(
                 f"view {view_name!r}: instance type {spec.type_id!r} is not declared in model {model.name!r}",
             )
@@ -145,7 +153,7 @@ def _validate_select(select: SelectClause, model: Model, view_name: str) -> None
                 hint=f"declared behaviours: {declared}",
             )
         for pid in select.participants:
-            if pid not in node_ids:
+            if pid not in valid_ids:
                 raise ValidationError(
                     f"view {view_name!r}: participant filter {pid!r} is not declared in model {model.name!r}",
                 )
