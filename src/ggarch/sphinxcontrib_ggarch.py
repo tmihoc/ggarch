@@ -1,7 +1,9 @@
 """ggarch Sphinx extension.
 
 Registers a ``{ggarch}`` MyST/RST directive that compiles a ggarch diagram
-at build time and emits a light/dark SVG pair with a lightbox anchor.
+at build time and emits a light/dark SVG pair with lightbox anchors.
+
+Follows the same visitor pattern as sphinxcontrib_d2.py.
 
 Usage in MyST Markdown::
 
@@ -12,45 +14,26 @@ Usage in MyST Markdown::
     diagram "..." from "..." { ... }
     ```
 
-Or with a separate model file::
-
-    ```{ggarch}
-    :file: ../../diagrams/juju.ggarch
-    :view: K8s deployment topology
-    :alt: ...
-    ```
-
 Options
 -------
-:view:      Name of the diagram view to render (required when the source
-            contains multiple views, optional when there is only one).
-:alt:       Required. Prose description for agents and screen readers.
-:file:      Path to a .ggarch file relative to the source document.
-            When given, the directive body is ignored.
-:class:     CSS class to add to the outer wrapper div.
-
-Output
-------
-In HTML output: a ``<div class="ggarch-diagram">`` containing two
-``<div>`` elements (one ``only-light``, one ``only-dark``), each holding
-an ``<img>`` tag pointing to the generated SVG. The SVGs are written to
-the Sphinx ``_images`` directory.
-
-In markdown/llms output: the ggarch source is emitted verbatim as a
-fenced ``ggarch`` code block, preceded by an HTML comment with the alt
-text. This ensures agents reading the page see the full diagram source.
+:view:   Name of the diagram view to render (optional if only one view).
+:alt:    Required. Prose description for agents and screen readers.
+:class:  CSS class added to each image wrapper div (default: ggarch-diagram).
 """
 from __future__ import annotations
 
 import hashlib
 import os
+import posixpath
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
 from docutils import nodes
 from docutils.parsers.rst import directives
-from sphinx.application import Sphinx
+from sphinx.util import logging
 from sphinx.util.docutils import SphinxDirective
+from sphinx.util.osutil import ensuredir
 
 from ggarch.errors import GgarchError
 from ggarch.parser import parse
@@ -58,6 +41,16 @@ from ggarch.renderer import render
 from ggarch.router import route
 from ggarch.solver import solve
 from ggarch.validator import validate
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Custom node
+# ---------------------------------------------------------------------------
+
+class ggarch(nodes.General, nodes.Inline, nodes.Element):
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -73,152 +66,177 @@ class GgarchDirective(SphinxDirective):
     option_spec = {
         "view":  directives.unchanged,
         "alt":   directives.unchanged,
-        "file":  directives.unchanged,
         "class": directives.unchanged,
     }
 
     def run(self) -> list[nodes.Node]:
-        env = self.env
-        app: Sphinx = env.app
+        code = "\n".join(self.content)
+        node = ggarch()
+        node["code"] = code
+        node["view"] = self.options.get("view", "")
+        node["alt"]  = self.options.get("alt", "Architecture diagram")
+        node["css_class"] = self.options.get("class", "ggarch-diagram")
+        self.set_source_info(node)
+        return [node]
 
-        # --- Load source ---
-        if "file" in self.options:
-            src_path = Path(env.docname).parent / self.options["file"]
-            src_path = Path(env.srcdir) / src_path
+
+# ---------------------------------------------------------------------------
+# Render helpers
+# ---------------------------------------------------------------------------
+
+def render_ggarch_pair(
+    self: object,
+    code: str,
+    view_name: str,
+    prefix: str = "ggarch",
+) -> tuple[tuple[str, str] | None, tuple[str, str] | None]:
+    """Compile ggarch source to light and dark SVGs.
+
+    Returns ((relfn, outfn), (relfn, outfn)) — same shape as D2.
+    """
+    outdir = os.path.join(self.builder.outdir, self.builder.imagedir)
+    ensuredir(outdir)
+
+    try:
+        f = parse(code)
+        validate(f)
+    except GgarchError as exc:
+        logger.warning(f"ggarch parse/validate error: {exc}")
+        return None, None
+
+    if not f.diagrams:
+        logger.warning("ggarch: no diagram views in source")
+        return None, None
+
+    if view_name:
+        diagram = next((d for d in f.diagrams if d.name == view_name), None)
+        if diagram is None:
+            names = [d.name for d in f.diagrams]
+            logger.warning(
+                f"ggarch: view {view_name!r} not found; available: {names}"
+            )
+            return None, None
+    else:
+        diagram = f.diagrams[0]
+
+    model = f.get_model(diagram.model_name)
+
+    try:
+        layout = solve(diagram, model)
+        rl = route(layout, model, diagram.select)
+    except GgarchError as exc:
+        logger.warning(f"ggarch solver/router error: {exc}")
+        return None, None
+
+    results = []
+    for suffix, dark in (("light", False), ("dark", True)):
+        hashkey = (code + (view_name or "") + suffix).encode("utf-8")
+        basename = f"{prefix}-{hashlib.sha1(hashkey).hexdigest()}"  # noqa: S324
+        fname = f"{basename}.svg"
+        relfn = posixpath.join(self.builder.imgpath, fname)
+        outfn = os.path.join(outdir, fname)
+
+        if not os.path.isfile(outfn):
             try:
-                source = src_path.read_text(encoding="utf-8")
-            except OSError as exc:
-                return [self._error(f"ggarch: cannot read {src_path}: {exc}")]
-            env.note_dependency(str(src_path))
-        else:
-            source = "\n".join(self.content)
+                svg = render(rl, model, diagram, dark=dark)
+                with open(outfn, "w", encoding="utf-8") as fh:
+                    fh.write(svg)
+            except GgarchError as exc:
+                logger.warning(f"ggarch render error ({suffix}): {exc}")
+                results.append(None)
+                continue
 
-        if not source.strip():
-            return [self._error("ggarch: empty diagram source")]
+        results.append((relfn, outfn))
 
-        alt = self.options.get("alt", "Architecture diagram")
-        view_name = self.options.get("view", None)
-        css_class = self.options.get("class", "ggarch-diagram")
+    return tuple(results)  # type: ignore[return-value]
 
-        # --- Parse and validate ---
-        try:
-            f = parse(source)
-            validate(f)
-        except GgarchError as exc:
-            return [self._error(f"ggarch parse/validate error: {exc}")]
 
-        if not f.diagrams:
-            return [self._error("ggarch: no diagram views in source")]
-
-        if view_name:
-            diagram = next((d for d in f.diagrams if d.name == view_name), None)
-            if diagram is None:
-                names = [d.name for d in f.diagrams]
-                return [self._error(
-                    f"ggarch: view {view_name!r} not found; "
-                    f"available: {names}"
-                )]
-        else:
-            diagram = f.diagrams[0]
-
-        model = f.get_model(diagram.model_name)
-
-        # --- Solve and render ---
-        try:
-            layout = solve(diagram, model)
-            rl = route(layout, model, diagram.select)
-            light_svg = render(rl, model, diagram, dark=False)
-            dark_svg  = render(rl, model, diagram, dark=True)
-        except GgarchError as exc:
-            return [self._error(f"ggarch render error: {exc}")]
-
-        # --- Write SVGs to _images ---
-        images_dir = Path(app.outdir) / "_images"
-        images_dir.mkdir(parents=True, exist_ok=True)
-
-        digest = hashlib.sha1(source.encode()).hexdigest()[:16]
-        light_name = f"ggarch-{digest}-light.svg"
-        dark_name  = f"ggarch-{digest}-dark.svg"
-
-        (images_dir / light_name).write_text(light_svg, encoding="utf-8")
-        (images_dir / dark_name).write_text(dark_svg,  encoding="utf-8")
-
-        # Relative URI from the HTML page to _images.
-        light_uri = f"../../_images/{light_name}"
-        dark_uri  = f"../../_images/{dark_name}"
-
-        # --- Build docutils nodes ---
-        # HTML output: light/dark pair.
-        light_img = nodes.image(
-            uri=light_uri, alt=alt,
-        )
-        light_img["classes"].append("only-light")
-        dark_img = nodes.image(
-            uri=dark_uri, alt=alt,
-        )
-        dark_img["classes"].append("only-dark")
-
-        wrapper = nodes.container()
-        wrapper["classes"].append(css_class)
-        wrapper += light_img
-        wrapper += dark_img
-
-        # Markdown/llms output: emit source verbatim in a raw node.
-        # HTML comment carries the alt text; fenced block carries the source.
-        raw_md = (
-            f"<!-- {alt} -->\n"
-            f"```ggarch\n{source}\n```\n"
-        )
-        raw_node = nodes.raw("", raw_md, format="markdown")
-
-        return [wrapper, raw_node]
-
-    def _error(self, msg: str) -> nodes.system_message:
-        return self.reporter.error(msg, line=self.lineno)
+def _emit_image(
+    self: object,
+    relfn: str,
+    outfn: str,
+    alt: str,
+    css_class: str,
+    lightbox_group: str,
+) -> None:
+    """Emit a lightbox-wrapped <img> inside a light/dark div."""
+    self.builder.images[outfn] = os.path.basename(outfn)
+    uri = posixpath.join(
+        self.builder.imgpath,
+        urllib.parse.quote(self.builder.images[outfn]),
+    )
+    self.body.append(
+        f'<div class="{css_class}">'
+        f'<a href="{uri}" data-lightbox="{lightbox_group}">'
+        f'<img src="{uri}" alt="{alt}" style="width:100%;" />'
+        f'</a>'
+        f'</div>\n'
+    )
 
 
 # ---------------------------------------------------------------------------
-# Extension setup
+# Visitors
 # ---------------------------------------------------------------------------
 
-def setup(app: Sphinx) -> dict[str, Any]:
+def html_visit_ggarch(self: object, node: ggarch) -> None:
+    code      = node["code"]
+    view_name = node.get("view", "")
+    alt       = node.get("alt", "") or "Architecture diagram"
+    css_class = node.get("css_class", "ggarch-diagram")
+
+    light, dark = render_ggarch_pair(self, code, view_name)
+
+    if light is None and dark is None:
+        self.body.append(
+            f'<pre class="ggarch-source">{self.encode(code)}</pre>\n'
+        )
+        raise nodes.SkipNode
+
+    group = "ggarch-" + hashlib.sha1(code.encode()).hexdigest()[:8]  # noqa: S324
+
+    if light is not None:
+        _emit_image(self, light[0], light[1], alt,
+                    "only-light", group + "-light")
+    if dark is not None:
+        _emit_image(self, dark[0], dark[1], alt,
+                    "only-dark", group + "-dark")
+
+    raise nodes.SkipNode
+
+
+def markdown_visit_ggarch(self: object, node: ggarch) -> None:
+    """Emit ggarch source verbatim in markdown/llms output."""
+    code = node["code"]
+    alt  = node.get("alt", "")
+    if alt:
+        self.add(f"<!-- {alt} -->", prefix_eol=1, suffix_eol=1)
+    self.add("```ggarch", prefix_eol=1, suffix_eol=1)
+    self.add(code, prefix_eol=0, suffix_eol=1)
+    self.add("```", prefix_eol=1, suffix_eol=2)
+    raise nodes.SkipNode
+
+
+def text_visit_ggarch(self: object, node: ggarch) -> None:
+    alt = node.get("alt", "")
+    self.add_text(f"[Architecture diagram{': ' + alt if alt else ''}]")
+    raise nodes.SkipNode
+
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+
+def setup(app: object) -> dict[str, Any]:
+    app.add_node(
+        ggarch,
+        html=(html_visit_ggarch, None),
+        markdown=(markdown_visit_ggarch, None),
+        text=(text_visit_ggarch, None),
+        man=(text_visit_ggarch, None),
+    )
     app.add_directive("ggarch", GgarchDirective)
-
-    # Add CSS for light/dark switching.
-    app.add_css_file("ggarch.css")
-
-    # Write the CSS file on builder-inited if it doesn't exist.
-    app.connect("builder-inited", _write_css)
-
     return {
         "version": "0.1.0",
         "parallel_read_safe": True,
         "parallel_write_safe": True,
     }
-
-
-def _write_css(app: Sphinx) -> None:
-    static_dir = Path(app.outdir) / "_static"
-    static_dir.mkdir(parents=True, exist_ok=True)
-    css_path = static_dir / "ggarch.css"
-    if not css_path.exists():
-        css_path.write_text(_CSS, encoding="utf-8")
-
-
-_CSS = """\
-/* ggarch diagram light/dark switching */
-.ggarch-diagram { margin: 1.5em 0; }
-.ggarch-diagram img { max-width: 100%; height: auto; }
-
-/* Light mode: show light, hide dark */
-@media (prefers-color-scheme: light) {
-  .ggarch-diagram .only-dark  { display: none; }
-}
-/* Dark mode: show dark, hide light */
-@media (prefers-color-scheme: dark) {
-  .ggarch-diagram .only-light { display: none; }
-}
-/* Canonical Sphinx theme data-theme attribute override */
-[data-theme="light"] .ggarch-diagram .only-dark  { display: none; }
-[data-theme="dark"]  .ggarch-diagram .only-light  { display: none; }
-"""

@@ -115,7 +115,10 @@ def _add_arrowhead_defs(
 ) -> None:
     arrow_color = "#AAAAAA" if dark else "#555555"
     s = ARROWHEAD_SIZE
-    marker = dw.Marker(0, 0, s, s, orient="auto", id="arrow")
+    # refX=s places the tip of the triangle (at x=s) on the path endpoint.
+    # refY=s/2 centres the triangle vertically on the path.
+    marker = dw.Marker(0, 0, s, s, scale=1, orient="auto", id="arrow",
+                       refX=s, refY=s / 2)
     marker.append(dw.Lines(
         0, 0,
         s, s / 2,
