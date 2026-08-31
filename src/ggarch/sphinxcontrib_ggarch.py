@@ -41,7 +41,7 @@ from ggarch.router import route
 from ggarch.solver import solve
 from ggarch.validator import validate
 from ggarch.sequence_renderer import render_sequence
-logger = logging.getLogger(__name__)
+from ggarch import __version__
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ def render_ggarch_pair(
         model = f.get_model(seq.model_name)
         results = []
         for suffix, dark in (("light", False), ("dark", True)):
-            hashkey = (code + sequence_name + suffix).encode("utf-8")
+            hashkey = (code + sequence_name + suffix + __version__).encode("utf-8")
             basename = f"{prefix}-{hashlib.sha1(hashkey).hexdigest()}"  # noqa: S324
             fname = f"{basename}.svg"
             relfn = posixpath.join(self.builder.imgpath, fname)
@@ -161,7 +161,7 @@ def render_ggarch_pair(
 
     results = []
     for suffix, dark in (("light", False), ("dark", True)):
-        hashkey = (code + (view_name or "") + suffix).encode("utf-8")
+        hashkey = (code + (view_name or "") + suffix + __version__).encode("utf-8")
         basename = f"{prefix}-{hashlib.sha1(hashkey).hexdigest()}"  # noqa: S324
         fname = f"{basename}.svg"
         relfn = posixpath.join(self.builder.imgpath, fname)
