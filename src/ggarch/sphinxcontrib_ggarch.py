@@ -14,7 +14,6 @@ Usage in MyST Markdown::
     diagram "..." from "..." { ... }
     ```
 
-Options
 -------
 :view:   Name of the diagram view to render (optional if only one view).
 :alt:    Required. Prose description for agents and screen readers.
@@ -41,7 +40,7 @@ from ggarch.renderer import render
 from ggarch.router import route
 from ggarch.solver import solve
 from ggarch.validator import validate
-
+from ggarch.sequence_renderer import render_sequence
 logger = logging.getLogger(__name__)
 
 
@@ -64,16 +63,17 @@ class GgarchDirective(SphinxDirective):
     required_arguments = 0
     optional_arguments = 0
     option_spec = {
-        "view":  directives.unchanged,
-        "alt":   directives.unchanged,
-        "class": directives.unchanged,
+        "view":     directives.unchanged,
+        "sequence": directives.unchanged,  # sequence view name
+        "alt":      directives.unchanged,
+        "class":    directives.unchanged,
     }
-
     def run(self) -> list[nodes.Node]:
         code = "\n".join(self.content)
         node = ggarch()
         node["code"] = code
         node["view"] = self.options.get("view", "")
+        node["sequence"] = self.options.get("sequence", "")
         node["alt"]  = self.options.get("alt", "Architecture diagram")
         node["css_class"] = self.options.get("class", "ggarch-diagram")
         self.set_source_info(node)
@@ -88,10 +88,12 @@ def render_ggarch_pair(
     self: object,
     code: str,
     view_name: str,
+    sequence_name: str = "",
     prefix: str = "ggarch",
 ) -> tuple[tuple[str, str] | None, tuple[str, str] | None]:
     """Compile ggarch source to light and dark SVGs.
 
+    If sequence_name is given, renders a sequence view instead of a diagram.
     Returns ((relfn, outfn), (relfn, outfn)) — same shape as D2.
     """
     outdir = os.path.join(self.builder.outdir, self.builder.imagedir)
@@ -104,6 +106,35 @@ def render_ggarch_pair(
         logger.warning(f"ggarch parse/validate error: {exc}")
         return None, None
 
+    if sequence_name:
+        # --- Sequence view ---
+        seq = next((s for s in f.sequences if s.name == sequence_name), None)
+        if seq is None and f.sequences:
+            seq = f.sequences[0]
+        if seq is None:
+            logger.warning(f"ggarch: no sequence views in source")
+            return None, None
+        model = f.get_model(seq.model_name)
+        results = []
+        for suffix, dark in (("light", False), ("dark", True)):
+            hashkey = (code + sequence_name + suffix).encode("utf-8")
+            basename = f"{prefix}-{hashlib.sha1(hashkey).hexdigest()}"  # noqa: S324
+            fname = f"{basename}.svg"
+            relfn = posixpath.join(self.builder.imgpath, fname)
+            outfn = os.path.join(outdir, fname)
+            if not os.path.isfile(outfn):
+                try:
+                    svg = render_sequence(seq, model, dark=dark)
+                    with open(outfn, "w", encoding="utf-8") as fh:
+                        fh.write(svg)
+                except Exception as exc:
+                    logger.warning(f"ggarch sequence render error ({suffix}): {exc}")
+                    results.append(None)
+                    continue
+            results.append((relfn, outfn))
+        return tuple(results)  # type: ignore[return-value]
+
+    # --- Diagram view ---
     if not f.diagrams:
         logger.warning("ggarch: no diagram views in source")
         return None, None
@@ -135,7 +166,6 @@ def render_ggarch_pair(
         fname = f"{basename}.svg"
         relfn = posixpath.join(self.builder.imgpath, fname)
         outfn = os.path.join(outdir, fname)
-
         if not os.path.isfile(outfn):
             try:
                 svg = render(rl, model, diagram, dark=dark)
@@ -145,11 +175,9 @@ def render_ggarch_pair(
                 logger.warning(f"ggarch render error ({suffix}): {exc}")
                 results.append(None)
                 continue
-
         results.append((relfn, outfn))
 
     return tuple(results)  # type: ignore[return-value]
-
 
 def _emit_image(
     self: object,
@@ -179,12 +207,13 @@ def _emit_image(
 # ---------------------------------------------------------------------------
 
 def html_visit_ggarch(self: object, node: ggarch) -> None:
-    code      = node["code"]
-    view_name = node.get("view", "")
-    alt       = node.get("alt", "") or "Architecture diagram"
-    css_class = node.get("css_class", "ggarch-diagram")
+    code          = node["code"]
+    view_name     = node.get("view", "")
+    sequence_name = node.get("sequence", "")
+    alt           = node.get("alt", "") or "Architecture diagram"
+    css_class     = node.get("css_class", "ggarch-diagram")
 
-    light, dark = render_ggarch_pair(self, code, view_name)
+    light, dark = render_ggarch_pair(self, code, view_name, sequence_name)
 
     if light is None and dark is None:
         self.body.append(
