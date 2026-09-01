@@ -1,10 +1,26 @@
-// topology.ggarch — deployment topology diagram
+// topology.ggarch — deployment topology diagrams
 //
-// Shows: nested containers, typed edges, lifecycle (init nodes shown with
-// dashed border), Juju colour preset.
+// Demonstrates: nested containers, typed edges (api/stream/control/ipc/data),
+// node lifecycle (init nodes render with dashed border), the Juju colour
+// preset, and selective zoom (collapse/expand).
 //
-// Two views: the full K8s deployment topology and a selective zoom
-// (controller pod collapsed, unit pod fully expanded).
+// Caption for topology-0 (K8s deployment topology):
+//   A running Kubernetes deployment. The Kubernetes cloud schedules both pods
+//   and is the source of truth for their placement. The controller pod runs
+//   the controller agent (jujud); it fetches charms from Charmhub and drives
+//   the unit agent over the Juju API websocket. Each unit pod contains a charm
+//   container (unit agent + charm code) and a workload container (Pebble +
+//   workload services). The charm drives Pebble over the Pebble HTTP API;
+//   Pebble manages the workload services.
+//
+// Caption for topology-1 (Unit focus):
+//   The same deployment zoomed in on the unit pod. The controller pod is
+//   collapsed to a single opaque box — present as context, but its internals
+//   are not the focus. The dashed arrow represents the Juju API websocket
+//   connection from the controller agent to the unit agent. Inside the unit
+//   pod the unit agent dispatches the charm, which calls back via hook
+//   commands (Unix socket), drives Pebble over HTTP, and Pebble manages
+//   the workload services.
 
 model "Juju" {
 
@@ -14,9 +30,7 @@ model "Juju" {
                    lifecycle: init]
       charm_init  [type: juju-software, label: "charm-init",
                    lifecycle: init]
-      jujud       [type: juju-software, label: "jujud"]
-      apiserver   [type: juju-software, label: "API server"]
-      dqlite      [type: database,      label: "Dqlite"]
+      jujud       [type: juju-software, label: "Controller agent\n(jujud)"]
     }
 
     unit_pod [type: container, label: "Unit pod"] {
@@ -31,21 +45,21 @@ model "Juju" {
   }
 
   edges {
-    // Controller internal
-    apiserver -> dqlite     [type: data]
-    jujud     -> dqlite     [type: data]
-    apiserver -> charmhub   [type: api]
+    // Controller to cloud and dependencies
+    jujud      -> k8s        [type: control]
+    jujud      -> charmhub   [type: api]
 
-    // Controller to cloud and units
-    jujud          -> k8s        [type: control]
-    apiserver      -> unit_agent [type: stream]
-    controller_pod -> unit_pod   [type: stream]
+    // Controller to unit (the Juju API websocket)
+    jujud      -> unit_agent [type: stream]
+
+    // Container-level edge — used when controller_pod is collapsed (unit_focus view)
+    controller_pod -> unit_pod [type: event]
 
     // Unit agent control loop
-    unit_agent -> charm     [type: control]
-    charm      -> unit_agent[type: ipc]
-    charm      -> pebble    [type: api]
-    pebble     -> workload  [type: control]
+    unit_agent -> charm      [type: control]
+    charm      -> unit_agent [type: ipc]
+    charm      -> pebble     [type: api]
+    pebble     -> workload   [type: control]
   }
 
   style { extends: juju }
@@ -54,23 +68,26 @@ model "Juju" {
 diagram "K8s deployment topology" from "Juju" {
   select {
     nodes: k8s charmhub controller_pod unit_pod
-    edges: type api type stream type control type ipc type data
+    edges: type api type stream type control type ipc
+    collapse: config_seed charm_init
   }
   positions {
     controller_pod left-of unit_pod      gap: 80
     controller_pod align-middle unit_pod
-    k8s            above controller_pod  gap: 40
-    k8s            align-centre controller_pod
-    charmhub       below controller_pod  gap: 40
-    charmhub       align-centre controller_pod
-    jujud          align-middle unit_agent
+    k8s            above jujud           gap: 40
+    k8s            align-centre jujud
+    k8s            same-width jujud
+    charmhub       below jujud           gap: 40
+    charmhub       align-centre jujud
+    charmhub       same-width jujud
     unit_pod       direction: right
     jujud          min-width: 160
   }
   annotations {
     box [nodes: "config_seed charm_init",
-         label: "init (run once at startup)",
+         label: "",
          style: dashed, color: "#888888"]
+    badge [anchor: config_seed, text: "init"]
   }
 }
 

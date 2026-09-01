@@ -503,12 +503,21 @@ def _render_block(
         fill_opacity=0.4,
     ))
     kind_label = f"[{block.kind}] {block.label}" if block.label else f"[{block.kind}]"
+    # Label in a small filled tab sitting on the top-left corner of the region.
+    tab_w = len(kind_label) * 5.5 + 8
+    tab_h = 13
+    tab_y = y_start - BLOCK_PAD
+    g.append(dw.Rectangle(
+        min_x, tab_y, tab_w, tab_h,
+        fill=ctx.block_stroke, stroke="none", rx=2, ry=2,
+        fill_opacity=0.85,
+    ))
     g.append(dw.Text(
-        kind_label, 10,
-        min_x + 6, y_start - BLOCK_PAD + 4,
+        kind_label, 9,
+        min_x + 4, tab_y + tab_h / 2,
         font_family=ANNOTATION_FONT,
-        fill=ctx.block_stroke,
-        dominant_baseline="hanging",
+        fill="#FFFFFF",
+        dominant_baseline="central",
     ))
 
     y = y_start

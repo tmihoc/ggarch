@@ -1,31 +1,44 @@
 // collapse-expand.ggarch — selective zoom diagram
 //
-// Shows: collapse (opaque context box) and expand (full detail) in
-// the same view. Controller pod collapses to a single box;
-// unit pod expands to show all internal structure.
+// Demonstrates: collapse (opaque context box) and expand (full internal
+// detail) within a single view. The controller pod collapses to a single
+// labelled box — present as context but its internals are not the focus.
+// The unit pod is fully expanded to show the agent→charm→Pebble→workload
+// chain.
+//
+// Caption:
+//   Selective zoom. The controller pod (left) is collapsed to a single
+//   opaque box — it is present as context but its internals are not the
+//   focus of this view. The dashed arrow represents the Juju API websocket
+//   connection from the controller agent to the unit agent. Inside the unit
+//   pod (right): the unit agent dispatches the charm (solid arrow), which
+//   calls back via hook commands (double-headed arrow, Unix socket), drives
+//   Pebble over the Pebble HTTP API, and Pebble manages the workload services.
 
 model "Juju" {
 
   nodes {
     controller_pod [type: container, label: "Controller pod"] {
-      jujud    [type: juju-software, label: "jujud"]
-      dqlite   [type: database,      label: "Dqlite"]
+      jujud [type: juju-software, label: "Controller agent\n(jujud)"]
     }
 
     unit_pod [type: container, label: "Unit pod"] {
       unit_agent [type: juju-software, label: "Unit agent"]
-      charm      [type: charm,         label: "Charm", lifecycle: ephemeral]
+      charm      [type: charm,         label: "Charm"]
       pebble     [type: pebble,        label: "Pebble"]
       workload   [type: workload,      label: "Workload"]
     }
   }
 
   edges {
-    jujud      -> unit_agent [type: stream, label: "watcher"]
-    unit_agent -> charm      [type: control]
-    charm      -> unit_agent [type: ipc]
-    charm      -> pebble     [type: api]
-    pebble     -> workload   [type: control]
+    // Container-level edge: used when controller_pod is collapsed
+    controller_pod -> unit_pod   [type: stream]
+    // Fine-grained edge: visible when controller_pod is expanded
+    jujud          -> unit_agent [type: stream]
+    unit_agent     -> charm      [type: control]
+    charm          -> unit_agent [type: ipc]
+    charm          -> pebble     [type: api]
+    pebble         -> workload   [type: control]
   }
 
   style { extends: juju }

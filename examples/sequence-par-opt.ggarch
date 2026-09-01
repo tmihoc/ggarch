@@ -1,7 +1,20 @@
-// sequence-par-opt.ggarch — sequence diagram with par and opt blocks
+// sequence-par-opt.ggarch — sequence diagram with par, opt, and activation bars
 //
-// Shows: par block (parallel lanes, green tint), opt block (optional
-// fragment), and activation bars on call/return pairs.
+// Demonstrates: par block (green-tinted parallel lanes — steps that can
+// proceed concurrently), opt block (optional fragment — executed only when
+// a condition holds), and activation bars (the shaded rectangle on a
+// lifeline showing the span during which a participant is active handling
+// a call).
+//
+// Caption:
+//   The integrate operation. After the controller writes the relation record
+//   it fans out to both unit agents in parallel (green [par] region — the
+//   two watcher notifications can be delivered concurrently). Each agent runs
+//   its relation-created hook and writes its relation data bag to the
+//   controller. The [opt] region fires only if the data changed: the
+//   controller notifies unit agent B, which runs relation-changed. The
+//   shaded bars on the lifelines are activation bars — they show the
+//   interval during which a participant is actively processing a call.
 
 model "Notify" {
 

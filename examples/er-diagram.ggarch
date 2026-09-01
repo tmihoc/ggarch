@@ -1,8 +1,16 @@
 // er-diagram.ggarch — entity-relationship diagram
 //
-// Shows: record nodes with PK/FK/nullable field markers, right-aligned
-// field types, field-qualified edge endpoints anchored at the exact
-// field row, constraint layout.
+// Demonstrates: record nodes with named fields; PK/FK/nullable markers;
+// right-aligned field type annotations; field-qualified edge endpoints
+// that anchor at the exact field row rather than the node centroid.
+//
+// Caption:
+//   The five core tables of a Juju model database. Orange header = table
+//   name. PK / FK badges identify primary and foreign key columns.
+//   A trailing ? marks nullable columns. Field types are shown right-
+//   aligned in italic. Arrows connect the FK column in the child table to
+//   the PK column in the parent; they anchor at the exact field row so the
+//   relationship is unambiguous even in dense diagrams.
 
 model "JujuSchema" {
 

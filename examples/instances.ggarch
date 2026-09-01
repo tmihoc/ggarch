@@ -1,18 +1,26 @@
 // instances.ggarch — type instantiation diagram
 //
-// Shows: one declared node type rendered as multiple labelled instances.
-// The unit_pod type is declared once; the view instantiates two copies.
-// Renaming the type renames both instances automatically.
+// Demonstrates: a single declared node type (unit_pod) rendered as multiple
+// labelled instances in one view. The type is declared once in the model;
+// the view stamps out N copies with distinct labels. Renaming the type or
+// changing its style updates all instances automatically.
+//
+// Caption:
+//   Type instantiation. The model declares one unit_pod type; the view
+//   renders it twice as unit/0 for two different applications. The
+//   controller pod (collapsed, above) drives both unit agents over the
+//   Juju API websocket. Both unit pods are structurally identical — same
+//   agent, charm, and workload — because they derive from the same type
+//   declaration. Only their labels differ.
 
 model "Juju" {
 
   nodes {
     controller_pod [type: container, label: "Controller pod"] {
-      jujud [type: juju-software, label: "jujud"]
+      jujud [type: juju-software, label: "Controller agent\n(jujud)"]
     }
 
-    unit_pod [type: container, label: "Unit pod",
-              cardinality: one-per-unit] {
+    unit_pod [type: container, label: "Unit pod"] {
       unit_agent [type: juju-software, label: "Unit agent"]
       charm      [type: charm,         label: "Charm"]
       workload   [type: workload,      label: "Workload"]
@@ -20,9 +28,10 @@ model "Juju" {
   }
 
   edges {
-    jujud      -> unit_agent [type: stream]
-    unit_agent -> charm      [type: control]
-    charm      -> workload   [type: control]
+    controller_pod -> unit_pod   [type: stream]
+    jujud          -> unit_agent [type: stream]
+    unit_agent     -> charm      [type: control]
+    charm          -> workload   [type: control]
   }
 
   style { extends: juju }
@@ -38,7 +47,7 @@ diagram "Two-application deployment" from "Juju" {
     ]
   }
   positions {
-    controller_pod above app1_unit0   gap: 60
+    controller_pod above app1_unit0   gap: 40
     app1_unit0     left-of app2_unit0 gap: 40
     app1_unit0     align-middle app2_unit0
   }

@@ -513,8 +513,8 @@ class TestJujuExample:
         m = f.models[0]
         node_ids = m.all_node_ids()
         for expected in ("controller_pod", "unit_pod",
-                         "unit_agent", "charm", "workload", "pebble",
-                         "dqlite", "config_seed", "charm_init"):
+                         "unit_agent", "charm", "workload",
+                         "config_seed", "charm_init"):
             assert expected in node_ids, f"expected node {expected!r} not found"
 
     def test_juju_model_has_no_behaviours(self, tmp_path):

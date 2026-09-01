@@ -250,55 +250,64 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
     """Compute routed edges for all model edges whose endpoints are in layout."""
     routed_edges: list[RoutedEdge] = []
 
-    for edge in model.edges:
-        src_node = layout.find(edge.source)
-        tgt_node = layout.find(edge.target)
-        if src_node is None or tgt_node is None:
-            continue
+    # Build a map from type_id -> [instance_id, ...] for quick lookup.
+    instance_map: dict[str, list[str]] = {}
+    for spec in select.instances:
+        instance_map.setdefault(spec.type_id, []).append(spec.instance_id)
 
+    for edge in model.edges:
         if select.edge_types and edge.type not in select.edge_types:
             continue
 
-        # Field-qualified endpoints: choose face based on dominant axis,
-        # same as _route_edge, so arrows don't cross the node boxes.
-        if edge.source_field or edge.target_field:
-            src_rect = _effective_rect(src_node)
-            tgt_rect = _effective_rect(tgt_node)
-            dx = abs(tgt_rect.cx - src_rect.cx)
-            dy = abs(tgt_rect.cy - src_rect.cy)
-            if dx >= dy:
-                # Horizontal dominant: left/right faces.
-                going_right = tgt_rect.cx >= src_rect.cx
-                src_face = "right" if going_right else "left"
-                tgt_face = "left"  if going_right else "right"
-            else:
-                # Vertical dominant: top/bottom faces.
-                going_down = tgt_rect.cy >= src_rect.cy
-                src_face = "bottom" if going_down else "top"
-                tgt_face = "top"    if going_down else "bottom"
+        # Resolve source and target, substituting instances for their type.
+        src_ids = instance_map.get(edge.source, [edge.source])
+        tgt_ids = instance_map.get(edge.target, [edge.target])
 
-            src_pt = (_field_anchor(src_node, edge.source_field, src_face)
-                      if edge.source_field
-                      else _face_point(src_rect, src_face))
-            tgt_pt = (_field_anchor(tgt_node, edge.target_field, tgt_face)
-                      if edge.target_field
-                      else _face_point(tgt_rect, tgt_face))
-            points = [src_pt, tgt_pt]
-        else:
-            points = _route_edge(_effective_rect(src_node), _effective_rect(tgt_node))
+        for sid in src_ids:
+            for tid in tgt_ids:
+                src_node = layout.find(sid)
+                tgt_node = layout.find(tid)
+                if src_node is None or tgt_node is None:
+                    continue
 
-        style = _default_style(edge.type.value)
+                # Field-qualified endpoints.
+                if edge.source_field or edge.target_field:
+                    src_rect = _effective_rect(src_node)
+                    tgt_rect = _effective_rect(tgt_node)
+                    dx = abs(tgt_rect.cx - src_rect.cx)
+                    dy = abs(tgt_rect.cy - src_rect.cy)
+                    if dx >= dy:
+                        going_right = tgt_rect.cx >= src_rect.cx
+                        src_face = "right" if going_right else "left"
+                        tgt_face = "left"  if going_right else "right"
+                    else:
+                        going_down = tgt_rect.cy >= src_rect.cy
+                        src_face = "bottom" if going_down else "top"
+                        tgt_face = "top"    if going_down else "bottom"
+                    src_pt = (_field_anchor(src_node, edge.source_field, src_face)
+                              if edge.source_field
+                              else _face_point(src_rect, src_face))
+                    tgt_pt = (_field_anchor(tgt_node, edge.target_field, tgt_face)
+                              if edge.target_field
+                              else _face_point(tgt_rect, tgt_face))
+                    if dx >= dy and (edge.source_field or edge.target_field):
+                        mid_y = (src_pt.y + tgt_pt.y) / 2
+                        src_pt = Point(src_pt.x, mid_y)
+                        tgt_pt = Point(tgt_pt.x, mid_y)
+                    points = [src_pt, tgt_pt]
+                else:
+                    points = _route_edge(_effective_rect(src_node), _effective_rect(tgt_node))
 
-        routed_edges.append(RoutedEdge(
-            source_id=edge.source,
-            target_id=edge.target,
-            label=edge.label,
-            edge_type=edge.type.value,
-            style=edge.style if edge.style else style,
-            arrow=edge.arrow,
-            points=points,
-        ))
-
+                style = _default_style(edge.type.value)
+                routed_edges.append(RoutedEdge(
+                    source_id=sid,
+                    target_id=tid,
+                    label=edge.label,
+                    edge_type=edge.type.value,
+                    style=edge.style if edge.style else style,
+                    arrow=edge.arrow,
+                    points=points,
+                ))
     return RoutedLayout(layout=layout, edges=routed_edges)
 
 

@@ -502,13 +502,13 @@ def _render_edge(
         length = max(abs(dx) + abs(dy), 1)
         # Perpendicular unit vector (rotate 90° CCW).
         nx, ny = -dy / length, dx / length
-        lx = mx + nx * 12
-        ly = my + ny * 12
+        lx = mx + nx * 14
+        ly = my + ny * 14
         label_bg = "#1E1E2E" if dark else "#FFFFFF"
         lw = len(edge.label) * 6.5
         g.append(dw.Rectangle(lx - lw / 2 - 3, ly - 9, lw + 6, 14,
                                fill=label_bg, stroke="none",
-                               fill_opacity=1))
+                               fill_opacity=0.85))
         g.append(dw.Text(
             edge.label, es.font_size, lx, ly,
             font_family=LABEL_FONT,

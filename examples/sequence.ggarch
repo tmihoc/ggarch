@@ -1,8 +1,26 @@
 // sequence.ggarch — sequence diagrams
 //
-// Shows: call/return/async/self step kinds; loop and alt blocks;
-// activation bars. Two sequences over the same model: hook execution
-// and K8s bootstrap.
+// Demonstrates: call (solid arrow), return (dashed arrow), async (open
+// arrowhead), self steps; loop blocks; alt/else conditional branches;
+// activation bars (shaded rectangles showing processing intervals).
+// Two sequences share one model — the same nodes appear in both.
+//
+// Caption for sequence-0 (Hook execution):
+//   The unit agent's reconciliation loop. The API server fires an async
+//   watcher notification; the unit agent snapshots remote state and resolves
+//   the next hook, then dispatches the charm. During the hook (loop region)
+//   the charm calls hook commands back to the unit agent, which serves each
+//   one against the controller. The shaded bars are activation bars — they
+//   mark the span during which each participant is actively processing a
+//   call. On clean exit (alt exit 0) buffered writes are flushed; on failure
+//   they are discarded and the unit is marked error.
+//
+// Caption for sequence-1 (Bootstrap K8s):
+//   Bootstrapping a controller on a Kubernetes cluster. The juju CLI
+//   authenticates with the cluster, creates the controller namespace, and
+//   deploys the controller pod. Once scheduled, jujud starts its API server
+//   and initialises the Dqlite database, then signals the CLI that the
+//   bootstrap is complete.
 
 model "Juju" {
 

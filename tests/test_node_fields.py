@@ -159,14 +159,15 @@ class TestFieldRouting:
         routed = route(layout, m, d.select)
         assert len(routed.edges) == 1
         e = routed.edges[0]
-        # Anchor y should match the field row, not the node centre.
+        # Both points snap to midpoint y for horizontal field-qualified edges.
         post_node = layout.find("post")
         user_node = layout.find("user")
-        # user_id is field index 1 in post, id is field index 0 in user
         user_id_y = post_node.rect.y + FIELD_HEADER_H + 1 * FIELD_ROW_H + FIELD_ROW_H / 2
         id_y      = user_node.rect.y + FIELD_HEADER_H + 0 * FIELD_ROW_H + FIELD_ROW_H / 2
-        assert abs(e.points[0].y - user_id_y) < 1
-        assert abs(e.points[-1].y - id_y) < 1
+        mid_y     = (user_id_y + id_y) / 2
+        # Both endpoints should be at the midpoint y.
+        assert abs(e.points[0].y - mid_y) < 1
+        assert abs(e.points[-1].y - mid_y) < 1
 
 
 class TestFieldRendering:
