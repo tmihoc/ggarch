@@ -32,6 +32,7 @@ from ggarch.layout import (
     Rect,
     SolvedLayout,
     SolvedNode,
+    field_node_min_size,
     min_size,
 )
 from ggarch.model import (
@@ -196,7 +197,10 @@ def _add_min_size_for_node(
     solver.addConstraint((v.w >= MIN_NODE_WIDTH) | "required")
     solver.addConstraint((v.h >= MIN_NODE_HEIGHT) | "required")
 
-    min_w, min_h = min_size(node.label, is_container and not collapsed)
+    if node.fields:
+        min_w, min_h = field_node_min_size(node.label, len(node.fields))
+    else:
+        min_w, min_h = min_size(node.label, is_container and not collapsed)
     solver.addConstraint((v.w >= min_w) | "strong")
     solver.addConstraint((v.h >= min_h) | "strong")
 
@@ -505,4 +509,5 @@ def _build_solved_node(
         cardinality=node.cardinality.value
             if hasattr(node.cardinality, "value") else
             str(node.cardinality) if node.cardinality else "",
+        fields=node.fields,
     )

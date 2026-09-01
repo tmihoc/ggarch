@@ -13,8 +13,16 @@ model_body: (nodes_block | edges_block | behaviours_block | style_block)*
 
 nodes_block: "nodes" "{" node* "}"
 
-node: ID attrs_inline? "{" node* "}"  -> node_with_children
-    | ID attrs_inline?                -> node_leaf
+node: ID attrs_inline? "{" node_body "}"  -> node_with_children
+    | ID attrs_inline?                    -> node_leaf
+
+node_body: (node | fields_block)*
+
+fields_block: FIELDS_KW "{" field_decl* "}"
+
+FIELDS_KW.2: "fields"
+
+field_decl: ID attrs_inline?
 
 attrs_inline: "[" attr ("," attr)* "]"
 
@@ -26,7 +34,10 @@ attr_value: STRING    -> attr_string
 
 edges_block: "edges" "{" edge* "}"
 
-edge: ID "->" ID attrs_inline?
+edge: endpoint "->" endpoint attrs_inline?
+
+endpoint: ID "." ID  -> endpoint_field
+        | ID          -> endpoint_node
 
 behaviours_block: "behaviours" "{" behaviour* "}"
 

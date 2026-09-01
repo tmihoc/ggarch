@@ -85,7 +85,7 @@ def render(
     nodes_g = dw.Group(id="ggarch-nodes")
     edges_g = dw.Group(id="ggarch-edges")
     ann_g   = dw.Group(id="ggarch-annotations")
-    _render_nodes(nodes_g, layout.nodes, node_styles, ox, oy, view)
+    _render_nodes(nodes_g, layout.nodes, node_styles, ox, oy, view, dark)
 
     # Render edges.
     for edge in routed.edges:
@@ -138,14 +138,15 @@ def _render_nodes(
     ox: float,
     oy: float,
     view: DiagramView,
+    dark: bool = False,
 ) -> None:
     # Render containers (nodes with children) first so they appear behind.
     for node in nodes:
         if node.children:
-            _render_node(g, node, node_styles, ox, oy, view)
+            _render_node(g, node, node_styles, ox, oy, view, dark)
     for node in nodes:
         if not node.children:
-            _render_node(g, node, node_styles, ox, oy, view)
+            _render_node(g, node, node_styles, ox, oy, view, dark)
 
 
 def _render_node(
@@ -155,13 +156,17 @@ def _render_node(
     ox: float,
     oy: float,
     view: DiagramView,
+    dark: bool = False,
 ) -> None:
     style = node_styles.get(node.type, node_styles.get("default", NodeStyle()))
     r = node.rect
     x, y, w, h = r.x + ox, r.y + oy, r.w, r.h
 
     has_children = bool(node.children)
-    if style.shape == "person":
+
+    if node.fields and node.type in ("record", "class"):
+        _render_structured_node(g, node, style, x, y, w, h, dark)
+    elif style.shape == "person":
         _render_person(g, x, y, w, h, style, node.label)
     elif style.shape == "cylinder":
         _render_cylinder(g, x, y, w, h, style, node.label)
@@ -171,7 +176,7 @@ def _render_node(
 
     # Render children on top.
     if node.children:
-        _render_nodes(g, node.children, node_styles, ox, oy, view)
+        _render_nodes(g, node.children, node_styles, ox, oy, view, dark)
 
     # Cardinality badge.
     if node.cardinality:
@@ -213,6 +218,122 @@ def _render_box(
         _render_label(g, x + w / 2, label_y, label, style)
     else:
         _render_label(g, x + w / 2, y + h / 2, label, style)
+
+
+def _render_structured_node(
+    g: dw.Group,
+    node: SolvedNode,
+    style: NodeStyle,
+    x: float, y: float, w: float, h: float,
+    dark: bool,
+) -> None:
+    """Render a record (table) or class (compartment) node with named fields."""
+    from ggarch.layout import FIELD_HEADER_H, FIELD_ROW_H
+
+    stroke       = style.stroke
+    fill         = style.fill if style.fill != "none" else ("#2A2200" if dark else "#FFFDE7")
+    header_fill  = style.stroke  # header uses the stroke colour as background
+    font_color   = style.font_color
+    row_alt_fill = "#00000010" if not dark else "#FFFFFF08"
+
+    # Outer border.
+    g.append(dw.Rectangle(x, y, w, h,
+        fill=fill, stroke=stroke, stroke_width=style.stroke_width,
+        rx=style.border_radius, ry=style.border_radius,
+    ))
+
+    # Header strip.
+    g.append(dw.Rectangle(x, y, w, FIELD_HEADER_H,
+        fill=header_fill, stroke="none",
+        rx=style.border_radius, ry=style.border_radius,
+    ))
+    # Square off bottom corners of header (overlapping rect).
+    if style.border_radius:
+        g.append(dw.Rectangle(x, y + FIELD_HEADER_H / 2, w, FIELD_HEADER_H / 2,
+            fill=header_fill, stroke="none",
+        ))
+    # Header label — white text on coloured header.
+    header_text = "#FFFFFF" if not dark else "#FFFFFF"
+    g.append(dw.Text(
+        node.label, FONT_SIZE,
+        x + w / 2, y + FIELD_HEADER_H / 2,
+        font_family=LABEL_FONT,
+        fill=header_text,
+        text_anchor="middle",
+        dominant_baseline="central",
+        font_weight="bold",
+    ))
+
+    # Divider line below header.
+    g.append(dw.Line(x, y + FIELD_HEADER_H, x + w, y + FIELD_HEADER_H,
+        stroke=stroke, stroke_width=1,
+    ))
+
+    # Field rows.
+    row_text_color = font_color or ("#CDD6F4" if dark else "#333333")
+    key_color      = "#E95420"
+    type_color     = "#888888" if not dark else "#AAAAAA"
+
+    for i, fld in enumerate(node.fields):
+        row_y = y + FIELD_HEADER_H + i * FIELD_ROW_H
+
+        # Alternating row tint.
+        if i % 2 == 1:
+            g.append(dw.Rectangle(x + 1, row_y, w - 2, FIELD_ROW_H,
+                fill=row_alt_fill, stroke="none",
+            ))
+
+        # Row divider (skip first).
+        if i > 0:
+            g.append(dw.Line(x, row_y, x + w, row_y,
+                stroke=stroke, stroke_width=0.5, stroke_dasharray="2,2",
+            ))
+
+        row_cy = row_y + FIELD_ROW_H / 2
+        cursor_x = x + 8
+
+        # Key markers: PK / FK / UK badges.
+        if node.type == "record":
+            marker = ""
+            if fld.pk:  marker = "PK"
+            elif fld.fk: marker = "FK"
+            elif fld.uk: marker = "UK"
+            if marker:
+                g.append(dw.Text(
+                    marker, 9, cursor_x, row_cy,
+                    font_family=LABEL_FONT, fill=key_color,
+                    text_anchor="start", dominant_baseline="central",
+                    font_weight="bold",
+                ))
+                cursor_x += 24
+        elif node.type == "class":
+            # Visibility: pk=public(+), fk=protected(#), uk=private(-)
+            vis = "+" if fld.pk else "#" if fld.fk else "-" if fld.uk else " "
+            g.append(dw.Text(
+                vis, 11, cursor_x, row_cy,
+                font_family=LABEL_FONT, fill=key_color,
+                text_anchor="start", dominant_baseline="central",
+            ))
+            cursor_x += 14
+
+        # Field label.
+        label_text = fld.label
+        if fld.nullable:
+            label_text += "?"
+        g.append(dw.Text(
+            label_text, 11, cursor_x, row_cy,
+            font_family=LABEL_FONT, fill=row_text_color,
+            text_anchor="start", dominant_baseline="central",
+        ))
+
+        # Field type (right-aligned).
+        if fld.type:
+            g.append(dw.Text(
+                fld.type, 10, x + w - 6, row_cy,
+                font_family=LABEL_FONT, fill=type_color,
+                text_anchor="end", dominant_baseline="central",
+                font_style="italic",
+            ))
 
 
 # Fixed size for the person figure — independent of solver-allocated height.

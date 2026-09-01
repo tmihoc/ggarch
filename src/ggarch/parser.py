@@ -28,6 +28,7 @@ from ggarch.model import (
     Lifecycle,
     Model,
     Node,
+    NodeField,
     SelectClause,
     SequenceView,
     Step,
@@ -47,7 +48,7 @@ def _load_grammar() -> str:
 
 
 _GRAMMAR = _load_grammar()
-_PARSER = Lark(_GRAMMAR, parser="earley", ambiguity="resolve")
+_PARSER = Lark(_GRAMMAR, parser="lalr")
 
 
 def _str(token) -> str:
@@ -87,14 +88,18 @@ def _cardinality(s: str) -> Cardinality | int:
             raise ParseError(f"unknown cardinality value: {s!r}")
 
 
-def _make_node(node_id: str, attrs: dict, children: list) -> Node:
+def _make_node(
+    node_id: str,
+    attrs: dict,
+    children: list,
+    fields: list | None = None,
+) -> Node:
     attrs = dict(attrs)  # copy — we pop from it
     label      = attrs.pop("label", node_id)
     node_type  = attrs.pop("type", "default")
     lifecycle  = _lifecycle(attrs.pop("lifecycle", "persistent"))
     raw_card   = attrs.pop("cardinality", None)
     cardinality = _cardinality(raw_card) if raw_card is not None else None
-    # abstracts: space-separated list of abstract node ids this node concretises
     raw_abs    = attrs.pop("abstracts", "")
     abstracts  = [a.strip() for a in raw_abs.split() if a.strip()] if raw_abs else []
     return Node(
@@ -105,6 +110,7 @@ def _make_node(node_id: str, attrs: dict, children: list) -> Node:
         cardinality=cardinality,
         abstracts=abstracts,
         children=children,
+        fields=fields or [],
         attrs=attrs,
     )
 
@@ -161,15 +167,44 @@ class _GgarchTransformer(Transformer):
         return list(nodes)
 
     def node_with_children(self, id_token, *rest) -> Node:
-        # rest is: optional attrs dict, then zero or more Node children
+        # rest is: optional attrs dict, then node_body (tuple of children+fields)
         attrs: dict = {}
         children: list[Node] = []
+        fields: list[NodeField] = []
         for item in rest:
             if isinstance(item, dict):
                 attrs = item
-            elif isinstance(item, Node):
+            elif isinstance(item, tuple) and item and item[0] == "__node_body__":
+                children = item[1]
+                fields   = item[2]
+        return _make_node(_str(id_token), attrs, children, fields)
+
+    def node_body(self, *items):
+        children: list[Node] = []
+        fields: list[NodeField] = []
+        for item in items:
+            if isinstance(item, Node):
                 children.append(item)
-        return _make_node(_str(id_token), attrs, children)
+            elif isinstance(item, list) and item and isinstance(item[0], NodeField):
+                fields = item
+        return ("__node_body__", children, fields)
+
+    def fields_block(self, *items) -> list[NodeField]:
+        # items[0] is the FIELDS_KW token — discard it; rest are NodeField
+        return [f for f in items if isinstance(f, NodeField)]
+
+    def field_decl(self, id_token, *rest) -> NodeField:
+        attrs = rest[0] if rest and isinstance(rest[0], dict) else {}
+        attrs = dict(attrs)
+        return NodeField(
+            id=_str(id_token),
+            label=attrs.pop("label", _str(id_token)),
+            type=attrs.pop("type", ""),
+            pk=attrs.pop("pk", False) in (True, "true", "yes", 1),
+            fk=attrs.pop("fk", False) in (True, "true", "yes", 1),
+            uk=attrs.pop("uk", False) in (True, "true", "yes", 1),
+            nullable=attrs.pop("null", False) in (True, "true", "yes", 1),
+        )
 
     def node_leaf(self, id_token, *rest) -> Node:
         attrs = rest[0] if rest and isinstance(rest[0], dict) else {}
@@ -203,15 +238,26 @@ class _GgarchTransformer(Transformer):
     def edge(self, src, tgt, *rest) -> Edge:
         attrs = rest[0] if rest and isinstance(rest[0], dict) else {}
         attrs = dict(attrs)
+        # src and tgt are tuples from endpoint rules: (node_id, field_id | "")
+        src_node, src_field = src
+        tgt_node, tgt_field = tgt
         return Edge(
-            source=_str(src),
-            target=_str(tgt),
+            source=src_node,
+            target=tgt_node,
             type=_edge_type(attrs.pop("type", "api")),
             label=attrs.pop("label", ""),
             protocol=attrs.pop("protocol", ""),
             style=attrs.pop("style", ""),
             arrow=attrs.pop("arrow", "forward"),
+            source_field=src_field,
+            target_field=tgt_field,
         )
+
+    def endpoint_node(self, id_token) -> tuple:
+        return (_str(id_token), "")
+
+    def endpoint_field(self, node_token, field_token) -> tuple:
+        return (_str(node_token), _str(field_token))
 
     # ------------------------------------------------------------------
     # Behaviours

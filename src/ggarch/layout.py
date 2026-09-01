@@ -49,6 +49,8 @@ class SolvedNode:
     type: str = ""
     lifecycle: str = "persistent"
     cardinality: str = ""
+    # Structured fields (record/class nodes); empty for plain nodes.
+    fields: list = field(default_factory=list)  # list[NodeField]
 
     def find(self, node_id: str) -> SolvedNode | None:
         if self.id == node_id:
@@ -107,6 +109,10 @@ def _text_size(label: str) -> tuple[float, float]:
     return w, h
 
 
+FIELD_ROW_H   = 20    # px — height of one field row in a record/class node
+FIELD_HEADER_H = 28   # px — header compartment height for record/class nodes
+
+
 def min_size(label: str, is_container: bool = False) -> tuple[float, float]:
     """Return the minimum (width, height) for a node with the given label.
 
@@ -119,4 +125,12 @@ def min_size(label: str, is_container: bool = False) -> tuple[float, float]:
         h = max(th + CONTAINER_PAD_TOP, MIN_NODE_HEIGHT)
     else:
         h = max(th + PADDING_Y * 2, MIN_NODE_HEIGHT)
+    return w, h
+
+
+def field_node_min_size(label: str, n_fields: int) -> tuple[float, float]:
+    """Min size for a record/class node: header + field rows."""
+    tw, _ = _text_size(label)
+    w = max(tw + PADDING_X * 2, 160)  # wider default for table nodes
+    h = FIELD_HEADER_H + max(n_fields, 1) * FIELD_ROW_H + 4  # 4px bottom pad
     return w, h

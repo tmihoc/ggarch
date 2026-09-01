@@ -47,6 +47,22 @@ class StepKind(Enum):
 
 
 # ---------------------------------------------------------------------------
+# Node fields
+# ---------------------------------------------------------------------------
+
+@dataclass
+class NodeField:
+    """A named field inside a structured node (record table or class box)."""
+    id: str
+    label: str
+    type: str = ""         # display type string, e.g. "int", "text", "uuid"
+    pk: bool = False       # primary key marker
+    fk: bool = False       # foreign key marker
+    uk: bool = False       # unique key marker
+    nullable: bool = False # nullable marker (shown as "?")
+
+
+# ---------------------------------------------------------------------------
 # Nodes
 # ---------------------------------------------------------------------------
 
@@ -66,6 +82,7 @@ class Node:
     cardinality: Cardinality | int | None = None
     abstracts: list[str] = field(default_factory=list)  # ids of abstract nodes this concretises
     children: list[Node] = field(default_factory=list)
+    fields: list[NodeField] = field(default_factory=list)  # structured fields (record/class)
     attrs: dict[str, Any] = field(default_factory=dict)
 
     def all_ids(self) -> set[str]:
@@ -93,13 +110,15 @@ class Node:
 @dataclass
 class Edge:
     """A directed relationship between two model nodes."""
-    source: str          # node id
-    target: str          # node id
+    source: str          # node id (or "node.field_id" for field-qualified)
+    target: str          # node id (or "node.field_id" for field-qualified)
     type: EdgeType = EdgeType.API
     label: str = ""
     protocol: str = ""   # e.g. "websocket-rpc", "http", "unix-socket"
     style: str = ""      # dashed | dotted | solid (default from type)
     arrow: str = "forward"  # none | forward | back | both
+    source_field: str = ""  # field id within source node (empty = node centroid)
+    target_field: str = ""  # field id within target node (empty = node centroid)
 
 
 # ---------------------------------------------------------------------------

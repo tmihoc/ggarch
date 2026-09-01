@@ -39,23 +39,60 @@ def validate(f: GgarchFile) -> None:
 # Model validation
 # ---------------------------------------------------------------------------
 
+
+def _validate_node_fields(node, model_name: str) -> None:
+    """Check field ids are unique within the node; recurse into children."""
+    seen: set[str] = set()
+    for f in node.fields:
+        if f.id in seen:
+            raise ValidationError(
+                f"model {model_name!r}, node {node.id!r}: "
+                f"duplicate field id {f.id!r}",
+            )
+        seen.add(f.id)
+    for child in node.children:
+        _validate_node_fields(child, model_name)
+
+
+def _collect_field_ids(node, out: dict[str, set[str]]) -> None:
+    """Populate out[node_id] = {field_id, ...} for node and all descendants."""
+    out[node.id] = {f.id for f in node.fields}
+    for child in node.children:
+        _collect_field_ids(child, out)
+
 def _validate_model(model: Model) -> None:
     node_ids  = model.all_node_ids()
-    valid_ids = model.all_valid_ids()   # includes abstract ids covered by abstracts:
-    abs_map   = model.abstractions_map()  # {abstract_id: concrete_id}
+    valid_ids = model.all_valid_ids()
+    abs_map   = model.abstractions_map()
 
-    # Check edge endpoints (edges may reference abstract ids).
+    # Check field id uniqueness within each node.
+    for node in model.nodes:
+        _validate_node_fields(node, model.name)
+
+    # Build field index: node_id -> set of field ids (for qualified endpoint checks).
+    field_ids: dict[str, set[str]] = {}
+    for node in model.nodes:
+        _collect_field_ids(node, field_ids)
+
+    # Check edge endpoints.
     for edge in model.edges:
-        if edge.source not in valid_ids:
-            raise ValidationError(
-                f"model {model.name!r}: edge source {edge.source!r} is not a declared node",
-                hint=f"declared nodes: {sorted(node_ids)}",
-            )
-        if edge.target not in valid_ids:
-            raise ValidationError(
-                f"model {model.name!r}: edge target {edge.target!r} is not a declared node",
-                hint=f"declared nodes: {sorted(node_ids)}",
-            )
+        for ep_node, ep_field, role in (
+            (edge.source, edge.source_field, "source"),
+            (edge.target, edge.target_field, "target"),
+        ):
+            if ep_node not in valid_ids:
+                raise ValidationError(
+                    f"model {model.name!r}: edge {role} {ep_node!r} is not a declared node",
+                    hint=f"declared nodes: {sorted(node_ids)}",
+                )
+            if ep_field:
+                node_fields = field_ids.get(ep_node, set())
+                if ep_field not in node_fields:
+                    raise ValidationError(
+                        f"model {model.name!r}: edge {role} {ep_node!r}.{ep_field!r} "
+                        f"references undeclared field",
+                        hint=f"declared fields on {ep_node!r}: {sorted(node_fields)}",
+                    )
 
     # Build resolved edge pairs: also expand abstract ids to their concrete ids.
     edge_pairs: set[tuple[str, str]] = set()
