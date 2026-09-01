@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="1092.0" height="264.0" viewBox="0 0 1092.0 264.0">
+<defs>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="arrow" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8 Z" fill="#AAAAAA" />
+</marker>
+</defs>
+<rect x="0" y="0" width="1092.0" height="264.0" fill="#1E1E2E" />
+<g id="ggarch-nodes">
+<rect x="20.0" y="74.0" width="526.3999999999999" height="104.0" fill="#2D1A0E" stroke="#C07040" stroke-width="1" rx="6" ry="6" />
+<text x="283.19999999999993" y="88.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFD0A0" text-anchor="middle" dominant-baseline="central">Controller pod</text>
+<rect x="36.0" y="102.0" width="190.4" height="60.0" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" stroke-dasharray="6,3" />
+<text x="131.2" y="132.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">controller-config-seed</text>
+<rect x="246.4" y="102.0" width="104.0" height="60.0" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" stroke-dasharray="6,3" />
+<text x="298.4" y="132.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">charm-init</text>
+<rect x="370.4" y="102.0" width="160.0" height="60.0" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="450.4" y="122.89999999999999" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Controller agent</text>
+<text x="450.4" y="141.1" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">(jujud)</text>
+<rect x="626.3999999999999" y="83.0" width="445.6" height="86.0" fill="#2D1A0E" stroke="#C07040" stroke-width="1" rx="6" ry="6" />
+<text x="849.1999999999998" y="97.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFD0A0" text-anchor="middle" dominant-baseline="central">Unit pod</text>
+<rect x="642.3999999999999" y="111.0" width="104.0" height="42.0" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="694.3999999999999" y="132.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Unit agent</text>
+<rect x="766.3999999999999" y="111.0" width="80.0" height="42.0" fill="#1E1E2E" stroke="#E95420" stroke-width="2" rx="4" ry="4" />
+<text x="806.3999999999999" y="132.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">Charm</text>
+<rect x="866.3999999999999" y="111.0" width="80.0" height="42.0" fill="#1A3050" stroke="#74AADC" stroke-width="1" rx="4" ry="4" />
+<text x="906.3999999999999" y="132.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">Pebble</text>
+<rect x="966.3999999999999" y="111.0" width="89.6" height="42.0" fill="#1E3A5F" stroke="#4A90D9" stroke-width="1" rx="4" ry="4" />
+<text x="1011.1999999999998" y="132.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">Workload</text>
+<rect x="370.4" y="20.0" width="160.00000000000006" height="42.0" fill="#2A2A2A" stroke="#666666" stroke-width="1" rx="4" ry="4" />
+<text x="450.4" y="41.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CCCCCC" text-anchor="middle" dominant-baseline="central">Kubernetes cloud</text>
+<rect x="370.3999999999999" y="202.0" width="160.0" height="42.0" fill="#2A2A2A" stroke="#666666" stroke-width="1" rx="4" ry="4" />
+<text x="450.3999999999999" y="223.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CCCCCC" text-anchor="middle" dominant-baseline="central">Charmhub</text>
+</g>
+<g id="ggarch-edges">
+<path d="M 450.4 102.0 L 450.4 62.0" fill="none" stroke="#AAAAAA" stroke-width="1" marker-end="url(#arrow)" />
+<path d="M 450.4 162.0 L 450.4 202.0" fill="none" stroke="#AAAAAA" stroke-width="1" marker-end="url(#arrow)" />
+<path d="M 530.4 132.0 L 642.4 132.0" fill="none" stroke="#AAAAAA" stroke-width="1" stroke-dasharray="6,3" marker-end="url(#arrow)" />
+<path d="M 746.4 132.0 L 766.4 132.0" fill="none" stroke="#AAAAAA" stroke-width="1" marker-end="url(#arrow)" />
+<path d="M 766.4 132.0 L 746.4 132.0" fill="none" stroke="#888888" stroke-width="1" stroke-dasharray="2,2" marker-end="url(#arrow)" />
+<path d="M 846.4 132.0 L 866.4 132.0" fill="none" stroke="#AAAAAA" stroke-width="1" marker-end="url(#arrow)" />
+<path d="M 946.4 132.0 L 966.4 132.0" fill="none" stroke="#AAAAAA" stroke-width="1" marker-end="url(#arrow)" />
+</g>
+<g id="ggarch-annotations">
+<rect x="26.0" y="92.0" width="334.4" height="80.0" fill="none" stroke="#888888" stroke-width="1" rx="6" ry="6" stroke-dasharray="6,4" />
+<text x="42.0" y="112.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#AAAAAA" dominant-baseline="central">init</text>
+</g>
+</svg>

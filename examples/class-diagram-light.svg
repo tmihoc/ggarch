@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="440.0" height="456.0" viewBox="0 0 440.0 456.0">
+<defs>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="arrow" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8 Z" fill="#555555" />
+</marker>
+</defs>
+<rect x="0" y="0" width="440.0" height="456.0" fill="#FFFFFF" />
+<g id="ggarch-nodes">
+<rect x="20.0" y="20.0" width="160.0" height="112.0" fill="#FFFFFF" stroke="#AAAAAA" stroke-width="1" rx="4" ry="4" />
+<rect x="20.0" y="20.0" width="160.0" height="28" fill="#AAAAAA" stroke="none" rx="4" ry="4" />
+<rect x="20.0" y="34.0" width="160.0" height="14.0" fill="#AAAAAA" stroke="none" />
+<text x="100.0" y="34.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-weight="bold">Worker</text>
+<path d="M20.0,48.0 L180.0,48.0" stroke="#AAAAAA" stroke-width="1" />
+<text x="28.0" y="58.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="start" dominant-baseline="central">+</text>
+<text x="42.0" y="58.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="start" dominant-baseline="central">tomb</text>
+<text x="174.0" y="58.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888888" text-anchor="end" dominant-baseline="central" font-style="italic">Tomb</text>
+<rect x="21.0" y="68.0" width="158.0" height="20" fill="#00000010" stroke="none" />
+<path d="M20.0,68.0 L180.0,68.0" stroke="#AAAAAA" stroke-width="0.5" stroke-dasharray="2,2" />
+<text x="28.0" y="78.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="start" dominant-baseline="central">+</text>
+<text x="42.0" y="78.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="start" dominant-baseline="central">Start()</text>
+<text x="174.0" y="78.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888888" text-anchor="end" dominant-baseline="central" font-style="italic">error</text>
+<path d="M20.0,88.0 L180.0,88.0" stroke="#AAAAAA" stroke-width="0.5" stroke-dasharray="2,2" />
+<text x="28.0" y="98.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="start" dominant-baseline="central">+</text>
+<text x="42.0" y="98.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="start" dominant-baseline="central">Kill()</text>
+<text x="174.0" y="98.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888888" text-anchor="end" dominant-baseline="central" font-style="italic">void</text>
+<rect x="21.0" y="108.0" width="158.0" height="20" fill="#00000010" stroke="none" />
+<path d="M20.0,108.0 L180.0,108.0" stroke="#AAAAAA" stroke-width="0.5" stroke-dasharray="2,2" />
+<text x="28.0" y="118.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="start" dominant-baseline="central">+</text>
+<text x="42.0" y="118.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="start" dominant-baseline="central">Wait()</text>
+<text x="174.0" y="118.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888888" text-anchor="end" dominant-baseline="central" font-style="italic">error</text>
+<rect x="20.0" y="192.0" width="160.0" height="92.0" fill="#FFFFFF" stroke="#AAAAAA" stroke-width="1" rx="4" ry="4" />
+<rect x="20.0" y="192.0" width="160.0" height="28" fill="#AAAAAA" stroke="none" rx="4" ry="4" />
+<rect x="20.0" y="206.0" width="160.0" height="14.0" fill="#AAAAAA" stroke="none" />
+<text x="100.0" y="206.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-weight="bold">baseWorker</text>
+<path d="M20.0,220.0 L180.0,220.0" stroke="#AAAAAA" stroke-width="1" />
+<text x="28.0" y="230.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="start" dominant-baseline="central">-</text>
+<text x="42.0" y="230.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="start" dominant-baseline="central">config</text>
+<text x="174.0" y="230.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888888" text-anchor="end" dominant-baseline="central" font-style="italic">Config</text>
+<rect x="21.0" y="240.0" width="158.0" height="20" fill="#00000010" stroke="none" />
+<path d="M20.0,240.0 L180.0,240.0" stroke="#AAAAAA" stroke-width="0.5" stroke-dasharray="2,2" />
+<text x="28.0" y="250.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="start" dominant-baseline="central">-</text>
+<text x="42.0" y="250.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="start" dominant-baseline="central">loop()</text>
+<text x="174.0" y="250.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888888" text-anchor="end" dominant-baseline="central" font-style="italic">error</text>
+<path d="M20.0,260.0 L180.0,260.0" stroke="#AAAAAA" stroke-width="0.5" stroke-dasharray="2,2" />
+<text x="28.0" y="270.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="start" dominant-baseline="central">#</text>
+<text x="42.0" y="270.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="start" dominant-baseline="central">handle()</text>
+<text x="174.0" y="270.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888888" text-anchor="end" dominant-baseline="central" font-style="italic">error</text>
+<rect x="20.0" y="344.0" width="160.0" height="92.0" fill="#FFFFFF" stroke="#AAAAAA" stroke-width="1" rx="4" ry="4" />
+<rect x="20.0" y="344.0" width="160.0" height="28" fill="#AAAAAA" stroke="none" rx="4" ry="4" />
+<rect x="20.0" y="358.0" width="160.0" height="14.0" fill="#AAAAAA" stroke="none" />
+<text x="100.0" y="358.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-weight="bold">unitWorker</text>
+<path d="M20.0,372.0 L180.0,372.0" stroke="#AAAAAA" stroke-width="1" />
+<text x="28.0" y="382.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="start" dominant-baseline="central">-</text>
+<text x="42.0" y="382.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="start" dominant-baseline="central">agent</text>
+<text x="174.0" y="382.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888888" text-anchor="end" dominant-baseline="central" font-style="italic">Agent</text>
+<rect x="21.0" y="392.0" width="158.0" height="20" fill="#00000010" stroke="none" />
+<path d="M20.0,392.0 L180.0,392.0" stroke="#AAAAAA" stroke-width="0.5" stroke-dasharray="2,2" />
+<text x="28.0" y="402.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="start" dominant-baseline="central">+</text>
+<text x="42.0" y="402.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="start" dominant-baseline="central">run()</text>
+<text x="174.0" y="402.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888888" text-anchor="end" dominant-baseline="central" font-style="italic">error</text>
+<path d="M20.0,412.0 L180.0,412.0" stroke="#AAAAAA" stroke-width="0.5" stroke-dasharray="2,2" />
+<text x="28.0" y="422.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="start" dominant-baseline="central">-</text>
+<text x="42.0" y="422.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="start" dominant-baseline="central">notify()</text>
+<text x="174.0" y="422.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888888" text-anchor="end" dominant-baseline="central" font-style="italic">void</text>
+<rect x="260.0" y="354.0" width="160.0" height="72.0" fill="#FFFFFF" stroke="#AAAAAA" stroke-width="1" rx="4" ry="4" />
+<rect x="260.0" y="354.0" width="160.0" height="28" fill="#AAAAAA" stroke="none" rx="4" ry="4" />
+<rect x="260.0" y="368.0" width="160.0" height="14.0" fill="#AAAAAA" stroke="none" />
+<text x="340.0" y="368.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-weight="bold">charmRunner</text>
+<path d="M260.0,382.0 L420.0,382.0" stroke="#AAAAAA" stroke-width="1" />
+<text x="268.0" y="392.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="start" dominant-baseline="central">+</text>
+<text x="282.0" y="392.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="start" dominant-baseline="central">dispatch()</text>
+<text x="414.0" y="392.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888888" text-anchor="end" dominant-baseline="central" font-style="italic">error</text>
+<rect x="261.0" y="402.0" width="158.0" height="20" fill="#00000010" stroke="none" />
+<path d="M260.0,402.0 L420.0,402.0" stroke="#AAAAAA" stroke-width="0.5" stroke-dasharray="2,2" />
+<text x="268.0" y="412.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="start" dominant-baseline="central">-</text>
+<text x="282.0" y="412.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="start" dominant-baseline="central">environ</text>
+<text x="414.0" y="412.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888888" text-anchor="end" dominant-baseline="central" font-style="italic">Env</text>
+</g>
+<g id="ggarch-edges">
+<path d="M 100.0 192.0 L 100.0 132.0" fill="none" stroke="#555555" stroke-width="1" marker-end="url(#arrow)" />
+<rect x="78.5" y="153.0" width="71.0" height="14" fill="#FFFFFF" stroke="none" fill-opacity="0.85" />
+<text x="114.0" y="162.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">implements</text>
+<path d="M 100.0 344.0 L 100.0 284.0" fill="none" stroke="#555555" stroke-width="1" marker-end="url(#arrow)" />
+<rect x="88.25" y="305.0" width="51.5" height="14" fill="#FFFFFF" stroke="none" fill-opacity="0.85" />
+<text x="114.0" y="314.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">extends</text>
+<path d="M 180.0 390.0 L 260.0 390.0" fill="none" stroke="#555555" stroke-width="1" marker-end="url(#arrow)" />
+<rect x="204.0" y="395.0" width="32.0" height="14" fill="#FFFFFF" stroke="none" fill-opacity="0.85" />
+<text x="220.0" y="404.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">uses</text>
+</g>
+<g id="ggarch-annotations"></g>
+</svg>

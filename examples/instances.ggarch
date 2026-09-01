@@ -47,8 +47,9 @@ diagram "Two-application deployment" from "Juju" {
     ]
   }
   positions {
-    controller_pod above app1_unit0   gap: 40
-    app1_unit0     left-of app2_unit0 gap: 40
-    app1_unit0     align-middle app2_unit0
+    controller_pod left-of app1_unit0  gap: 60
+    controller_pod align-middle app1_unit0
+    app1_unit0     above app2_unit0    gap: 20
+    app1_unit0     align-left app2_unit0
   }
 }
