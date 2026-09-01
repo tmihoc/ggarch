@@ -262,7 +262,7 @@ diagram "D" from "M" {
 class TestJujuRouting:
     def test_k8s_topology_routes(self):
         from pathlib import Path
-        src = (Path(__file__).parent.parent / "examples" / "juju.ggarch").read_text()
+        src = (Path(__file__).parent.parent / "examples" / "topology.ggarch").read_text()
         f = parse(src)
         validate(f)
         diagram = next(d for d in f.diagrams if d.name == "K8s deployment topology")
@@ -278,7 +278,7 @@ class TestJujuRouting:
     def test_k8s_children_not_stacked(self):
         """After auto-layout, controller_pod children should not all share y."""
         from pathlib import Path
-        src = (Path(__file__).parent.parent / "examples" / "juju.ggarch").read_text()
+        src = (Path(__file__).parent.parent / "examples" / "topology.ggarch").read_text()
         f = parse(src)
         validate(f)
         diagram = next(d for d in f.diagrams if d.name == "K8s deployment topology")

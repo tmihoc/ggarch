@@ -1,0 +1,66 @@
+// class-diagram.ggarch — class diagram
+//
+// Shows: class nodes with visibility markers (pk=public +, fk=protected #,
+// uk=private -), method signatures, right-aligned return types, and
+// typed edges expressing inheritance and dependency relationships.
+
+model "Agents" {
+
+  nodes {
+
+    worker [type: class, label: "Worker"] {
+      fields {
+        tomb    [label: "tomb",    type: "Tomb",   pk: true]
+        start   [label: "Start()", type: "error",  pk: true]
+        kill    [label: "Kill()",  type: "void",   pk: true]
+        wait    [label: "Wait()",  type: "error",  pk: true]
+      }
+    }
+
+    base_worker [type: class, label: "baseWorker"] {
+      fields {
+        config  [label: "config",    type: "Config",  uk: true]
+        run_fn  [label: "loop()",    type: "error",   uk: true]
+        handle  [label: "handle()",  type: "error",   fk: true]
+      }
+    }
+
+    unit_worker [type: class, label: "unitWorker"] {
+      fields {
+        agent   [label: "agent",     type: "Agent",   uk: true]
+        run     [label: "run()",     type: "error",   pk: true]
+        notify  [label: "notify()",  type: "void",    uk: true]
+      }
+    }
+
+    charm_runner [type: class, label: "charmRunner"] {
+      fields {
+        dispatch [label: "dispatch()", type: "error", pk: true]
+        environ  [label: "environ",    type: "Env",   uk: true]
+      }
+    }
+
+  }
+
+  edges {
+    base_worker -> worker      [type: api,     label: "implements"]
+    unit_worker -> base_worker [type: api,     label: "extends"]
+    unit_worker -> charm_runner[type: control, label: "uses"]
+  }
+
+  style { extends: juju }
+}
+
+diagram "Agent class hierarchy" from "Agents" {
+  select {
+    nodes: worker base_worker unit_worker charm_runner
+  }
+  positions {
+    worker      above base_worker  gap: 60
+    worker      align-centre base_worker
+    base_worker above unit_worker  gap: 60
+    base_worker align-centre unit_worker
+    charm_runner right-of unit_worker gap: 80
+    charm_runner align-middle unit_worker
+  }
+}

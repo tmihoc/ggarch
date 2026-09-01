@@ -1,0 +1,47 @@
+// sequence-par-opt.ggarch — sequence diagram with par and opt blocks
+//
+// Shows: par block (parallel lanes, green tint), opt block (optional
+// fragment), and activation bars on call/return pairs.
+
+model "Notify" {
+
+  nodes {
+    client     [type: juju-software, label: "Client"]
+    controller [type: juju-software, label: "Controller"]
+    agent_a    [type: juju-software, label: "Unit agent A"]
+    agent_b    [type: juju-software, label: "Unit agent B"]
+  }
+
+  edges {
+    client     -> controller [type: api]
+    controller -> agent_a    [type: stream]
+    controller -> agent_b    [type: stream]
+    agent_a    -> controller [type: api]
+    agent_b    -> controller [type: api]
+  }
+
+  behaviours {
+    behaviour "integrate" {
+      client     -> controller: call  "juju integrate A B"
+      controller -> controller: self  "write relation record"
+      par {
+        controller -> agent_a: async "watcher fires"
+        controller -> agent_b: async "watcher fires"
+      }
+      agent_a -> controller: call   "relation-created"
+      agent_b -> controller: call   "relation-created"
+      agent_a -> controller: call   "write relation data"
+      opt "if data changed" {
+        controller -> agent_b: async "watcher fires (data)"
+        agent_b    -> controller: call "relation-changed"
+      }
+      controller -> client: return "integrate complete"
+    }
+  }
+
+  style { extends: juju }
+}
+
+sequence "Integrate" from "Notify" {
+  select { behaviour: "integrate" }
+}

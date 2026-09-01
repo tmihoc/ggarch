@@ -325,7 +325,7 @@ diagram "D" from "M" {
 class TestJujuLayout:
     def test_k8s_topology_solves(self):
         from pathlib import Path
-        src = (Path(__file__).parent.parent / "examples" / "juju.ggarch").read_text()
+        src = (Path(__file__).parent.parent / "examples" / "topology.ggarch").read_text()
         f = parse(src)
         validate(f)
         diagram = next(d for d in f.diagrams if d.name == "K8s deployment topology")
@@ -339,7 +339,7 @@ class TestJujuLayout:
 
     def test_unit_focus_collapsed_controller(self):
         from pathlib import Path
-        src = (Path(__file__).parent.parent / "examples" / "juju.ggarch").read_text()
+        src = (Path(__file__).parent.parent / "examples" / "topology.ggarch").read_text()
         f = parse(src)
         validate(f)
         diagram = next(d for d in f.diagrams if d.name == "Unit focus")
@@ -355,7 +355,7 @@ class TestJujuLayout:
     def test_k8s_topology_positions_respected(self):
         """k8s is above controller_pod in the K8s topology view."""
         from pathlib import Path
-        src = (Path(__file__).parent.parent / "examples" / "juju.ggarch").read_text()
+        src = (Path(__file__).parent.parent / "examples" / "topology.ggarch").read_text()
         f = parse(src)
         validate(f)
         diagram = next(d for d in f.diagrams if d.name == "K8s deployment topology")

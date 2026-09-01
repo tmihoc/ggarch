@@ -232,7 +232,7 @@ diagram "D" from "M" {
 class TestJujuRender:
     def test_k8s_topology_renders_light(self):
         from pathlib import Path
-        src = (Path(__file__).parent.parent / "examples" / "juju.ggarch").read_text()
+        src = (Path(__file__).parent.parent / "examples" / "topology.ggarch").read_text()
         svg = pipeline(src, "K8s deployment topology", dark=False)
         assert "<svg" in svg
         assert "Controller pod" in svg
@@ -240,14 +240,14 @@ class TestJujuRender:
 
     def test_k8s_topology_renders_dark(self):
         from pathlib import Path
-        src = (Path(__file__).parent.parent / "examples" / "juju.ggarch").read_text()
+        src = (Path(__file__).parent.parent / "examples" / "topology.ggarch").read_text()
         svg = pipeline(src, "K8s deployment topology", dark=True)
         assert "<svg" in svg
         assert "#1E1E2E" in svg
 
     def test_unit_focus_renders(self):
         from pathlib import Path
-        src = (Path(__file__).parent.parent / "examples" / "juju.ggarch").read_text()
+        src = (Path(__file__).parent.parent / "examples" / "topology.ggarch").read_text()
         svg = pipeline(src, "Unit focus", dark=False)
         assert "Unit agent" in svg
         assert "Charm" in svg

@@ -372,7 +372,7 @@ sequence "S" from "M" { select { behaviour: "async" } }
 class TestJujuSequence:
     def test_hook_execution_renders(self):
         from pathlib import Path
-        src = (Path(__file__).parent.parent / "examples" / "juju.ggarch").read_text()
+        src = (Path(__file__).parent.parent / "examples" / "sequence.ggarch").read_text()
         f = parse(src)
         validate(f)
         seq = next(s for s in f.sequences if s.name == "Hook execution")
@@ -384,7 +384,7 @@ class TestJujuSequence:
 
     def test_bootstrap_k8s_renders(self):
         from pathlib import Path
-        src = (Path(__file__).parent.parent / "examples" / "juju.ggarch").read_text()
+        src = (Path(__file__).parent.parent / "examples" / "sequence.ggarch").read_text()
         f = parse(src)
         validate(f)
         seq = next(s for s in f.sequences if s.name == "Bootstrap K8s")
@@ -395,7 +395,7 @@ class TestJujuSequence:
 
     def test_both_modes_differ(self):
         from pathlib import Path
-        src = (Path(__file__).parent.parent / "examples" / "juju.ggarch").read_text()
+        src = (Path(__file__).parent.parent / "examples" / "sequence.ggarch").read_text()
         f = parse(src)
         validate(f)
         seq = next(s for s in f.sequences if s.name == "Hook execution")

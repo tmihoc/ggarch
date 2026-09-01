@@ -498,7 +498,7 @@ model "M" {
 class TestJujuExample:
     def test_juju_example_parses_and_validates(self, tmp_path):
         from pathlib import Path
-        example = Path(__file__).parent.parent / "examples" / "juju.ggarch"
+        example = Path(__file__).parent.parent / "examples" / "topology.ggarch"
         src = example.read_text(encoding="utf-8")
         f = parse_valid(src)
         assert len(f.models) == 1
@@ -507,7 +507,7 @@ class TestJujuExample:
 
     def test_juju_model_has_expected_nodes(self, tmp_path):
         from pathlib import Path
-        example = Path(__file__).parent.parent / "examples" / "juju.ggarch"
+        example = Path(__file__).parent.parent / "examples" / "topology.ggarch"
         src = example.read_text(encoding="utf-8")
         f = parse_valid(src)
         m = f.models[0]
@@ -517,26 +517,28 @@ class TestJujuExample:
                          "dqlite", "config_seed", "charm_init"):
             assert expected in node_ids, f"expected node {expected!r} not found"
 
-    def test_juju_model_has_behaviours(self, tmp_path):
+    def test_juju_model_has_no_behaviours(self, tmp_path):
         from pathlib import Path
-        example = Path(__file__).parent.parent / "examples" / "juju.ggarch"
+        example = Path(__file__).parent.parent / "examples" / "topology.ggarch"
         src = example.read_text(encoding="utf-8")
         f = parse_valid(src)
-        m = f.models[0]
-        names = [b.name for b in m.behaviours]
-        assert "hook execution" in names
-        assert "bootstrap k8s" in names
+        # topology.ggarch is a pure topology model — behaviours live in sequence.ggarch
+        assert len(f.models[0].behaviours) == 0
 
-    def test_juju_has_three_diagram_views(self, tmp_path):
+    def test_juju_has_two_diagram_views(self, tmp_path):
         from pathlib import Path
-        example = Path(__file__).parent.parent / "examples" / "juju.ggarch"
+        example = Path(__file__).parent.parent / "examples" / "topology.ggarch"
         src = example.read_text(encoding="utf-8")
         f = parse_valid(src)
-        assert len(f.diagrams) == 3
+        names = {d.name for d in f.diagrams}
+        assert "K8s deployment topology" in names
+        assert "Unit focus" in names
 
-    def test_juju_has_two_sequence_views(self, tmp_path):
+    def test_sequence_example_has_two_sequences(self, tmp_path):
         from pathlib import Path
-        example = Path(__file__).parent.parent / "examples" / "juju.ggarch"
+        example = Path(__file__).parent.parent / "examples" / "sequence.ggarch"
         src = example.read_text(encoding="utf-8")
         f = parse_valid(src)
-        assert len(f.sequences) == 2
+        names = {s.name for s in f.sequences}
+        assert "Hook execution" in names
+        assert "Bootstrap K8s" in names

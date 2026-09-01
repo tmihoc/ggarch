@@ -1,0 +1,74 @@
+// sequence.ggarch — sequence diagrams
+//
+// Shows: call/return/async/self step kinds; loop and alt blocks;
+// activation bars. Two sequences over the same model: hook execution
+// and K8s bootstrap.
+
+model "Juju" {
+
+  nodes {
+    apiserver  [type: juju-software, label: "API server"]
+    unit_agent [type: juju-software, label: "Unit agent"]
+    charm      [type: charm,         label: "Charm", lifecycle: ephemeral]
+    client     [type: juju-software, label: "juju CLI"]
+    k8s        [type: external,      label: "Kubernetes cluster"]
+    jujud      [type: juju-software, label: "jujud"]
+  }
+
+  edges {
+    apiserver  -> unit_agent [type: stream]
+    unit_agent -> charm      [type: control]
+    charm      -> unit_agent [type: ipc]
+    unit_agent -> apiserver  [type: api]
+    client     -> k8s        [type: api]
+    k8s        -> client     [type: api]
+    client     -> jujud      [type: control]
+    jujud      -> client     [type: api]
+  }
+
+  behaviours {
+
+    behaviour "hook execution" {
+      apiserver  -> unit_agent: async  "watcher fires"
+      unit_agent -> unit_agent: self   "snapshot state"
+      unit_agent -> unit_agent: self   "resolve next hook"
+      unit_agent -> charm:      call   "exec dispatch"
+      loop "during hook" {
+        charm      -> unit_agent: call   "hook command"
+        unit_agent -> apiserver:  call   "serve via API"
+        apiserver  -> unit_agent: return
+        unit_agent -> charm:      return
+      }
+      alt "exit 0" {
+        charm      -> unit_agent: return "success"
+        unit_agent -> apiserver:  call   "flush writes"
+      } else "failure" {
+        charm      -> unit_agent: return "failure"
+        unit_agent -> apiserver:  call   "discard + set error"
+      }
+    }
+
+    behaviour "bootstrap k8s" {
+      client -> k8s:    call   "juju bootstrap"
+      client -> k8s:    call   "authenticate"
+      k8s    -> client: return "OK"
+      client -> k8s:    call   "create namespace + deploy pod"
+      k8s    -> client: return "pod scheduled"
+      jujud  -> jujud:  self   "start API server"
+      jujud  -> jujud:  self   "initialise database"
+      jujud  -> client: return "API ready"
+      client -> client: self   "juju bootstrap complete"
+    }
+
+  }
+
+  style { extends: juju }
+}
+
+sequence "Hook execution" from "Juju" {
+  select { behaviour: "hook execution" }
+}
+
+sequence "Bootstrap K8s" from "Juju" {
+  select { behaviour: "bootstrap k8s" }
+}
