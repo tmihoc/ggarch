@@ -246,175 +246,30 @@ at different levels are the same thing.
 
 ## Feature parity
 
-The research across Mermaid, D2, Graphviz, PlantUML, Structurizr, Ilograph,
-Pikchr, Nomnoml, C4-PlantUML, DBML, blockdiag/packetdiag, and Kroki surfaces
-a large raw gap list. Most items either belong to unrelated visualisation
-families (Gantt, git graph, kanban, mindmap, BPMN, packet/bit fields,
-mathematical notation) or are already covered by ggarch's existing design.
+Four capabilities were identified by surveying twelve competing tools and
+filtering the raw gap list through the question: *what design principle
+generalisation makes this capability fall out?*
 
-The filter is the question asked before every feature: **how can we update a
-design principle so this capability falls out, rather than bolting it on ad
-hoc?** A feature that requires its own principle is the wrong feature; a
-feature that falls out of a principle generalisation is a good feature.
+The decision — what is in scope, what is out of scope, and why — is recorded
+in [ADR-001](adr/001-feature-parity-via-principle-generalisation.md).
 
-Four genuine gaps survive this filter. Each maps to a design-principle
-update, not a new special case.
+The four in-scope gaps, each derived from a principle generalisation:
 
----
+1. **Node structure** — nodes may declare named fields; `type: record` renders
+   as table rows, `type: class` as UML compartments; edge endpoints may be
+   field-qualified for per-field port anchoring.
+2. **Richer behaviour steps** — a behaviour is an interaction graph, not
+   just a sequence; a `state` view renders it as a state machine. `guard`
+   and `on` (trigger) are additive step attributes.
+3. **Structured metadata** — any model entity may carry a `properties` map
+   and a `url`; a `legend` annotation renders the style block as a visual key.
+4. **Deployment environments** — an `environment` block in the model declares
+   node presence and abstract-id resolution per environment; already specced
+   in the grammar, not yet implemented.
 
-### Gap 1: node structure (ER, class diagrams, SQL tables, port anchoring)
-
-**What competing tools can express that ggarch cannot:**
-D2's `sql_table` shape, DBML's column/PK/FK/index model, Graphviz record
-nodes with per-field ports, Nomnoml's class compartments, PlantUML class
-diagrams — all express a node whose *interior is structured data*: named
-fields with types, key markers (PK/FK/UK), visibility modifiers
-(public/private/protected), or method signatures. Edges can attach to
-specific fields/rows rather than to the node as a whole.
-
-**The design-principle update:**
-The current principle is: *nodes have an id, a label, a type, a lifecycle,
-and a cardinality.* Generalise to: **a node may also declare named fields,
-and a field is a first-class model entity with its own id, label, type, and
-optional attributes.** Everything else follows:
-
-- A node with fields and `type: record` renders as a table (rows of fields).
-- A node with fields and `type: class` renders as a UML compartment box
-  (name / fields / methods).
-- An edge endpoint can be qualified as `node.field_id` to anchor at a
-  specific field rather than the node centroid.
-- Port-level connection anchoring (currently missing) falls out of
-  field-qualified endpoints — no new concept needed.
-- The existing `type` system already maps node types to shapes; adding
-  `record` and `class` rendering modes for field-bearing nodes is a style
-  concern, not a grammar change.
-
-**What this does not change:** the model-completeness rule, the declare-once
-principle, the view-projection rule. Fields are declared in the `nodes`
-block, not in views. A view that needs to show two specific tables with an
-FK arrow between a specific column in each is expressed as a diagram that
-selects those nodes; the field-qualified edge endpoints are declared in the
-model's `edges` block.
-
----
-
-### Gap 2: richer behaviour steps (state machines, guards, triggers)
-
-**What competing tools can express that ggarch cannot:**
-PlantUML and Mermaid state diagrams — composite/nested states, guarded
-transitions (`[guard] / action`), entry/exit/do handlers, choice/fork/join
-pseudostates, concurrency separators. A state machine is semantically
-different from a sequence diagram: steps are not ordered in time but
-triggered by events under conditions.
-
-**The design-principle update:**
-The current principle is: *a behaviour is a named sequence of steps, rendered
-as a sequence diagram.* Generalise to: **a behaviour is a named interaction
-graph of steps; a view chooses how to render it.** A `sequence` view renders
-it as a time-ordered sequence diagram (existing). A `state` view renders it
-as a state transition diagram.
-
-This falls out cleanly because:
-
-- Behaviour steps already carry source, target, kind (`call`/`return`/
-  `async`/`self`), and label. A `guard` attribute on a step (`[condition]`)
-  and a `trigger` attribute (`on: "event"`) are additive — they do not break
-  existing sequence rendering (steps without guards/triggers render as
-  before).
-- Composite states are just nested behaviours — the existing containment
-  model for nodes extends naturally to behaviour steps.
-- A `state` view selects a behaviour and renders each `self` step as a
-  state node, each directed step as a transition edge labelled with
-  `trigger / guard / action`. The model declares the same entities; the
-  view renderer changes.
-- `entry`/`exit` handlers are behaviour steps of kind `self` targeting a
-  specific state node — no new grammar needed.
-
-**Existing behaviour grammar that already works:** `loop`, `alt`/`else`,
-`par` — these map to corresponding state-diagram constructs (loop regions,
-choice pseudostates, concurrent regions) without change.
-
----
-
-### Gap 3: structured metadata on model entities
-
-**What competing tools can express that ggarch cannot:**
-Structurizr properties/perspectives/url on elements and relationships.
-Mermaid kanban's `@{ticket, priority, assigned}` per task with
-`ticketBaseUrl` → clickable links. C4-PlantUML's `AddElementTag` with style
-+ legend auto-generation. Ilograph's `subtitle`/`description` (markdown).
-
-All of these are forms of the same thing: **arbitrary key-value metadata
-attached to model entities, where that metadata can drive rendering, linking,
-and querying.**
-
-**The design-principle update:**
-The current principle is: *the model is complete and queryable; the JSON
-export is a first-class output.* Add: **any model entity — node, edge, or
-behaviour step — may carry a `properties` map of arbitrary key-value pairs
-and an optional `url`.** Everything follows:
-
-- Properties are declared in the model, not views. They are first-class
-  model data, visible in the JSON export, queryable by agents.
-- `url` on a node or edge makes the rendered element clickable in SVG output
-  (`<a href="...">` wrapper). No new concept — SVG `<a>` already exists.
-- A legend annotation type (`annotations { legend {} }`) renders the node
-  types and edge types from the style block as a visual key. This falls out
-  of the existing style + annotations layers — the legend is a projection of
-  style data, not new information.
-- Structurizr-style perspectives (named sets of annotations viewing the same
-  diagram through a different lens) are already expressible as multiple
-  annotation blocks in different views. No change needed.
-
----
-
-### Gap 4: deployment environments as model data
-
-**What competing tools can express that ggarch cannot:**
-Structurizr's `deploymentEnvironment` / `deploymentNode` / `instanceOf` /
-`healthCheck` — deployment topology is first-class model data, not a diagram
-convention. The same software system can be deployed differently in
-production vs staging, and the model knows both.
-
-**The design-principle update:**
-This is already *specced* in ggarch — the grammar has `select { environment:
-<id> }` and the `abstracts:` relationship partially addresses it. The gap is
-that `environment` is not yet implemented as a first-class model concept.
-
-Generalise the existing principle: **the `abstracts:` relationship is not
-just a zoom-level bridge — it is the general mechanism for expressing that
-one node is a concrete deployment of another in a specific context.** An
-`environment` block in the model declares which nodes are present and which
-abstract nodes they realise, *per environment*. A view that selects
-`environment: kubernetes` automatically resolves abstract ids to their
-Kubernetes-specific concrete nodes. This extends `abstracts:` from a
-node-level attribute to a model-level grouping — the same principle,
-applied at a larger scope.
-
----
-
-### What is explicitly out of scope
-
-The following gap categories from the research are **not** part of ggarch's
-scope, and adding them would violate the Lightweight by design and Secure by
-design principles:
-
-- **Gantt / timeline / scheduling** — time-axis diagrams with date arithmetic
-  and dependency scheduling. A separate tool family; adding it would require
-  a date/arithmetic DSL and a chart layout engine.
-- **Git graphs** — commit/branch topology. Domain-specific to version control,
-  not architecture.
-- **Mindmaps / WBS / kanban** — project management visualisations.
-- **Mathematical / EBNF / regex notation** — formal language rendering
-  requiring a separate renderer (LaTeX/AsciiMath). Violates the no-binary-
-  dependencies principle.
-- **Packet / bit-field wire formats** — byte-level layout. A separate
-  problem domain.
-- **Interactive walkthroughs / progressive disclosure** — Ilograph's camera
-  system. Incompatible with static SVG output. A future concern for an
-  interactive renderer.
-- **Programmatic model generation** (`!script`, `!plugin`) — violates the
-  no-code-execution principle.
+Out of scope: Gantt, git graphs, mindmaps, kanban, BPMN, mathematical
+notation, packet/bit fields, interactive walkthroughs, programmatic
+generation. See ADR-001 for the rejection reasoning.
 
 ## Capability reference
 
@@ -1113,51 +968,121 @@ The extension:
 
 ## Implementation plan
 
-### Phase 1 — parser + data model
+Phases 1–6 are complete. Phase 7 is blocked. Phases 8–11 are planned,
+derived from the feature parity analysis in ADR-001.
+
+### Phase 1 — parser + data model ✓
 Parse the model/view syntax into a Python data structure. Validate: node ids
 unique, edge endpoints exist, behaviour participants exist in nodes, behaviour
 steps traverse declared edges, view `select` targets exist in model.
 Library: `lark` (MIT).
 
-### Phase 2 — constraint solver
+### Phase 2 — constraint solver ✓
 Translate position constraints into kiwisolver expressions. Solve to produce
 (x, y, width, height) for every node in a view. Handle containment (parent
 bounds contain all children). Library: `kiwisolver` (BSD).
 
-### Phase 3 — straight-line edge routing
-Compute start/end anchor points on node boundaries. Route straight lines (or
-two-segment elbows for same-axis nodes). No external dependency.
+### Phase 3 — straight-line edge routing ✓
+Compute start/end anchor points on node boundaries. Route straight lines and
+⌐-shaped elbows. Straight-horizontal snap threshold (10px) absorbs minor
+solver artefacts from nested containers.
 
-### Phase 4 — SVG renderer
-Render nodes (with lifecycle and cardinality visual cues), edges (with type
-styling), and annotations to SVG using `drawsvg` (MIT). Light and dark
-variants. Correct font sizing, text wrapping, multi-line labels. JSON export.
+### Phase 4 — SVG renderer ✓
+Render nodes (lifecycle/cardinality visual cues), edges (type styling,
+arrowheads, labels), annotations (box, callout, separator, badge) to SVG
+using `drawsvg` (MIT). Light and dark variants. Shapes: rectangle, person
+(stick figure), cylinder (database), container (with header strip).
 
-### Phase 5 — sequence view renderer
+### Phase 5 — sequence view renderer ✓
 Render `sequence` views as sequence diagrams with lifelines sourced from the
-model. Steps: `call`, `return`, `async`, `loop`, `alt`.
+model. Steps: `call`, `return`, `async`, `self`, `loop`, `alt`/`else`.
+`par` is parsed but not yet rendered (see phase 8).
 
-### Phase 6 — Sphinx extension
-`sphinxcontrib_ggarch.py` following the pattern of `sphinxcontrib_d2.py`.
-`{ggarch}` directive with `view` selector, required `:alt:`, light/dark pair
-output, markdown visitor that emits source verbatim.
+### Phase 6 — Sphinx extension ✓
+`sphinxcontrib_ggarch.py`: `{ggarch}` directive with `:view:`, `:sequence:`,
+`:file:`, `:alt:` options. Light/dark SVG pair. Expand button with fullscreen
+modal (inline SVG icons, `type=button`, no lightbox dependency). Markdown
+visitor emits source verbatim. File mtime in cache hash.
 
-### Phase 7 — orthogonal routing (optional)
+### Phase 7 — orthogonal routing (blocked)
 Plug in adaptagrams libavoid when a production-ready Python binding exists.
-Straight-line routing remains the default.
+No maintained binding currently available. Straight-line routing remains the
+default; revisit when one appears.
+
+### Phase 8 — sequence completeness
+Complete the `par` block renderer in `sequence_renderer.py`. Add activation
+bars (shaded rect on the lifeline during call/return pairs). Add `opt` block
+(optional sequence, single branch alt). These are rendering additions only —
+the grammar and model already support `par`.
+
+### Phase 9 — node fields and structured rendering
+*(Derived from ADR-001 Gap 1: node structure)*
+
+Grammar change: add `fields { }` block inside a node declaration, with
+per-field `id`, `label`, `type`, and optional key markers (`pk`, `fk`, `uk`,
+`null`). Edge endpoint syntax: `node.field_id` for field-qualified anchors.
+Validator: field ids are unique within a node; field-qualified edge endpoints
+reference declared fields.
+
+Rendering: nodes with fields and `type: record` render as tables (header row
++ field rows). Nodes with fields and `type: class` render as UML compartment
+boxes (name compartment + fields compartment + methods compartment). The
+router anchors field-qualified edges at the field row's right/left face
+rather than the node centroid. Crow's-foot arrowhead styles (zero-or-one,
+one, zero-or-more, one-or-more) added to the style layer as edge arrow types.
+
+### Phase 10 — metadata and legend
+*(Derived from ADR-001 Gap 3: structured metadata)*
+
+Grammar change: `properties { key: "value" ... }` block on any node, edge,
+or behaviour step. `url: "https://..."` attribute on nodes and edges.
+
+Rendering: `url` wraps the SVG element in `<a href="...">`. Properties are
+emitted in the JSON export only (not rendered visually). New annotation type:
+`legend` — renders the node types and edge types from the style block as a
+visual key in the diagram. No new model data; legend is a projection of the
+existing style layer.
+
+### Phase 11 — state view renderer
+*(Derived from ADR-001 Gap 2: richer behaviour steps)*
+
+Grammar change: additive step attributes — `guard: "[condition]"` and
+`on: "event"` on any behaviour step. Existing sequence rendering ignores
+unknown attributes (backward compatible).
+
+New view type: `state "Name" from "Model" { select { behaviour: "..." } }`.
+Renderer: each unique node that appears as `self` step source or as
+source/target of a directed step becomes a state node. Directed steps become
+transition edges labelled `on / [guard] / label`. `self` steps with `on`/
+`guard` are entry/exit/internal actions on the state. `alt` blocks become
+choice pseudostates. `loop` blocks become loop regions. `par` blocks become
+concurrent regions (horizontal separator).
+
+### Phase 12 — deployment environments
+*(Derived from ADR-001 Gap 4: deployment environments as model data)*
+
+Grammar change: `environment "name" { present: id id ... abstracts { id:
+concrete_id ... } }` block in the model. Extends `abstracts:` from a
+node-level attribute to a model-level grouping.
+
+Validator: a view selecting `environment: "name"` resolves all abstract ids
+in the view's node list and behaviour participants to their environment-
+specific concrete ids. Existing node-level `abstracts:` remains valid as a
+shorthand for the common case of a single concrete realisation.
 
 ---
 
 ## Dependencies
 
-| Dependency  | License | Purpose          |
-|-------------|---------|------------------|
-| `lark`      | MIT     | Grammar / parser |
-| `kiwisolver`| BSD     | Constraint solver |
-| `drawsvg`   | MIT     | SVG generation   |
-| `sphinx`    | BSD     | Extension host   |
+| Dependency   | License | Purpose           |
+|--------------|---------|-------------------|
+| `lark`       | MIT     | Grammar / parser  |
+| `kiwisolver` | BSD     | Constraint solver |
+| `drawsvg`    | MIT     | SVG generation    |
+| `sphinx`     | BSD     | Extension host    |
 
 No copyleft. No binary builds. No npm. No network at build time.
+Phases 8–12 add no new dependencies.
 
 ---
 
@@ -1165,40 +1090,25 @@ No copyleft. No binary builds. No npm. No network at build time.
 
 1. **Shorthand syntax.** The model/view structure is verbose for simple
    one-off diagrams. Consider a `diagram` block without an explicit `model`
-   that inlines all five layers — equivalent to the original spec, for cases
-   where multi-view reuse is not needed.
+   that inlines all five layers, for cases where multi-view reuse is not
+   needed. Deferred; the `:file:` option covers the common case.
 
-2. **Model file `:file:` option — implemented.** The Sphinx extension now
-   supports `:file: path/to/model.ggarch` so all diagrams on a page reference
-   one canonical model file. File mtime is included in the SVG cache hash so
-   edits automatically invalidate cached renders.
+2. **Constraint relaxation policy.** Conflicts are errors. This is the right
+   choice — silent relaxation is how ELK and dagre caused problems in
+   practice. Closed: error is the policy.
 
-3. **Constraint relaxation policy.** If constraints conflict: error (current
-   plan) or relax lowest-priority constraint with a warning? Error — silent
-   relaxation is how ELK and dagre caused problems in practice.
+3. **Cardinality rendering.** Badge (current) vs stacked boxes (UML instance
+   notation). Badge implemented and working. Stacked boxes deferred until a
+   use case requires it.
 
-4. **Cardinality rendering.** Badge vs multiplicity cue (stacked boxes) vs
-   text annotation. Stacked boxes (like UML instance notation) may be clearest
-   but add visual noise. Start with a badge and revisit.
+4. **Edge type taxonomy.** The built-in types (`api`, `stream`, `event`,
+   `data`, `control`, `ipc`) cover the Juju case well. Custom types via the
+   style block cover everything else. Closed: the built-in set is the right
+   size; extend via style, not built-ins.
 
-5. **Edge type taxonomy.** The built-in types (`api`, `stream`, `event`,
-   `data`, `control`, `ipc`) cover the Juju case. Are they general enough for
-   other distributed systems? Should the built-in set be smaller (fewer
-   assumptions) or richer?
+5. **Style presets.** `juju` ships built-in. Third-party presets via Python
+   packages (`ggarch-style-juju`) are a future distribution concern. Deferred.
 
-6. **Style presets.** `juju` ships built-in. Mechanism for third-party presets
-   distributed as Python packages (`ggarch-style-juju`)?
-
-7. **`abstracts:` rendering.** Currently `abstracts:` only affects validation
-   (abstract ids are accepted in edges and behaviours). Next step: view
-   selection should automatically substitute a concrete node when an abstract
-   id is selected — so `select { nodes: controller }` in a detailed view
-   renders `controller_pod` instead.
-
-8. **Data model nodes.** The Juju data model (Dqlite tables: `application`,
-   `unit`, `charm`, `relation`, etc.) should be represented as nodes in
-   `juju.ggarch` with `type: record` or `type: database`. Runtime nodes
-   (unit agent, jujud) would then declare `abstracts:` pointing at the
-   corresponding data model records, making the runtime/data-model
-   correspondence formal and queryable. This is the "level 2" anchor to the
-   SQL schema discussed in session.
+6. **`abstracts:` rendering.** Currently affects validation only. Phase 12
+   implements the rendering side: view selection substitutes the concrete node
+   when an abstract id is selected. Tracked in phase 12.
