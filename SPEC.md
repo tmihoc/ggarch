@@ -64,11 +64,192 @@ separately declared artefact that all views share.
 
 ---
 
-## Distributed systems capabilities
+## Comparison
 
-These six capabilities are what distributed systems documentation specifically
-requires. They are first-class in ggarch; none are fully covered by any
-existing text-based tool.
+The table below scores eight capabilities against the tools most commonly used
+for architecture documentation. Each capability is defined under the score.
+
+| Capability | Mermaid | D2 | Graphviz | PlantUML | Structurizr | Ilograph | **ggarch** |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 1. Multiple views of one model | ✗ | ✗ | ✗ | ✗ | ✓ | ✓ | **✓** |
+| 2. Constraint-based layout | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | **✓** |
+| 3. Typed edges (semantic) | ✗ | ~ | ✗ | ~ | ~ | ✗ | **✓** |
+| 4. Lifecycle and cardinality | ✗ | ✗ | ✗ | ✗ | ~ | ✗ | **✓** |
+| 5. Sequence from same model | ✗ | ✗ | ✗ | ~ | ~ | ✓ | **✓** |
+| 6. Cross-layer edges | ✗ | ✓ | ✓ | ~ | ✗ | ✓ | **✓** |
+| 7. Types vs instances | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | **✓** |
+| 8. Abstraction relationships | ✗ | ✗ | ✗ | ✗ | ~ | ✗ | **✓** |
+
+✓ full support · ~ partial or workaround · ✗ not supported
+
+---
+
+### 1. Multiple views of one model
+
+A system's nodes and edges are declared once. Any number of views — topology,
+sequence, data model, control flow — draw from the same declaration. Renaming
+a node renames it in every view automatically. Diagrams cannot drift out of
+sync with each other because they share one source of truth.
+
+**Mermaid / D2 / Graphviz / PlantUML:** Each diagram is a self-contained
+document. Nodes and edges must be re-declared per diagram. Nothing prevents
+the "Controller" box in one diagram from silently diverging from the
+"controller" lifeline in another.
+
+**Structurizr:** The C4 model/view separation is the closest prior art.
+A workspace declares elements once; views select from them. The model is
+genuinely shared. Gaps: the C4 model is hierarchical (Person → Software System
+→ Container → Component) and every element must fit that hierarchy; free-form
+node types are not supported.
+
+**Ilograph:** Single-file declare-once with multiple perspective views,
+including sequence views. The shared model is real. Proprietary format and
+renderer; no open-source implementation.
+
+---
+
+### 2. Constraint-based layout
+
+Node positions are determined by explicit spatial constraints
+(`A left-of B gap: 40`, `C above D`, `E align-middle F`) solved by a
+constraint solver (Cassowary). The author's spatial intent is guaranteed —
+it cannot be overridden by an edge-crossing optimiser. Constraints compose:
+adding a new node does not disturb the rest of the layout.
+
+**All other tools:** Positions are inferred from edge structure. Graphviz,
+Mermaid, PlantUML, and D2's ELK backend all run global optimisers that
+trade spatial intent for crossing minimisation. The author can nudge but not
+guarantee. D2's `near` keyword is a hint, not a constraint.
+
+---
+
+### 3. Typed edges (semantic)
+
+Every edge has a `type` drawn from a declared taxonomy with a defined meaning:
+`api` (RPC/REST), `stream` (long-lived websocket/gRPC), `event` (one-way
+notification), `data` (database read/write), `control` (process lifecycle),
+`ipc` (Unix socket/pipe). Types are not just visual styles — they carry
+meaning. The type is part of the model and can be queried. Custom types can
+be declared in the `style` block.
+
+**Mermaid / Graphviz / Ilograph:** Edges have no semantic type. Visual
+appearance (colour, dash pattern) can be customised, but there is no
+queryable meaning attached. Readers must infer semantics from labels alone.
+
+**D2:** Edge shapes and styles are customisable; a loose convention of arrow
+labels conveys semantics. No formal type system.
+
+**PlantUML / Structurizr:** Relationship stereotypes or technology annotations
+exist but are free-form strings, not a closed enumerated taxonomy.
+
+---
+
+### 4. Lifecycle and cardinality
+
+**Lifecycle** declares the temporal behaviour of a node:
+`persistent` (runs continuously), `init` (runs once at startup then exits),
+`ephemeral` (runs on demand then exits). Rendered as a visual cue (solid,
+dashed, or dotted border). Central to understanding init containers, bootstrap
+steps, and on-demand hook dispatch.
+
+**Cardinality** declares multiplicity: `one-per-deployment`, `one-per-model`,
+`one-per-application`, `one-per-unit`, `one-per-host`, or an integer. Rendered
+as a badge. Lets a single node declaration represent "this runs once per unit
+in a live deployment" without instantiating N copies.
+
+**All other tools:** No tool natively models lifecycle. Cardinality exists in
+Structurizr (deployment nodes can have `instances`) but is purely visual and
+does not compose with the view system.
+
+---
+
+### 5. Sequence diagrams from the same model
+
+A `sequence` view references the same model nodes as a `topology` view.
+Lifelines are not re-declared; they are the same entities resolved from the
+model. A behaviour — a named sequence of `call`, `return`, `async`, `loop`,
+and `alt` steps — is declared in the model and rendered by the sequence view.
+Renaming a node renames its lifeline in every sequence automatically.
+
+**Mermaid:** Sequence diagrams are first-class and widely used, but entirely
+separate from any topology diagram. Participants are re-declared inline.
+
+**PlantUML:** Sequence support is mature; participants are re-declared per
+diagram with no shared model.
+
+**Structurizr:** Dynamic views show interaction but use a separate element
+declaration; infrastructure nodes cannot be participants.
+
+**Ilograph:** Perspectives include sequence-like interaction views over the
+shared model. The closest prior art for this capability.
+
+---
+
+### 6. Cross-layer edges
+
+Any declared node can be an edge endpoint or a behaviour participant,
+regardless of its type. Infrastructure nodes (`type: external`,
+`type: container`, a Kubernetes cluster) connect to software nodes. "K8s
+schedules controller pod" and "bootstrap installs jujud" are first-class
+edges, not workarounds. This makes bootstrap and provisioning sequences fully
+expressible.
+
+**Mermaid / PlantUML:** No formal layers; any node can connect to any other.
+The gap is the absence of a shared model (capability 1), not connection
+restrictions.
+
+**D2:** No layer restrictions. Cross-layer connections work. The gap is
+elsewhere (no shared model, no constraint layout).
+
+**Structurizr:** C4 layers implicitly forbid certain connections. A
+deployment node cannot be a participant in a dynamic view. Infrastructure
+and software exist in separate diagram types with no shared participants.
+
+---
+
+### 7. Types vs instances
+
+Model nodes are *types*, not unique instances. A node declared with
+`cardinality: one-per-unit` represents a type that exists N times in a live
+deployment. A view can render that type as a single abstract archetype box
+*or* as N labelled instances — the same declaration, two rendering modes.
+Instance labels are specified in the view, not the model.
+
+**All other tools:** Every declared element is a unique instance. To show
+two application units with the same software, two separate elements must be
+declared. They are visually and semantically unrelated even if they share
+every property. Structurizr's `instances` on deployment nodes is the closest
+approximation but does not compose with the view system.
+
+---
+
+### 8. Abstraction relationships
+
+The `abstracts:` attribute declares that a concrete node is the runtime
+realisation of one or more abstract nodes. `controller_pod [abstracts:
+"controller"]` means the pod is the concrete deployment of the abstract
+controller. This relationship is formal, not visual:
+
+- Edges declared using the abstract id remain valid — the validator accepts
+  them as covered by the concrete node.
+- Abstract ids can be used in overview diagrams; concrete ids in topology
+  diagrams. The model knows they are the same entity at different zoom levels.
+- Adding a behaviour step that uses an abstract id not covered by any concrete
+  node is a validator error — silent drift is caught at authoring time.
+
+**All other tools:** No tool has a formal abstraction relationship. The
+standard workaround is to duplicate the element at each zoom level and rely
+on naming convention to keep them in sync. Structurizr's C4 hierarchy
+(`SoftwareSystem` contains `Container` contains `Component`) encodes zoom
+levels structurally but cannot express that two separately declared elements
+at different levels are the same thing.
+
+
+## Capability reference
+
+Detailed syntax and behaviour for each capability. The table in the
+Comparison section gives the one-line summary; this section gives the
+full specification.
 
 ### 1. Multiple views of one model
 
