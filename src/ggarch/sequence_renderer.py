@@ -408,15 +408,10 @@ def _render_arrow(
 
     if label:
         mx = (x1 + x2) / 2
-        label_bg = "#1E1E2E" if ctx.dark else "#FFFFFF"
-        lw = len(label) * 6.5
-        # Pill bottom sits 8px above the line — clear of the arrowhead.
-        g.append(dw.Rectangle(
-            mx - lw / 2 - 3, y - 21, lw + 6, 13,
-            fill=label_bg, stroke="none", fill_opacity=1,
-        ))
+        # Label floats above the line with no background fill — avoids
+        # occluding lifeline headers and other diagram elements.
         g.append(dw.Text(
-            label, 11, mx, y - 14,
+            label, 11, mx, y - 10,
             font_family=LABEL_FONT,
             fill=ctx.text_color,
             text_anchor="middle",
@@ -455,14 +450,7 @@ def _render_self_step(
         marker_end="url(#seq-arrow)",
     ))
     if step.label:
-        # Label above the loop, centred on the lifeline.
-        label_bg = "#1E1E2E" if ctx.dark else "#FFFFFF"
-        lw = len(step.label) * 6.5
-        label_y = y0 - 4  # 4px above the top of the loop
-        g.append(dw.Rectangle(
-            cx - lw / 2 - 3, label_y - 11, lw + 6, 13,
-            fill=label_bg, stroke="none", fill_opacity=1,
-        ))
+        label_y = y0 - 4
         g.append(dw.Text(
             step.label, 11, cx, label_y - 4,
             font_family=LABEL_FONT,
@@ -503,18 +491,18 @@ def _render_block(
         fill_opacity=0.4,
     ))
     kind_label = f"[{block.kind}] {block.label}" if block.label else f"[{block.kind}]"
-    # Label in a small filled tab sitting on the top-left corner of the region.
-    tab_w = len(kind_label) * 5.5 + 8
-    tab_h = 13
-    tab_y = y_start - BLOCK_PAD
+    # Tab sits just above the top border of the region, attached to it.
+    tab_w = len(kind_label) * 5.5 + 10
+    tab_h = 14
+    tab_y = y_start - BLOCK_PAD - tab_h + 1  # bottom of tab = top of region border
     g.append(dw.Rectangle(
         min_x, tab_y, tab_w, tab_h,
         fill=ctx.block_stroke, stroke="none", rx=2, ry=2,
-        fill_opacity=0.85,
+        fill_opacity=0.9,
     ))
     g.append(dw.Text(
         kind_label, 9,
-        min_x + 4, tab_y + tab_h / 2,
+        min_x + 5, tab_y + tab_h / 2,
         font_family=ANNOTATION_FONT,
         fill="#FFFFFF",
         dominant_baseline="central",

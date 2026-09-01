@@ -1,43 +1,54 @@
 // topology.ggarch — deployment topology diagrams
 //
-// Demonstrates: nested containers, typed edges (api/stream/control/ipc/data),
-// node lifecycle (init nodes render with dashed border), the Juju colour
-// preset, and selective zoom (collapse/expand).
+// Demonstrates: nested containers, typed edges, node lifecycle (init nodes
+// render with a dashed border), selective zoom (collapse/expand).
+//
+// Colour legend (juju preset):
+//   Orange fill          — Juju software (controller agent, unit agent)
+//   White/orange border  — Charm code
+//   Light/dark blue fill — Workload containers (Pebble + workload services);
+//                          Juju operates these via Pebble but does not own them
+//   Dashed arrow         — Long-lived stream (Juju API websocket)
+//   Solid arrow          — Direct control or API call
+//   Double-headed arrow  — Bidirectional (hook commands: unit agent ↔ charm)
 //
 // Caption for topology-0 (K8s deployment topology):
-//   A running Kubernetes deployment. The Kubernetes cloud schedules both pods
-//   and is the source of truth for their placement. The controller pod runs
-//   the controller agent (jujud); it fetches charms from Charmhub and drives
-//   the unit agent over the Juju API websocket. Each unit pod contains a charm
-//   container (unit agent + charm code) and a workload container (Pebble +
-//   workload services). The charm drives Pebble over the Pebble HTTP API;
-//   Pebble manages the workload services.
+//   A live Kubernetes deployment. The controller pod (left) runs the
+//   controller agent (jujud), which schedules pods via the Kubernetes cloud
+//   API and fetches charms from Charmhub. The dashed arrow is the Juju API
+//   websocket — a long-lived stream over which the controller drives the unit
+//   agent. Inside the unit pod (right): the unit agent (orange) dispatches
+//   the charm (white/orange border), which calls back via hook commands
+//   (bidirectional arrow, Unix socket). The workload container is collapsed
+//   here; see Unit focus for its internal structure.
 //
 // Caption for topology-1 (Unit focus):
-//   The same deployment zoomed in on the unit pod. The controller pod is
-//   collapsed to a single opaque box — present as context, but its internals
-//   are not the focus. The dashed arrow represents the Juju API websocket
-//   connection from the controller agent to the unit agent. Inside the unit
-//   pod the unit agent dispatches the charm, which calls back via hook
-//   commands (Unix socket), drives Pebble over HTTP, and Pebble manages
-//   the workload services.
+//   Zoomed in on the unit pod. The controller pod is collapsed to an opaque
+//   box — context only. Inside the unit pod: the unit agent dispatches the
+//   charm (hook commands flow both ways); the charm drives Pebble over the
+//   Pebble HTTP API; Pebble (light blue) manages the workload services
+//   (blue). Blue = workload containers; Juju operates them via Pebble but
+//   does not own them directly.
 
 model "Juju" {
 
   nodes {
     controller_pod [type: container, label: "Controller pod"] {
-      config_seed [type: juju-software, label: "controller-config-seed",
-                   lifecycle: init]
-      charm_init  [type: juju-software, label: "charm-init",
-                   lifecycle: init]
-      jujud       [type: juju-software, label: "Controller agent\n(jujud)"]
+      init_containers [type: container, label: "Init containers"] {
+        config_seed [type: juju-software, label: "controller-config-seed",
+                     lifecycle: init]
+        charm_init  [type: juju-software, label: "charm-init",
+                     lifecycle: init]
+      }
+      jujud [type: juju-software, label: "Controller agent\n(jujud)"]
     }
-
     unit_pod [type: container, label: "Unit pod"] {
-      unit_agent [type: juju-software, label: "Unit agent"]
-      charm      [type: charm,         label: "Charm"]
-      pebble     [type: pebble,        label: "Pebble"]
-      workload   [type: workload,      label: "Workload"]
+      unit_agent        [type: juju-software, label: "Unit agent"]
+      charm             [type: charm,         label: "Charm"]
+      workload_container [type: container,    label: "Workload"] {
+        pebble   [type: pebble,   label: "Pebble"]
+        workload [type: workload, label: "Workload services"]
+      }
     }
 
     k8s      [type: external, label: "Kubernetes cloud"]
@@ -45,21 +56,18 @@ model "Juju" {
   }
 
   edges {
-    // Controller to cloud and dependencies
-    jujud      -> k8s        [type: control]
-    jujud      -> charmhub   [type: api]
-
-    // Controller to unit (the Juju API websocket)
-    jujud      -> unit_agent [type: stream]
-
-    // Container-level edge — used when controller_pod is collapsed (unit_focus view)
-    controller_pod -> unit_pod [type: event]
-
-    // Unit agent control loop
-    unit_agent -> charm      [type: control]
-    charm      -> unit_agent [type: ipc]
-    charm      -> pebble     [type: api]
-    pebble     -> workload   [type: control]
+    jujud          -> k8s        [type: control]
+    jujud          -> charmhub   [type: api]
+    jujud          -> unit_agent [type: stream]
+    // Container-level edge for unit_focus (when controller_pod collapsed)
+    controller_pod -> unit_pod   [type: event]
+    unit_agent     -> charm             [type: control]
+    charm          -> unit_agent        [type: ipc]
+    // Container-level edge for topology-0 (collapsed workload_container)
+    charm          -> workload_container [type: api]
+    // Fine-grained edges inside workload_container (visible in unit_focus)
+    charm          -> pebble            [type: api]
+    pebble         -> workload          [type: control]
   }
 
   style { extends: juju }
@@ -69,7 +77,7 @@ diagram "K8s deployment topology" from "Juju" {
   select {
     nodes: k8s charmhub controller_pod unit_pod
     edges: type api type stream type control type ipc
-    collapse: config_seed charm_init
+    collapse: init_containers workload_container
   }
   positions {
     controller_pod left-of unit_pod      gap: 80
@@ -83,12 +91,6 @@ diagram "K8s deployment topology" from "Juju" {
     unit_pod       direction: right
     jujud          min-width: 160
   }
-  annotations {
-    box [nodes: "config_seed charm_init",
-         label: "",
-         style: dashed, color: "#888888"]
-    badge [anchor: config_seed, text: "init"]
-  }
 }
 
 diagram "Unit focus" from "Juju" {
@@ -99,5 +101,6 @@ diagram "Unit focus" from "Juju" {
   positions {
     controller_pod left-of unit_pod  gap: 80
     controller_pod align-middle unit_pod
+    unit_pod       direction: right
   }
 }

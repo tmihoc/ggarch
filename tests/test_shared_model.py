@@ -44,10 +44,11 @@ class TestTopologyExample:
     def test_has_init_lifecycle_nodes(self):
         f = _load(self.F)
         m = f.models[0]
-        init_nodes = [n for n in m.nodes
-                      if any(c.lifecycle.value == "init"
-                             for c in n.children)]
-        assert init_nodes, "expected init-lifecycle nodes in controller_pod"
+        # Init nodes may be nested inside a sub-container (init_containers)
+        all_ids = m.all_node_ids()
+        init_nodes = [nid for nid in all_ids
+                      if (n := m.find_node(nid)) and n.lifecycle.value == "init"]
+        assert init_nodes, "expected init-lifecycle nodes in model"
 
 
 class TestCollapseExpandExample:

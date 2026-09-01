@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
-     width="351.20000000000005" height="152.0" viewBox="0 0 351.20000000000005 152.0">
+     width="299.6" height="168.0" viewBox="0 0 299.6 168.0">
 <defs>
 <marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="arrow" refX="8" refY="4.0">
 <path d="M0,0 L8,4.0 L0,8 Z" fill="#555555" />
 </marker>
 </defs>
-<rect x="0" y="0" width="351.20000000000005" height="152.0" fill="#FFFFFF" />
+<rect x="0" y="0" width="299.6" height="168.0" fill="#FFFFFF" />
 <g id="ggarch-nodes">
-<rect x="20.0" y="20.0" width="132.8" height="46.0" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="6" ry="6" />
-<text x="86.4" y="43.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#5A2800" text-anchor="middle" dominant-baseline="central">Controller pod</text>
-<rect x="212.8" y="20.0" width="118.4" height="46.0" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="6" ry="6" />
-<text x="272.0" y="43.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#5A2800" text-anchor="middle" dominant-baseline="central">postgresql/0</text>
-<rect x="212.8" y="86.0" width="111.2" height="46.0" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="6" ry="6" />
-<text x="268.40000000000003" y="109.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#5A2800" text-anchor="middle" dominant-baseline="central">pgbouncer/0</text>
+<rect x="20.0" y="20.0" width="259.6" height="42.0" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="6" ry="6" />
+<text x="149.8" y="41.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#5A2800" text-anchor="middle" dominant-baseline="central">Controller pod</text>
+<rect x="20.0" y="102.0" width="118.4" height="46.0" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="6" ry="6" />
+<text x="79.2" y="125.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#5A2800" text-anchor="middle" dominant-baseline="central">postgresql/0</text>
+<rect x="168.4" y="102.0" width="111.2" height="46.0" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="6" ry="6" />
+<text x="224.0" y="125.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#5A2800" text-anchor="middle" dominant-baseline="central">pgbouncer/0</text>
 </g>
 <g id="ggarch-edges">
-<path d="M 152.8 43.0 L 212.8 43.0" fill="none" stroke="#555555" stroke-width="1" stroke-dasharray="6,3" marker-end="url(#arrow)" />
-<path d="M 152.8 43.0 L 212.8 43.0 L 212.8 109.0" fill="none" stroke="#555555" stroke-width="1" stroke-dasharray="6,3" marker-end="url(#arrow)" />
+<path d="M 149.8 62.0 L 149.8 82.0 L 79.2 82.0 L 79.2 102.0" fill="none" stroke="#555555" stroke-width="1" stroke-dasharray="6,3" marker-end="url(#arrow)" />
+<path d="M 149.8 62.0 L 149.8 82.0 L 224.0 82.0 L 224.0 102.0" fill="none" stroke="#555555" stroke-width="1" stroke-dasharray="6,3" marker-end="url(#arrow)" />
 </g>
 <g id="ggarch-annotations"></g>
 </svg>
