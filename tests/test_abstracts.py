@@ -208,9 +208,9 @@ class TestJujuAbstracts:
         validate(f)
         m = f.models[0]
         amap = m.abstractions_map()
-        # controller_pod should abstract controller
+        # both controller_pod (K8s) and controller_machine abstract controller
         assert "controller" in amap
-        assert amap["controller"] == "controller_pod"
+        assert amap["controller"] in ("controller_pod", "controller_machine")
 
     def test_controller_abstract_id_is_valid(self):
         from pathlib import Path
