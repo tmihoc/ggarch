@@ -244,6 +244,177 @@ on naming convention to keep them in sync. Structurizr's C4 hierarchy
 levels structurally but cannot express that two separately declared elements
 at different levels are the same thing.
 
+## Feature parity
+
+The research across Mermaid, D2, Graphviz, PlantUML, Structurizr, Ilograph,
+Pikchr, Nomnoml, C4-PlantUML, DBML, blockdiag/packetdiag, and Kroki surfaces
+a large raw gap list. Most items either belong to unrelated visualisation
+families (Gantt, git graph, kanban, mindmap, BPMN, packet/bit fields,
+mathematical notation) or are already covered by ggarch's existing design.
+
+The filter is the question asked before every feature: **how can we update a
+design principle so this capability falls out, rather than bolting it on ad
+hoc?** A feature that requires its own principle is the wrong feature; a
+feature that falls out of a principle generalisation is a good feature.
+
+Four genuine gaps survive this filter. Each maps to a design-principle
+update, not a new special case.
+
+---
+
+### Gap 1: node structure (ER, class diagrams, SQL tables, port anchoring)
+
+**What competing tools can express that ggarch cannot:**
+D2's `sql_table` shape, DBML's column/PK/FK/index model, Graphviz record
+nodes with per-field ports, Nomnoml's class compartments, PlantUML class
+diagrams — all express a node whose *interior is structured data*: named
+fields with types, key markers (PK/FK/UK), visibility modifiers
+(public/private/protected), or method signatures. Edges can attach to
+specific fields/rows rather than to the node as a whole.
+
+**The design-principle update:**
+The current principle is: *nodes have an id, a label, a type, a lifecycle,
+and a cardinality.* Generalise to: **a node may also declare named fields,
+and a field is a first-class model entity with its own id, label, type, and
+optional attributes.** Everything else follows:
+
+- A node with fields and `type: record` renders as a table (rows of fields).
+- A node with fields and `type: class` renders as a UML compartment box
+  (name / fields / methods).
+- An edge endpoint can be qualified as `node.field_id` to anchor at a
+  specific field rather than the node centroid.
+- Port-level connection anchoring (currently missing) falls out of
+  field-qualified endpoints — no new concept needed.
+- The existing `type` system already maps node types to shapes; adding
+  `record` and `class` rendering modes for field-bearing nodes is a style
+  concern, not a grammar change.
+
+**What this does not change:** the model-completeness rule, the declare-once
+principle, the view-projection rule. Fields are declared in the `nodes`
+block, not in views. A view that needs to show two specific tables with an
+FK arrow between a specific column in each is expressed as a diagram that
+selects those nodes; the field-qualified edge endpoints are declared in the
+model's `edges` block.
+
+---
+
+### Gap 2: richer behaviour steps (state machines, guards, triggers)
+
+**What competing tools can express that ggarch cannot:**
+PlantUML and Mermaid state diagrams — composite/nested states, guarded
+transitions (`[guard] / action`), entry/exit/do handlers, choice/fork/join
+pseudostates, concurrency separators. A state machine is semantically
+different from a sequence diagram: steps are not ordered in time but
+triggered by events under conditions.
+
+**The design-principle update:**
+The current principle is: *a behaviour is a named sequence of steps, rendered
+as a sequence diagram.* Generalise to: **a behaviour is a named interaction
+graph of steps; a view chooses how to render it.** A `sequence` view renders
+it as a time-ordered sequence diagram (existing). A `state` view renders it
+as a state transition diagram.
+
+This falls out cleanly because:
+
+- Behaviour steps already carry source, target, kind (`call`/`return`/
+  `async`/`self`), and label. A `guard` attribute on a step (`[condition]`)
+  and a `trigger` attribute (`on: "event"`) are additive — they do not break
+  existing sequence rendering (steps without guards/triggers render as
+  before).
+- Composite states are just nested behaviours — the existing containment
+  model for nodes extends naturally to behaviour steps.
+- A `state` view selects a behaviour and renders each `self` step as a
+  state node, each directed step as a transition edge labelled with
+  `trigger / guard / action`. The model declares the same entities; the
+  view renderer changes.
+- `entry`/`exit` handlers are behaviour steps of kind `self` targeting a
+  specific state node — no new grammar needed.
+
+**Existing behaviour grammar that already works:** `loop`, `alt`/`else`,
+`par` — these map to corresponding state-diagram constructs (loop regions,
+choice pseudostates, concurrent regions) without change.
+
+---
+
+### Gap 3: structured metadata on model entities
+
+**What competing tools can express that ggarch cannot:**
+Structurizr properties/perspectives/url on elements and relationships.
+Mermaid kanban's `@{ticket, priority, assigned}` per task with
+`ticketBaseUrl` → clickable links. C4-PlantUML's `AddElementTag` with style
++ legend auto-generation. Ilograph's `subtitle`/`description` (markdown).
+
+All of these are forms of the same thing: **arbitrary key-value metadata
+attached to model entities, where that metadata can drive rendering, linking,
+and querying.**
+
+**The design-principle update:**
+The current principle is: *the model is complete and queryable; the JSON
+export is a first-class output.* Add: **any model entity — node, edge, or
+behaviour step — may carry a `properties` map of arbitrary key-value pairs
+and an optional `url`.** Everything follows:
+
+- Properties are declared in the model, not views. They are first-class
+  model data, visible in the JSON export, queryable by agents.
+- `url` on a node or edge makes the rendered element clickable in SVG output
+  (`<a href="...">` wrapper). No new concept — SVG `<a>` already exists.
+- A legend annotation type (`annotations { legend {} }`) renders the node
+  types and edge types from the style block as a visual key. This falls out
+  of the existing style + annotations layers — the legend is a projection of
+  style data, not new information.
+- Structurizr-style perspectives (named sets of annotations viewing the same
+  diagram through a different lens) are already expressible as multiple
+  annotation blocks in different views. No change needed.
+
+---
+
+### Gap 4: deployment environments as model data
+
+**What competing tools can express that ggarch cannot:**
+Structurizr's `deploymentEnvironment` / `deploymentNode` / `instanceOf` /
+`healthCheck` — deployment topology is first-class model data, not a diagram
+convention. The same software system can be deployed differently in
+production vs staging, and the model knows both.
+
+**The design-principle update:**
+This is already *specced* in ggarch — the grammar has `select { environment:
+<id> }` and the `abstracts:` relationship partially addresses it. The gap is
+that `environment` is not yet implemented as a first-class model concept.
+
+Generalise the existing principle: **the `abstracts:` relationship is not
+just a zoom-level bridge — it is the general mechanism for expressing that
+one node is a concrete deployment of another in a specific context.** An
+`environment` block in the model declares which nodes are present and which
+abstract nodes they realise, *per environment*. A view that selects
+`environment: kubernetes` automatically resolves abstract ids to their
+Kubernetes-specific concrete nodes. This extends `abstracts:` from a
+node-level attribute to a model-level grouping — the same principle,
+applied at a larger scope.
+
+---
+
+### What is explicitly out of scope
+
+The following gap categories from the research are **not** part of ggarch's
+scope, and adding them would violate the Lightweight by design and Secure by
+design principles:
+
+- **Gantt / timeline / scheduling** — time-axis diagrams with date arithmetic
+  and dependency scheduling. A separate tool family; adding it would require
+  a date/arithmetic DSL and a chart layout engine.
+- **Git graphs** — commit/branch topology. Domain-specific to version control,
+  not architecture.
+- **Mindmaps / WBS / kanban** — project management visualisations.
+- **Mathematical / EBNF / regex notation** — formal language rendering
+  requiring a separate renderer (LaTeX/AsciiMath). Violates the no-binary-
+  dependencies principle.
+- **Packet / bit-field wire formats** — byte-level layout. A separate
+  problem domain.
+- **Interactive walkthroughs / progressive disclosure** — Ilograph's camera
+  system. Incompatible with static SVG output. A future concern for an
+  interactive renderer.
+- **Programmatic model generation** (`!script`, `!plugin`) — violates the
+  no-code-execution principle.
 
 ## Capability reference
 
