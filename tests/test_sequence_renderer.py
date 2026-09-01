@@ -224,6 +224,151 @@ sequence "S" from "M" {
         assert "<svg" in svg
 
 
+PAR_SRC = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+    c [type: t, label: "C"]
+  }
+  edges {
+    a -> b [type: api, label: "x"]
+    a -> c [type: api, label: "y"]
+  }
+  behaviours {
+    behaviour "parallel" {
+      par {
+        a -> b: call "notify B"
+        a -> c: call "notify C"
+      }
+    }
+  }
+}
+sequence "S" from "M" {
+  select { behaviour: "parallel" }
+}
+"""
+
+OPT_SRC = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+  }
+  edges {
+    a -> b [type: api, label: "x"]
+  }
+  behaviours {
+    behaviour "optional" {
+      opt "if condition" {
+        a -> b: call "maybe"
+      }
+    }
+  }
+}
+sequence "S" from "M" {
+  select { behaviour: "optional" }
+}
+"""
+
+ACTIVATION_SRC = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+  }
+  edges {
+    a -> b [type: api, label: "x"]
+    b -> a [type: api, label: "y"]
+  }
+  behaviours {
+    behaviour "req" {
+      a -> b: call "request"
+      b -> a: return "response"
+    }
+  }
+}
+sequence "S" from "M" {
+  select { behaviour: "req" }
+}
+"""
+
+
+class TestParBlock:
+    def test_par_renders(self):
+        svg = pipeline(PAR_SRC)
+        assert "<svg" in svg
+        assert "notify B" in svg
+        assert "notify C" in svg
+
+    def test_par_label_present(self):
+        svg = pipeline(PAR_SRC)
+        assert "[par]" in svg
+
+    def test_par_uses_distinct_color(self):
+        # par uses green tint, not the blue used by loop/alt
+        svg = pipeline(PAR_SRC)
+        assert "#66AA66" in svg  # par_stroke light mode
+
+    def test_par_row_count(self):
+        from ggarch.model import Block
+        f = __import__("ggarch").parse(PAR_SRC)
+        __import__("ggarch").validate(f)
+        b = f.models[0].find_behaviour("parallel")
+        # 2 steps in one branch — no separator rows since only one branch
+        assert _count_rows(b.steps) == 2
+
+
+class TestOptBlock:
+    def test_opt_renders(self):
+        svg = pipeline(OPT_SRC)
+        assert "<svg" in svg
+        assert "maybe" in svg
+
+    def test_opt_label_present(self):
+        svg = pipeline(OPT_SRC)
+        assert "[opt]" in svg
+        assert "if condition" in svg
+
+    def test_opt_has_shaded_region(self):
+        svg = pipeline(OPT_SRC)
+        # opt uses the same block fill as loop/alt
+        assert "fill-opacity" in svg
+
+
+class TestActivationBars:
+    def test_activation_bar_rendered_on_call_return(self):
+        svg = pipeline(ACTIVATION_SRC)
+        assert "<svg" in svg
+        # Activation bar is a filled rectangle; distinct fill from block regions
+        assert "#CCCCEE" in svg  # light mode bar fill
+
+    def test_no_activation_bar_without_return(self):
+        # A call with no matching return should not draw a bar (stack not closed)
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+  }
+  edges { a -> b [type: api, label: "x"] }
+  behaviours {
+    behaviour "async" {
+      a -> b: async "fire and forget"
+    }
+  }
+}
+sequence "S" from "M" { select { behaviour: "async" } }
+"""
+        svg = pipeline(src)
+        # No activation bar fill colour should appear
+        assert "#CCCCEE" not in svg
+
+    def test_activation_bar_dark_mode(self):
+        svg = pipeline(ACTIVATION_SRC, dark=True)
+        assert "#334466" in svg  # dark mode bar fill
+
+
 class TestJujuSequence:
     def test_hook_execution_renders(self):
         from pathlib import Path

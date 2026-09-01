@@ -36,6 +36,7 @@ behaviour_step: step_line   -> bstep
               | loop_block  -> bstep
               | alt_block   -> bstep
               | par_block   -> bstep
+              | opt_block   -> bstep
 
 step_line: ID "->" ID ":" STEP_KIND STRING attrs_inline?
          | ID "->" ID ":" STEP_KIND         attrs_inline?
@@ -49,6 +50,8 @@ alt_block: "alt" STRING "{" behaviour_step* "}" else_clause*
 else_clause: "else" STRING "{" behaviour_step* "}"
 
 par_block: "par" "{" behaviour_step* "}"
+
+opt_block: "opt" STRING "{" behaviour_step* "}"
 
 style_block: "style" "{" style_item* "}"
 

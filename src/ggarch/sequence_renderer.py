@@ -40,11 +40,12 @@ LIFELINE_WIDTH     = 120   # px — width of each lifeline column
 LIFELINE_HEADER_H  = 40    # px — height of lifeline header box
 LIFELINE_SPACING   = 40    # px — horizontal gap between lifeline columns
 STEP_HEIGHT        = 36    # px — vertical space per step row
-BLOCK_PAD          = 8     # px — padding inside loop/alt regions
+BLOCK_PAD          = 8     # px — padding inside loop/alt/opt/par regions
 MARGIN_TOP         = 20    # px
 MARGIN_SIDE        = 20    # px
 MARGIN_BOTTOM      = 30    # px
 SELF_LOOP_W        = 20    # px — width of self-call loop
+ACTIVATION_W       = 10    # px — width of activation bar on lifeline
 
 
 # ---------------------------------------------------------------------------
@@ -95,9 +96,16 @@ def _count_rows(steps) -> int:
         if isinstance(item, Step):
             count += 1
         elif isinstance(item, Block):
-            count += _count_rows(item.body)
-            for _, branch in item.else_branches:
-                count += _count_rows(branch) + 1  # +1 for else label row
+            if item.kind == "par":
+                # par: each branch's rows are stacked sequentially, plus a
+                # separator row between branches.
+                count += _count_rows(item.body)
+                for _, branch in item.else_branches:
+                    count += _count_rows(branch) + 1  # +1 for separator
+            else:
+                count += _count_rows(item.body)
+                for _, branch in item.else_branches:
+                    count += _count_rows(branch) + 1  # +1 for else label row
     return count
 
 
@@ -197,6 +205,9 @@ def render_sequence(
         ))
 
     # Steps — rendered top-down, tracking current y offset.
+    # bars_group is appended to drawing first so activation bars appear
+    # behind the arrow lines.
+    bars_group = dw.Group()
     ctx = _RenderCtx(
         col_cx=col_cx,
         dark=dark,
@@ -204,6 +215,8 @@ def render_sequence(
         arrow_color="#AAAAAA" if dark else "#555555",
         block_fill=("#2A2A40" if dark else "#F0F4FF"),
         block_stroke=("#5555AA" if dark else "#8888CC"),
+        bars_group=bars_group,
+        activation_stack=[],
     )
     y_start = MARGIN_TOP + LIFELINE_HEADER_H + STEP_HEIGHT / 2
     _render_steps(content, behaviour.steps, y_start, ctx)
@@ -241,6 +254,7 @@ def render_sequence(
             text_anchor="middle",
             dominant_baseline="central",
         ))
+    content.append(bars_group)
     drawing.append(content)
     return drawing.as_svg()
 
@@ -290,6 +304,8 @@ class _RenderCtx:
     arrow_color: str
     block_fill: str
     block_stroke: str
+    bars_group: dw.Group         # group for activation bars (drawn behind arrows)
+    activation_stack: list       # [(lifeline_id, open_y), ...]
 
 
 # ---------------------------------------------------------------------------
@@ -325,9 +341,15 @@ def _render_step(
         return y + STEP_HEIGHT  # skip — participant not in layout
 
     if step.source == step.target:
-        # Self-call: small loop on the right.
         _render_self_step(g, step, src_cx, y, ctx)
+    elif step.kind == StepKind.CALL:
+        # Push activation bar onto the target lifeline.
+        ctx.activation_stack.append((step.target, y))
+        _render_arrow(g, src_cx, tgt_cx, y, step.label, ctx,
+                      dashed=False, arrowhead="seq-arrow")
     elif step.kind == StepKind.RETURN:
+        # Close the matching activation bar if one is open.
+        _close_activation(ctx, step.source, y)
         _render_arrow(g, src_cx, tgt_cx, y, step.label, ctx,
                       dashed=True, arrowhead="seq-arrow")
     elif step.kind == StepKind.ASYNC:
@@ -338,6 +360,30 @@ def _render_step(
                       dashed=False, arrowhead="seq-arrow")
 
     return y + STEP_HEIGHT
+
+
+def _close_activation(ctx: _RenderCtx, lifeline_id: str, close_y: float) -> None:
+    """Draw an activation bar if there is an open call on lifeline_id."""
+    # Search the stack from the top for the most recent open call to this lifeline.
+    for i in range(len(ctx.activation_stack) - 1, -1, -1):
+        lid, open_y = ctx.activation_stack[i]
+        if lid == lifeline_id:
+            ctx.activation_stack.pop(i)
+            cx = ctx.col_cx.get(lifeline_id)
+            if cx is None:
+                return
+            bar_x = cx - ACTIVATION_W / 2
+            bar_y = open_y
+            bar_h = close_y - open_y
+            if bar_h < 4:
+                bar_h = 4
+            bar_fill  = "#CCCCEE" if not ctx.dark else "#334466"
+            bar_stroke = ctx.block_stroke
+            ctx.bars_group.append(dw.Rectangle(
+                bar_x, bar_y, ACTIVATION_W, bar_h,
+                fill=bar_fill, stroke=bar_stroke, stroke_width=1,
+            ))
+            return
 
 
 def _render_arrow(
@@ -426,20 +472,21 @@ def _render_block(
     y_start: float,
     ctx: _RenderCtx,
 ) -> float:
-    """Render a loop/alt/par block with a shaded region and corner label."""
-    # Measure how many rows the block body occupies.
+    """Render a loop/alt/opt/par block."""
+    if block.kind == "par":
+        return _render_par_block(g, block, y_start, ctx)
+
+    # loop / alt / opt — rectangular shaded region.
     body_rows = _count_rows(block.body)
     else_rows = sum(_count_rows(b) + 1 for _, b in block.else_branches)
     total_rows = body_rows + else_rows
     block_h = total_rows * STEP_HEIGHT + BLOCK_PAD * 2
 
-    # Find leftmost and rightmost lifeline x.
     all_cx = list(ctx.col_cx.values())
     min_x = min(all_cx) - LIFELINE_WIDTH / 2 - 4
     max_x = max(all_cx) + LIFELINE_WIDTH / 2 + 4
     block_w = max_x - min_x
 
-    # Background region.
     g.append(dw.Rectangle(
         min_x, y_start - BLOCK_PAD,
         block_w, block_h,
@@ -449,7 +496,6 @@ def _render_block(
         rx=4, ry=4,
         fill_opacity=0.4,
     ))
-    # Corner label: kind + condition.
     kind_label = f"[{block.kind}] {block.label}" if block.label else f"[{block.kind}]"
     g.append(dw.Text(
         kind_label, 10,
@@ -462,9 +508,7 @@ def _render_block(
     y = y_start
     y = _render_steps(g, block.body, y, ctx)
 
-    # Else branches.
     for else_label, else_steps in block.else_branches:
-        # Divider line.
         g.append(dw.Line(
             min_x, y, max_x, y,
             stroke=ctx.block_stroke, stroke_width=1,
@@ -479,5 +523,61 @@ def _render_block(
         ))
         y += STEP_HEIGHT
         y = _render_steps(g, else_steps, y, ctx)
+
+    return y
+
+
+def _render_par_block(
+    g: dw.Group,
+    block: Block,
+    y_start: float,
+    ctx: _RenderCtx,
+) -> float:
+    """Render a par block as stacked parallel lanes separated by dashed lines."""
+    # Collect all branches: the main body counts as branch 0.
+    # (par has no else_branches in the current model; body holds all steps
+    # between the braces. A future multi-branch par would use else_branches.)
+    branches: list[list] = [block.body]
+    for _, b in block.else_branches:
+        branches.append(b)
+
+    total_rows = sum(_count_rows(br) for br in branches)
+    total_rows += len(branches) - 1  # separator rows between branches
+    block_h = total_rows * STEP_HEIGHT + BLOCK_PAD * 2
+
+    all_cx = list(ctx.col_cx.values())
+    min_x = min(all_cx) - LIFELINE_WIDTH / 2 - 4
+    max_x = max(all_cx) + LIFELINE_WIDTH / 2 + 4
+    block_w = max_x - min_x
+
+    # Outer shaded region.
+    par_fill   = "#F0FFF0" if not ctx.dark else "#1A2A1A"
+    par_stroke = "#66AA66" if not ctx.dark else "#559955"
+    g.append(dw.Rectangle(
+        min_x, y_start - BLOCK_PAD,
+        block_w, block_h,
+        fill=par_fill, stroke=par_stroke,
+        stroke_width=1, rx=4, ry=4,
+        fill_opacity=0.4,
+    ))
+    g.append(dw.Text(
+        "[par]", 10,
+        min_x + 6, y_start - BLOCK_PAD + 4,
+        font_family=ANNOTATION_FONT,
+        fill=par_stroke,
+        dominant_baseline="hanging",
+    ))
+
+    y = y_start
+    for i, branch in enumerate(branches):
+        y = _render_steps(g, branch, y, ctx)
+        if i < len(branches) - 1:
+            # Dashed separator between lanes.
+            g.append(dw.Line(
+                min_x, y, max_x, y,
+                stroke=par_stroke, stroke_width=1,
+                stroke_dasharray="4,3",
+            ))
+            y += STEP_HEIGHT
 
     return y

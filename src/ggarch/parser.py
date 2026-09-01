@@ -252,6 +252,9 @@ class _GgarchTransformer(Transformer):
     def par_block(self, *steps) -> Block:
         return Block(kind="par", label="", body=list(steps))
 
+    def opt_block(self, label, *steps) -> Block:
+        return Block(kind="opt", label=_str(label), body=list(steps))
+
     # ------------------------------------------------------------------
     # Style
     # ------------------------------------------------------------------
