@@ -221,20 +221,29 @@ def _effective_rect(node: SolvedNode) -> Rect:
     return node.rect
 
 
-def _field_anchor(node: SolvedNode, field_id: str, going_right: bool) -> Point:
+def _field_anchor(
+    node: SolvedNode,
+    field_id: str,
+    face: str,
+) -> Point:
     """Return the anchor point for a field-qualified edge endpoint.
 
-    Anchors on the left face if going_right is False (target), right face
-    if going_right is True (source going rightward).  The y is the vertical
-    centre of the field row.
+    face: "right" | "left" | "top" | "bottom"
+    The y (for left/right) or x (for top/bottom) is centred on the field row.
     """
     from ggarch.layout import FIELD_HEADER_H, FIELD_ROW_H
     field_index = next(
         (i for i, f in enumerate(node.fields) if f.id == field_id), 0
     )
     field_y = node.rect.y + FIELD_HEADER_H + field_index * FIELD_ROW_H + FIELD_ROW_H / 2
-    face_x = node.rect.x2 if going_right else node.rect.x
-    return Point(face_x, field_y)
+    if face == "right":
+        return Point(node.rect.x2, field_y)
+    elif face == "left":
+        return Point(node.rect.x, field_y)
+    elif face == "top":
+        return Point(node.rect.cx, node.rect.y)
+    else:  # bottom
+        return Point(node.rect.cx, node.rect.y2)
 
 
 def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
@@ -250,19 +259,30 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
         if select.edge_types and edge.type not in select.edge_types:
             continue
 
-        # Field-qualified endpoints override face anchoring.
+        # Field-qualified endpoints: choose face based on dominant axis,
+        # same as _route_edge, so arrows don't cross the node boxes.
         if edge.source_field or edge.target_field:
             src_rect = _effective_rect(src_node)
             tgt_rect = _effective_rect(tgt_node)
-            going_right = tgt_rect.cx >= src_rect.cx
-            if edge.source_field:
-                src_pt = _field_anchor(src_node, edge.source_field, going_right)
+            dx = abs(tgt_rect.cx - src_rect.cx)
+            dy = abs(tgt_rect.cy - src_rect.cy)
+            if dx >= dy:
+                # Horizontal dominant: left/right faces.
+                going_right = tgt_rect.cx >= src_rect.cx
+                src_face = "right" if going_right else "left"
+                tgt_face = "left"  if going_right else "right"
             else:
-                src_pt = _face_point(src_rect, "right" if going_right else "left")
-            if edge.target_field:
-                tgt_pt = _field_anchor(tgt_node, edge.target_field, not going_right)
-            else:
-                tgt_pt = _face_point(tgt_rect, "left" if going_right else "right")
+                # Vertical dominant: top/bottom faces.
+                going_down = tgt_rect.cy >= src_rect.cy
+                src_face = "bottom" if going_down else "top"
+                tgt_face = "top"    if going_down else "bottom"
+
+            src_pt = (_field_anchor(src_node, edge.source_field, src_face)
+                      if edge.source_field
+                      else _face_point(src_rect, src_face))
+            tgt_pt = (_field_anchor(tgt_node, edge.target_field, tgt_face)
+                      if edge.target_field
+                      else _face_point(tgt_rect, tgt_face))
             points = [src_pt, tgt_pt]
         else:
             points = _route_edge(_effective_rect(src_node), _effective_rect(tgt_node))

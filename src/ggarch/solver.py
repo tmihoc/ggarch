@@ -105,6 +105,19 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     # Add minimum-size and non-negativity constraints.
     _add_min_size_constraints(solver, selected, vars_by_id, diagram.select)
 
+    # Add min-size for instance vars (same size as their type node).
+    for spec in diagram.select.instances:
+        type_node = model.find_node(spec.type_id)
+        if type_node and spec.instance_id in vars_by_id:
+            iv = vars_by_id[spec.instance_id]
+            solver.addConstraint((iv.x >= 0) | "required")
+            solver.addConstraint((iv.y >= 0) | "required")
+            solver.addConstraint((iv.w >= MIN_NODE_WIDTH)  | "required")
+            solver.addConstraint((iv.h >= MIN_NODE_HEIGHT) | "required")
+            mw, mh = min_size(spec.label or type_node.label, bool(type_node.children))
+            solver.addConstraint((iv.w >= mw) | "strong")
+            solver.addConstraint((iv.h >= mh) | "strong")
+
     # Add containment constraints (parent must contain all children).
     _add_containment_constraints(solver, selected, vars_by_id, diagram.select)
 
@@ -461,10 +474,29 @@ def _build_layout(
     model: Model,
     select: SelectClause,
 ) -> SolvedLayout:
+    # Exclude type nodes that have active instances — the instances replace them.
+    instanced_type_ids = {spec.type_id for spec in select.instances}
     solved_nodes = [
         _build_solved_node(node, vars_by_id, model, select)
         for node in nodes
+        if node.id not in instanced_type_ids
     ]
+
+    # Build SolvedNode entries for view-local instances.
+    for spec in select.instances:
+        if spec.instance_id in vars_by_id:
+            type_node = model.find_node(spec.type_id)
+            iv = vars_by_id[spec.instance_id]
+            rect = Rect(iv.x.value(), iv.y.value(), iv.w.value(), iv.h.value())
+            solved_nodes.append(SolvedNode(
+                id=spec.instance_id,
+                rect=rect,
+                label=spec.label or (type_node.label if type_node else spec.instance_id),
+                type=type_node.type if type_node else "default",
+                lifecycle=type_node.lifecycle.value if type_node else "persistent",
+                cardinality="",
+                fields=[],
+            ))
 
     # Compute overall bounding box.
     if solved_nodes:

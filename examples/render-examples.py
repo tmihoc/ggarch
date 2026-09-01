@@ -25,29 +25,42 @@ def slug(name: str) -> str:
 
 
 def render_file(src_path: pathlib.Path) -> list[str]:
-    """Render all views in src_path; return list of written filenames."""
+    """Render all views in src_path; return list of written filenames.
+
+    SVG names: <filestem>-light.svg / <filestem>-dark.svg when there is
+    exactly one view; <filestem>-<N>-light.svg when there are multiple.
+    """
     src = src_path.read_text(encoding="utf-8")
     f = parse(src)
     validate(f)
     written = []
+    stem = src_path.stem  # e.g. "er-diagram", "sequence"
+
+    total_views = len(f.diagrams) + len(f.sequences)
+    use_index = total_views > 1
+    idx = 0
 
     for d in f.diagrams:
         m = f.get_model(d.model_name)
         layout = solve(d, m)
         routed = route(layout, m, d.select)
+        prefix = f"{stem}-{idx}" if use_index else stem
         for suffix, dark in (("light", False), ("dark", True)):
             svg = render(routed, m, d, dark=dark)
-            out = src_path.with_name(f"{slug(d.name)}-{suffix}.svg")
+            out = src_path.with_name(f"{prefix}-{suffix}.svg")
             out.write_text(svg, encoding="utf-8")
             written.append(out.name)
+        idx += 1
 
     for s in f.sequences:
         m = f.get_model(s.model_name)
+        prefix = f"{stem}-{idx}" if use_index else stem
         for suffix, dark in (("light", False), ("dark", True)):
             svg = render_sequence(s, m, dark=dark)
-            out = src_path.with_name(f"{slug(s.name)}-{suffix}.svg")
+            out = src_path.with_name(f"{prefix}-{suffix}.svg")
             out.write_text(svg, encoding="utf-8")
             written.append(out.name)
+        idx += 1
 
     return written
 

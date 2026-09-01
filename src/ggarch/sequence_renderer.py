@@ -431,13 +431,13 @@ def _render_self_step(
     y: float,
     ctx: _RenderCtx,
 ) -> None:
-    """Self-call: compact rounded loop, label to the right of the loop."""
+    """Self-call: compact rounded loop on the right; label above, centred on cx."""
     r   = 5        # corner radius
     w   = SELF_LOOP_W
-    h   = r * 2 + 4   # just enough for two curves — tight, not tall
+    h   = r * 2 + 4
     x0  = cx
     x1b = cx + w
-    y0  = y - h / 2   # centre the loop vertically on y
+    y0  = y - h / 2
     y1b = y0 + h
     d = (
         f"M {x0},{y0} "
@@ -455,13 +455,19 @@ def _render_self_step(
         marker_end="url(#seq-arrow)",
     ))
     if step.label:
-        # Label to the right of the loop, vertically centred.
-        lx = x1b + 4
+        # Label above the loop, centred on the lifeline.
+        label_bg = "#1E1E2E" if ctx.dark else "#FFFFFF"
+        lw = len(step.label) * 6.5
+        label_y = y0 - 4  # 4px above the top of the loop
+        g.append(dw.Rectangle(
+            cx - lw / 2 - 3, label_y - 11, lw + 6, 13,
+            fill=label_bg, stroke="none", fill_opacity=1,
+        ))
         g.append(dw.Text(
-            step.label, 11, lx, y,
+            step.label, 11, cx, label_y - 4,
             font_family=LABEL_FONT,
             fill=ctx.text_color,
-            text_anchor="start",
+            text_anchor="middle",
             dominant_baseline="central",
         ))
 

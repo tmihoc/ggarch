@@ -398,7 +398,11 @@ class _GgarchTransformer(Transformer):
     def select_participants(self, id_list) -> tuple: return ("participants", id_list)
 
     def select_instances(self, type_id, *specs) -> tuple:
-        return ("instances", list(specs))
+        tid = _str(type_id)
+        # Backfill type_id into each spec (instance_spec can't see it directly).
+        filled = [InstanceSpec(type_id=tid, instance_id=s.instance_id, label=s.label)
+                  for s in specs]
+        return ("instances", filled)
 
     def instance_spec(self, id_token, label_token) -> InstanceSpec:
         return InstanceSpec(type_id="", instance_id=_str(id_token),

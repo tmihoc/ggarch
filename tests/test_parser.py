@@ -512,7 +512,7 @@ class TestJujuExample:
         f = parse_valid(src)
         m = f.models[0]
         node_ids = m.all_node_ids()
-        for expected in ("user", "client", "controller_pod", "unit_pod",
+        for expected in ("controller_pod", "unit_pod",
                          "unit_agent", "charm", "workload", "pebble",
                          "dqlite", "config_seed", "charm_init"):
             assert expected in node_ids, f"expected node {expected!r} not found"
