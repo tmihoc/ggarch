@@ -206,22 +206,187 @@ def _emit_image(
     relfn: str,
     outfn: str,
     alt: str,
-    css_class: str,
-    lightbox_group: str,
+    theme_class: str,
 ) -> None:
-    """Emit a lightbox-wrapped <img> inside a light/dark div."""
+    """Emit an <img> inside a theme-class wrapper div. No lightbox anchor."""
     self.builder.images[outfn] = os.path.basename(outfn)
     uri = posixpath.join(
         self.builder.imgpath,
         urllib.parse.quote(self.builder.images[outfn]),
     )
     self.body.append(
-        f'<div class="{css_class}">'
-        f'<a href="{uri}" data-lightbox="{lightbox_group}">'
-        f'<img src="{uri}" alt="{alt}" style="width:100%;" />'
-        f'</a>'
+        f'<div class="{theme_class}">'
+        f'<img class="ggarch-img" src="{uri}" alt="{alt}" style="width:100%;" />'
         f'</div>\n'
     )
+
+
+# ---------------------------------------------------------------------------
+# Per-page asset injection (CSS + JS, emitted once per page)
+# ---------------------------------------------------------------------------
+
+_GGARCH_CSS = """\
+.ggarch-diagram {
+    position: relative;
+}
+.ggarch-expand-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(0, 0, 0, 0.25);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    opacity: 0.55;
+    transition: opacity 0.15s, box-shadow 0.15s;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    z-index: 10;
+}
+.ggarch-expand-btn:hover { opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+[data-theme="dark"] .ggarch-expand-btn,
+.dark .ggarch-expand-btn {
+    background: rgba(40, 40, 40, 0.92);
+    border-color: rgba(255,255,255,0.2);
+    color: #eee;
+}
+.ggarch-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+}
+.ggarch-modal.active { display: flex; }
+.ggarch-modal-inner {
+    position: relative;
+    background: #fff;
+    border-radius: 6px;
+    padding: 12px;
+    max-width: 92vw;
+    max-height: 92vh;
+    overflow: auto;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+}
+[data-theme="dark"] .ggarch-modal-inner,
+.dark .ggarch-modal-inner { background: #1e1e2e; }
+.ggarch-modal-inner img { display: block; max-width: 85vw; max-height: 82vh; width: auto; height: auto; }
+.ggarch-close-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 28px;
+    height: 28px;
+    background: rgba(255,255,255,0.92);
+    border: 1px solid rgba(0,0,0,0.25);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    z-index: 10000;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+.ggarch-close-btn:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+[data-theme="dark"] .ggarch-close-btn,
+.dark .ggarch-close-btn { background: rgba(40,40,40,0.92); border-color: rgba(255,255,255,0.2); color: #eee; }
+"""
+
+_GGARCH_JS = """\
+(function () {
+  if (window._ggarchAssetsAttached) return;
+  window._ggarchAssetsAttached = true;
+
+  var EXPAND_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9,1 13,1 13,5"/><polyline points="5,13 1,13 1,9"/><polyline points="13,1 8,6"/><polyline points="1,13 6,8"/></svg>';
+  var CLOSE_ICON  = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg>';
+
+  // --- modal singleton ---
+  var modal = document.createElement('div');
+  modal.className = 'ggarch-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'Diagram fullscreen view');
+  var inner = document.createElement('div');
+  inner.className = 'ggarch-modal-inner';
+  var closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'ggarch-close-btn';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.innerHTML = CLOSE_ICON;
+  inner.appendChild(closeBtn);
+  modal.appendChild(inner);
+  document.body.appendChild(modal);
+
+  function close() {
+    modal.classList.remove('active');
+    var old = inner.querySelector('.ggarch-modal-img');
+    if (old) inner.removeChild(old);
+    document.body.style.overflow = '';
+  }
+  closeBtn.addEventListener('click', close);
+  modal.addEventListener('click', function(e) { if (e.target === modal) close(); });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && modal.classList.contains('active')) close();
+  });
+
+  // --- attach expand buttons ---
+  function attachButtons() {
+    document.querySelectorAll('.ggarch-diagram').forEach(function(wrap) {
+      if (wrap.querySelector('.ggarch-expand-btn')) return; // idempotent
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ggarch-expand-btn';
+      btn.setAttribute('aria-label', 'View diagram fullscreen');
+      btn.innerHTML = EXPAND_ICON;
+      btn.addEventListener('click', function() {
+        var imgs = wrap.querySelectorAll('.ggarch-img');
+        var src = '', alt = '';
+        imgs.forEach(function(img) {
+          var cs = window.getComputedStyle(img.parentElement);
+          if (cs.display !== 'none') { src = img.src; alt = img.alt; }
+        });
+        if (!src && imgs.length) { src = imgs[0].src; alt = imgs[0].alt; }
+        var clone = document.createElement('img');
+        clone.className = 'ggarch-modal-img';
+        clone.src = src;
+        clone.alt = alt;
+        inner.appendChild(clone);
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+      });
+      wrap.appendChild(btn);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachButtons);
+  } else {
+    attachButtons();
+  }
+})();
+"""
+
+
+def _ensure_ggarch_assets(self: object) -> None:
+    """Inject CSS + JS into the page body exactly once."""
+    pages = getattr(self.builder, "_ggarch_assets_pages", None)
+    if pages is None:
+        self.builder._ggarch_assets_pages = set()
+        pages = self.builder._ggarch_assets_pages
+    key = getattr(self, "docname", id(self))
+    if key in pages:
+        return
+    pages.add(key)
+    self.body.append(f'<style>{_GGARCH_CSS}</style>\n')
+    self.body.append(f'<script>{_GGARCH_JS}</script>\n')
 
 
 # ---------------------------------------------------------------------------
@@ -246,14 +411,14 @@ def html_visit_ggarch(self: object, node: ggarch) -> None:
         )
         raise nodes.SkipNode
 
-    group = "ggarch-" + hashlib.sha1(code.encode()).hexdigest()[:8]  # noqa: S324
+    _ensure_ggarch_assets(self)
 
+    self.body.append(f'<div class="{css_class}">\n')
     if light is not None:
-        _emit_image(self, light[0], light[1], alt,
-                    "only-light", group + "-light")
+        _emit_image(self, light[0], light[1], alt, "only-light")
     if dark is not None:
-        _emit_image(self, dark[0], dark[1], alt,
-                    "only-dark", group + "-dark")
+        _emit_image(self, dark[0], dark[1], alt, "only-dark")
+    self.body.append('</div>\n')
 
     raise nodes.SkipNode
 

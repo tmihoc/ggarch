@@ -99,6 +99,10 @@ _JUJU_LIGHT_NODES: dict[str, NodeStyle] = {
         fill="#EEF2FF", stroke="#9999AA", font_color="#333333",
         border_radius=6,
     ),
+    "record": NodeStyle(
+        fill="#FFFDE7", stroke="#F9A825", font_color="#333333",
+        border_radius=2,
+    ),
 }
 
 _JUJU_LIGHT_EDGES: dict[str, EdgeStyle] = {
@@ -151,6 +155,10 @@ _JUJU_DARK_NODES: dict[str, NodeStyle] = {
     "unit": NodeStyle(
         fill="#2A2A3E", stroke="#9999AA", font_color="#CDD6F4",
         border_radius=6,
+    ),
+    "record": NodeStyle(
+        fill="#2A2200", stroke="#F9A825", font_color="#FFE082",
+        border_radius=2,
     ),
 }
 

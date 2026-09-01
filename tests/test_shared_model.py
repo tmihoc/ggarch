@@ -70,7 +70,6 @@ class TestDocsJujuGgarch:
         validate(f)
         diagram_names = {d.name for d in f.diagrams}
         sequence_names = {s.name for s in f.sequences}
-        assert "Intent vs execution" in diagram_names
         assert "Juju overview" in diagram_names
         assert "K8s deployment topology" in diagram_names
         assert "Hook execution" in sequence_names

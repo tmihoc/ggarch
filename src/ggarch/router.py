@@ -199,7 +199,7 @@ def _route_edge(
         src_pt = _face_point(src_rect, src_face)
         tgt_pt = _face_point(tgt_rect, tgt_face)
 
-        if abs(src_pt.y - tgt_pt.y) < 4:
+        if abs(src_pt.y - tgt_pt.y) < 10:
             # Face points genuinely at the same height — pure horizontal.
             return [src_pt, tgt_pt]
 
