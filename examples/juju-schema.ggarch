@@ -1,0 +1,86 @@
+// Juju model-database schema — ggarch ER diagram example.
+//
+// Demonstrates: record nodes with PK/FK/nullable fields,
+// field-qualified edge endpoints, constraint layout.
+//
+// The five core tables of a Juju model database, matching the SQL schema
+// in domain/. Render with:
+//
+//   ggarch render juju-schema.ggarch "Juju model schema"
+
+model "JujuSchema" {
+
+  nodes {
+
+    application [type: record, label: "application"] {
+      fields {
+        uuid        [label: "uuid",        type: "uuid", pk: true]
+        name        [label: "name",        type: "text"]
+        charm_uuid  [label: "charm_uuid",  type: "uuid", fk: true]
+        life        [label: "life",        type: "text"]
+      }
+    }
+
+    unit [type: record, label: "unit"] {
+      fields {
+        uuid     [label: "uuid",     type: "uuid", pk: true]
+        app_uuid [label: "app_uuid", type: "uuid", fk: true]
+        name     [label: "name",     type: "text"]
+        life     [label: "life",     type: "text"]
+      }
+    }
+
+    machine [type: record, label: "machine"] {
+      fields {
+        uuid        [label: "uuid",        type: "uuid", pk: true]
+        provider_id [label: "provider_id", type: "text", null: true]
+        life        [label: "life",        type: "text"]
+      }
+    }
+
+    charm [type: record, label: "charm"] {
+      fields {
+        uuid     [label: "uuid",     type: "uuid", pk: true]
+        source   [label: "source",   type: "text"]
+        revision [label: "revision", type: "int"]
+      }
+    }
+
+    relation [type: record, label: "relation"] {
+      fields {
+        uuid  [label: "uuid",  type: "uuid", pk: true]
+        app_a [label: "app_a", type: "uuid", fk: true]
+        app_b [label: "app_b", type: "uuid", fk: true]
+        life  [label: "life",  type: "text"]
+      }
+    }
+
+  }
+
+  edges {
+    unit.app_uuid          -> application.uuid  [type: data, label: "has units"]
+    application.charm_uuid -> charm.uuid        [type: data, label: "uses"]
+    unit.app_uuid          -> machine.uuid      [type: data, label: "runs on"]
+    relation.app_a         -> application.uuid  [type: data, label: "connects"]
+  }
+
+  style { extends: juju }
+
+}
+
+diagram "Juju model schema" from "JujuSchema" {
+  select {
+    nodes: application unit machine charm relation
+    edges: type data
+  }
+  positions {
+    application left-of unit        gap: 100
+    application align-middle unit
+    unit        left-of machine     gap: 80
+    unit        align-middle machine
+    charm       above application   gap: 50
+    charm       align-centre application
+    relation    below application   gap: 50
+    relation    align-centre application
+  }
+}
