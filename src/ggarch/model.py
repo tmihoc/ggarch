@@ -80,9 +80,11 @@ class Node:
     type: str                                 # maps to style grammar
     lifecycle: Lifecycle = Lifecycle.PERSISTENT
     cardinality: Cardinality | int | None = None
-    abstracts: list[str] = field(default_factory=list)  # ids of abstract nodes this concretises
+    abstracts: list[str] = field(default_factory=list)
     children: list[Node] = field(default_factory=list)
-    fields: list[NodeField] = field(default_factory=list)  # structured fields (record/class)
+    fields: list[NodeField] = field(default_factory=list)
+    properties: dict[str, str] = field(default_factory=dict)  # arbitrary key-value metadata
+    url: str = ""                             # if set, node is clickable in SVG
     attrs: dict[str, Any] = field(default_factory=dict)
 
     def all_ids(self) -> set[str]:
@@ -114,28 +116,29 @@ class Edge:
     target: str          # node id (or "node.field_id" for field-qualified)
     type: EdgeType = EdgeType.API
     label: str = ""
-    protocol: str = ""   # e.g. "websocket-rpc", "http", "unix-socket"
-    style: str = ""      # dashed | dotted | solid (default from type)
-    arrow: str = "forward"  # none | forward | back | both
-    source_field: str = ""  # field id within source node (empty = node centroid)
-    target_field: str = ""  # field id within target node (empty = node centroid)
+    protocol: str = ""
+    style: str = ""
+    arrow: str = "forward"
+    source_field: str = ""
+    target_field: str = ""
+    properties: dict[str, str] = field(default_factory=dict)  # arbitrary key-value metadata
+    url: str = ""                             # if set, edge label is clickable in SVG
 
 
 # ---------------------------------------------------------------------------
 # Behaviours
 # ---------------------------------------------------------------------------
-
 @dataclass
 class Step:
     """A single interaction step in a behaviour."""
     kind: StepKind
-    source: str          # node id
-    target: str          # node id (same as source for self-calls)
+    source: str
+    target: str
     label: str = ""
-    # For loop/alt/par: nested steps.
     body: list[Step | Block] = field(default_factory=list)
-
-
+    properties: dict[str, str] = field(default_factory=dict)
+    guard: str = ""    # [condition] — for state view rendering
+    trigger: str = ""  # on: "event" — for state view rendering
 @dataclass
 class Block:
     """A structured block within a behaviour: loop, alt, par."""
@@ -200,21 +203,35 @@ class Style:
 
 
 # ---------------------------------------------------------------------------
+# Deployment environments
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Environment:
+    """A named deployment context.
+
+    Declares which nodes are present in this environment and which abstract
+    node ids they realise (extending the node-level abstracts: relationship
+    to a model-level grouping).
+    """
+    name: str
+    present: list[str] = field(default_factory=list)   # node ids active in this env
+    abstracts: dict[str, str] = field(default_factory=dict)  # {abstract_id: concrete_id}
+
+
+# ---------------------------------------------------------------------------
 # Model
 # ---------------------------------------------------------------------------
 
 @dataclass
 class Model:
-    """The complete system model.
-
-    Contains everything the system is and does. Views project from this;
-    they add no new system facts.
-    """
+    """The complete system model."""
     name: str
     nodes: list[Node] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
     behaviours: list[Behaviour] = field(default_factory=list)
     style: Style = field(default_factory=Style)
+    environments: list[Environment] = field(default_factory=list)
 
     # ------------------------------------------------------------------
     # Lookup helpers
@@ -270,6 +287,30 @@ class Model:
         """Declared node ids PLUS abstract ids covered by abstracts relationships."""
         ids = self.all_node_ids()
         ids |= set(self.abstractions_map().keys())
+        return ids
+
+    def find_environment(self, name: str) -> Environment | None:
+        for env in self.environments:
+            if env.name == name:
+                return env
+        return None
+
+    def environment_abstractions_map(self, env_name: str) -> dict[str, str]:
+        """Return {abstract_id: concrete_id} for a specific environment.
+
+        Merges the model-level node abstracts with the environment's own
+        abstracts block. Environment-specific overrides win.
+        """
+        result = dict(self.abstractions_map())  # start from node-level abstracts
+        env = self.find_environment(env_name)
+        if env:
+            result.update(env.abstracts)        # environment-level overrides
+        return result
+
+    def all_valid_ids_for_env(self, env_name: str) -> set[str]:
+        """Declared node ids PLUS abstract ids resolvable in env_name."""
+        ids = self.all_node_ids()
+        ids |= set(self.environment_abstractions_map(env_name).keys())
         return ids
 
 
@@ -344,7 +385,17 @@ class AnnotationBadge:
     text: str
 
 
-Annotation = AnnotationBox | AnnotationCallout | AnnotationSeparator | AnnotationBadge
+@dataclass
+class AnnotationLegend:
+    """A visual key rendered from the model's style block.
+
+    Renders node-type colour swatches and edge-type line samples.
+    position: one of 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+    """
+    position: str = "bottom-right"
+
+
+Annotation = AnnotationBox | AnnotationCallout | AnnotationSeparator | AnnotationBadge | AnnotationLegend
 
 
 @dataclass
@@ -366,6 +417,15 @@ class SequenceView:
     annotations: list[Annotation] = field(default_factory=list)
 
 
+@dataclass
+class StateView:
+    """A state machine view: renders a behaviour as a state transition diagram."""
+    name: str
+    model_name: str
+    select: SelectClause = field(default_factory=SelectClause)
+    annotations: list[Annotation] = field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Top-level file
 # ---------------------------------------------------------------------------
@@ -376,6 +436,7 @@ class GgarchFile:
     models: list[Model] = field(default_factory=list)
     diagrams: list[DiagramView] = field(default_factory=list)
     sequences: list[SequenceView] = field(default_factory=list)
+    states: list[StateView] = field(default_factory=list)
 
     def get_model(self, name: str) -> Model | None:
         for m in self.models:

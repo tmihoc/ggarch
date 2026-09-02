@@ -15,6 +15,7 @@ from ggarch.model import (
     AnnotationBadge,
     AnnotationBox,
     AnnotationCallout,
+    AnnotationLegend,
     AnnotationSeparator,
     Behaviour,
     Block,
@@ -23,6 +24,7 @@ from ggarch.model import (
     DiagramView,
     Edge,
     EdgeType,
+    Environment,
     GgarchFile,
     InstanceSpec,
     Lifecycle,
@@ -31,6 +33,7 @@ from ggarch.model import (
     NodeField,
     SelectClause,
     SequenceView,
+    StateView,
     Step,
     StepKind,
     Style,
@@ -102,6 +105,9 @@ def _make_node(
     cardinality = _cardinality(raw_card) if raw_card is not None else None
     raw_abs    = attrs.pop("abstracts", "")
     abstracts  = [a.strip() for a in raw_abs.split() if a.strip()] if raw_abs else []
+    url        = attrs.pop("url", "")
+    # Remaining attrs are user-defined properties.
+    properties = {k: str(v) for k, v in attrs.items()}
     return Node(
         id=node_id,
         label=label,
@@ -111,7 +117,9 @@ def _make_node(
         abstracts=abstracts,
         children=children,
         fields=fields or [],
-        attrs=attrs,
+        properties=properties,
+        url=url,
+        attrs={},
     )
 
 
@@ -131,6 +139,8 @@ class _GgarchTransformer(Transformer):
                 f.diagrams.append(item)
             elif isinstance(item, SequenceView):
                 f.sequences.append(item)
+            elif isinstance(item, StateView):
+                f.states.append(item)
         return f
 
     # ------------------------------------------------------------------
@@ -138,12 +148,13 @@ class _GgarchTransformer(Transformer):
     # ------------------------------------------------------------------
 
     def model(self, name_token, body) -> Model:
-        nodes, edges, behaviours, style = body
+        nodes, edges, behaviours, style, environments = body
         m = Model(name=_str(name_token))
         m.nodes = nodes
         m.edges = edges
         m.behaviours = behaviours
         m.style = style
+        m.environments = environments
         return m
 
     def model_body(self, *items):
@@ -151,6 +162,7 @@ class _GgarchTransformer(Transformer):
         edges: list[Edge] = []
         behaviours: list[Behaviour] = []
         style = Style()
+        environments: list[Environment] = []
         for item in items:
             if isinstance(item, list):
                 if item and isinstance(item[0], Node):
@@ -159,9 +171,32 @@ class _GgarchTransformer(Transformer):
                     edges = item
                 elif item and isinstance(item[0], Behaviour):
                     behaviours = item
+                elif item and isinstance(item[0], Environment):
+                    environments.extend(item)
             elif isinstance(item, Style):
                 style = item
-        return nodes, edges, behaviours, style
+        return nodes, edges, behaviours, style, environments
+
+    def environment_block(self, _kw, name_token, *items) -> list[Environment]:
+        present: list[str] = []
+        abstracts: dict[str, str] = {}
+        for item in items:
+            if isinstance(item, tuple):
+                k, v = item
+                if k == "present":
+                    present = v
+                elif k == "abstracts":
+                    abstracts = v
+        return [Environment(name=_str(name_token), present=present, abstracts=abstracts)]
+
+    def env_present(self, id_list) -> tuple:
+        return ("present", id_list)
+
+    def env_abstracts_block(self, *pairs) -> tuple:
+        return ("abstracts", dict(pairs))
+
+    def env_abstract(self, abstract_token, concrete_token) -> tuple:
+        return (_str(abstract_token), _str(concrete_token))
 
     def nodes_block(self, *nodes) -> list[Node]:
         return list(nodes)
@@ -238,9 +273,11 @@ class _GgarchTransformer(Transformer):
     def edge(self, src, tgt, *rest) -> Edge:
         attrs = rest[0] if rest and isinstance(rest[0], dict) else {}
         attrs = dict(attrs)
-        # src and tgt are tuples from endpoint rules: (node_id, field_id | "")
         src_node, src_field = src
         tgt_node, tgt_field = tgt
+        url = attrs.pop("url", "")
+        properties = {k: str(v) for k, v in attrs.items()
+                      if k not in ("type", "label", "protocol", "style", "arrow")}
         return Edge(
             source=src_node,
             target=tgt_node,
@@ -251,6 +288,8 @@ class _GgarchTransformer(Transformer):
             arrow=attrs.pop("arrow", "forward"),
             source_field=src_field,
             target_field=tgt_field,
+            url=url,
+            properties=properties,
         )
 
     def endpoint_node(self, id_token) -> tuple:
@@ -276,7 +315,13 @@ class _GgarchTransformer(Transformer):
     def step_line(self, src, tgt, kind_token, *rest) -> Step:
         kind = StepKind(str(kind_token))
         label = _str(rest[0]) if rest and not isinstance(rest[0], dict) else ""
-        return Step(kind=kind, source=_str(src), target=_str(tgt), label=label)
+        attrs = rest[-1] if rest and isinstance(rest[-1], dict) else {}
+        attrs = dict(attrs)
+        guard   = attrs.pop("guard",   "")
+        trigger = attrs.pop("on",      "")
+        props   = {k: str(v) for k, v in attrs.items()}
+        return Step(kind=kind, source=_str(src), target=_str(tgt),
+                    label=label, guard=guard, trigger=trigger, properties=props)
 
     def loop_block(self, label, *steps) -> Block:
         return Block(kind="loop", label=_str(label), body=list(steps))
@@ -369,7 +414,8 @@ class _GgarchTransformer(Transformer):
                     constraints = item
                 elif item and isinstance(item[0], (
                         AnnotationBox, AnnotationCallout,
-                        AnnotationSeparator, AnnotationBadge)):
+                        AnnotationSeparator, AnnotationBadge,
+                        AnnotationLegend)):
                     annotations = item
         return select, constraints, annotations
 
@@ -491,6 +537,13 @@ class _GgarchTransformer(Transformer):
             text=attrs.pop("text", ""),
         )
 
+    def ann_legend(self, attrs) -> AnnotationLegend:
+        attrs = dict(attrs)
+        return AnnotationLegend(position=attrs.pop("position", "bottom-right"))
+
+    def ann_legend_bare(self) -> AnnotationLegend:
+        return AnnotationLegend()
+
     # ------------------------------------------------------------------
     # Sequence view
     # ------------------------------------------------------------------
@@ -505,6 +558,29 @@ class _GgarchTransformer(Transformer):
         )
 
     def sequence_body(self, *items):
+        select = SelectClause()
+        annotations: list[Annotation] = []
+        for item in items:
+            if isinstance(item, SelectClause):
+                select = item
+            elif isinstance(item, list):
+                annotations = item
+        return select, annotations
+
+    # ------------------------------------------------------------------
+    # State view
+    # ------------------------------------------------------------------
+
+    def state_view(self, name, model_name, body) -> StateView:
+        select, annotations = body
+        return StateView(
+            name=_str(name),
+            model_name=_str(model_name),
+            select=select,
+            annotations=annotations,
+        )
+
+    def state_view_body(self, *items):
         select = SelectClause()
         annotations: list[Annotation] = []
         for item in items:

@@ -49,8 +49,8 @@ class SolvedNode:
     type: str = ""
     lifecycle: str = "persistent"
     cardinality: str = ""
-    # Structured fields (record/class nodes); empty for plain nodes.
     fields: list = field(default_factory=list)  # list[NodeField]
+    url: str = ""
 
     def find(self, node_id: str) -> SolvedNode | None:
         if self.id == node_id:

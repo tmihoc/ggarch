@@ -1,7 +1,7 @@
 // ggarch grammar
 // Lark LALR(1) grammar for .ggarch files.
 
-start: (model | diagram | sequence)*
+start: (model | diagram | sequence | state_view)*
 
 // -----------------------------------------------------------------------
 // Model
@@ -9,7 +9,16 @@ start: (model | diagram | sequence)*
 
 model: "model" STRING "{" model_body "}"
 
-model_body: (nodes_block | edges_block | behaviours_block | style_block)*
+model_body: (nodes_block | edges_block | behaviours_block | style_block | environment_block)*
+
+environment_block: ENV_KW ID "{" env_item* "}"
+
+ENV_KW.2: "environment"
+
+env_item: "present" ":" id_list              -> env_present
+        | "abstracts" "{" env_abstract* "}"  -> env_abstracts_block
+
+env_abstract: ID ":" ID
 
 nodes_block: "nodes" "{" node* "}"
 
@@ -121,6 +130,8 @@ annotation: "box"       attrs_inline -> ann_box
           | "callout"   attrs_inline -> ann_callout
           | "separator" attrs_inline -> ann_separator
           | "badge"     attrs_inline -> ann_badge
+          | "legend"    attrs_inline -> ann_legend
+          | "legend"               -> ann_legend_bare
 
 // -----------------------------------------------------------------------
 // Sequence view
@@ -129,6 +140,14 @@ annotation: "box"       attrs_inline -> ann_box
 sequence: "sequence" STRING "from" STRING "{" sequence_body "}"
 
 sequence_body: (select_block | annotations_block)*
+
+// -----------------------------------------------------------------------
+// State view
+// -----------------------------------------------------------------------
+
+state_view: "state" STRING "from" STRING "{" state_view_body "}"
+
+state_view_body: (select_block | annotations_block)*
 
 // -----------------------------------------------------------------------
 // Terminals

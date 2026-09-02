@@ -52,6 +52,7 @@ class RoutedEdge:
     edge_type: str     # from EdgeType.value
     style: str         # solid | dashed | dotted
     arrow: str         # forward | back | both | none
+    url: str = ""      # if set, edge label is clickable
     # Waypoints: first = start anchor, last = end anchor.
     points: list[Point] = field(default_factory=list)
 
@@ -306,6 +307,7 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                     edge_type=edge.type.value,
                     style=edge.style if edge.style else style,
                     arrow=edge.arrow,
+                    url=edge.url,
                     points=points,
                 ))
     return RoutedLayout(layout=layout, edges=routed_edges)

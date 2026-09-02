@@ -21,6 +21,7 @@ from ggarch.model import (
     Model,
     SelectClause,
     SequenceView,
+    StateView,
     Step,
 )
 
@@ -33,6 +34,8 @@ def validate(f: GgarchFile) -> None:
         _validate_diagram_view(diagram, f)
     for seq in f.sequences:
         _validate_sequence_view(seq, f)
+    for state in f.states:
+        _validate_state_view(state, f)
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +71,21 @@ def _validate_model(model: Model) -> None:
     # Check field id uniqueness within each node.
     for node in model.nodes:
         _validate_node_fields(node, model.name)
+
+    # Check environments reference declared nodes.
+    for env in model.environments:
+        for nid in env.present:
+            if nid not in node_ids:
+                raise ValidationError(
+                    f"model {model.name!r}, environment {env.name!r}: "
+                    f"present node {nid!r} is not declared",
+                )
+        for abstract_id, concrete_id in env.abstracts.items():
+            if concrete_id not in node_ids:
+                raise ValidationError(
+                    f"model {model.name!r}, environment {env.name!r}: "
+                    f"concrete node {concrete_id!r} for abstract {abstract_id!r} is not declared",
+                )
 
     # Build field index: node_id -> set of field ids (for qualified endpoint checks).
     field_ids: dict[str, set[str]] = {}
@@ -153,8 +171,12 @@ def _resolve_model(view_name: str, model_name: str, f: GgarchFile) -> Model:
 
 
 def _validate_select(select: SelectClause, model: Model, view_name: str) -> None:
-    valid_ids = model.all_valid_ids()   # includes abstract ids covered by abstracts:
-    node_ids  = model.all_node_ids()    # concrete only (for error messages)
+    # Include abstract ids valid for the specified environment (if any).
+    if select.environment:
+        valid_ids = model.all_valid_ids_for_env(select.environment)
+    else:
+        valid_ids = model.all_valid_ids()
+    node_ids = model.all_node_ids()
 
     for nid in select.node_ids:
         if nid not in valid_ids:
@@ -218,10 +240,19 @@ def _validate_diagram_view(diagram: DiagramView, f: GgarchFile) -> None:
     model = _resolve_model(diagram.name, diagram.model_name, f)
     _validate_select(diagram.select, model, diagram.name)
     instance_ids = {spec.instance_id for spec in diagram.select.instances}
+    # Include abstract ids resolvable in the environment as valid constraint targets.
+    env_ids: set[str] = set()
+    if diagram.select.environment:
+        env_ids = set(model.environment_abstractions_map(diagram.select.environment).keys())
     _validate_constraints(diagram.constraints, model, diagram.name,
-                          extra_ids=instance_ids)
+                          extra_ids=instance_ids | env_ids)
 
 
 def _validate_sequence_view(seq: SequenceView, f: GgarchFile) -> None:
     model = _resolve_model(seq.name, seq.model_name, f)
     _validate_select(seq.select, model, seq.name)
+
+
+def _validate_state_view(state: StateView, f: GgarchFile) -> None:
+    model = _resolve_model(state.name, state.model_name, f)
+    _validate_select(state.select, model, state.name)

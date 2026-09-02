@@ -29,9 +29,10 @@ import drawsvg as dw
 
 from ggarch.layout import FONT_SIZE, Rect, SolvedLayout, SolvedNode
 from ggarch.model import (
-    AnnotationBox,
     AnnotationBadge,
+    AnnotationBox,
     AnnotationCallout,
+    AnnotationLegend,
     AnnotationSeparator,
     DiagramView,
     Model,
@@ -93,7 +94,7 @@ def render(
 
     # Render annotations.
     for ann in view.annotations:
-        _render_annotation(ann_g, ann, layout, ox, oy, dark)
+        _render_annotation(ann_g, ann, layout, ox, oy, dark, preset, node_styles)
 
     drawing.append(nodes_g)
     drawing.append(edges_g)
@@ -161,9 +162,36 @@ def _render_node(
     style = node_styles.get(node.type, node_styles.get("default", NodeStyle()))
     r = node.rect
     x, y, w, h = r.x + ox, r.y + oy, r.w, r.h
-
     has_children = bool(node.children)
 
+    # If the node has a url, wrap the visual elements in an SVG <a> element.
+    if node.url:
+        escaped = node.url.replace("&", "&amp;").replace('"', "&quot;")
+        g.append(dw.Raw(f'<a href="{escaped}" target="_blank">'))
+        _render_node_content(g, node, node_styles, ox, oy, view, dark,
+                             style, x, y, w, h, has_children)
+        g.append(dw.Raw("</a>"))
+    else:
+        _render_node_content(g, node, node_styles, ox, oy, view, dark,
+                             style, x, y, w, h, has_children)
+
+
+def _render_node_content(
+    g: dw.Group,
+    node: SolvedNode,
+    node_styles: dict[str, NodeStyle],
+    ox: float,
+    oy: float,
+    view: DiagramView,
+    dark: bool,
+    style: NodeStyle,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    has_children: bool,
+) -> None:
+    """Render the visual content of a node (shape, children, badge) into g."""
     if node.fields and node.type in ("record", "class"):
         _render_structured_node(g, node, style, x, y, w, h, dark)
     elif style.shape == "person":
@@ -173,15 +201,10 @@ def _render_node(
     else:
         _render_box(g, x, y, w, h, style, node.label, node.lifecycle,
                     is_container=has_children)
-
-    # Render children on top.
     if node.children:
         _render_nodes(g, node.children, node_styles, ox, oy, view, dark)
-
-    # Cardinality badge.
     if node.cardinality:
         _render_cardinality_badge(g, x + w - 4, y + 4, node.cardinality)
-
 
 def _lifecycle_stroke_dash(lifecycle: str) -> str:
     return {"init": "6,3", "ephemeral": "2,2"}.get(lifecycle, "")
@@ -528,6 +551,8 @@ def _render_annotation(
     ox: float,
     oy: float,
     dark: bool,
+    preset: ResolvedStyle | None = None,
+    node_styles: dict | None = None,
 ) -> None:
     if isinstance(ann, AnnotationBox):
         _render_ann_box(g, ann, layout, ox, oy, dark)
@@ -537,6 +562,9 @@ def _render_annotation(
         _render_ann_separator(g, ann, layout, ox, oy, dark)
     elif isinstance(ann, AnnotationBadge):
         _render_ann_badge(g, ann, layout, ox, oy, dark)
+    elif isinstance(ann, AnnotationLegend):
+        if preset is not None and node_styles is not None:
+            _render_ann_legend(g, ann, layout, ox, oy, dark, preset, node_styles)
 
 
 def _nodes_bounding_rect(node_ids: list[str], layout: SolvedLayout) -> Rect | None:
@@ -672,6 +700,87 @@ def _render_ann_badge(
         fill=color,
         dominant_baseline="central",
     ))
+
+
+def _render_ann_legend(
+    g: dw.Group,
+    ann: AnnotationLegend,
+    layout: SolvedLayout,
+    ox: float,
+    oy: float,
+    dark: bool,
+    preset: ResolvedStyle,
+    node_styles: dict[str, NodeStyle],
+) -> None:
+    """Render a visual key: node-type colour swatches + edge-type line samples."""
+    SWATCH_W = 24
+    SWATCH_H = 14
+    ROW_H    = 20
+    PAD      = 8
+    TEXT_X   = PAD + SWATCH_W + 6
+    LEGEND_W = 180
+    bg       = "#1E1E2E" if dark else "#FFFFFF"
+    border   = "#555555" if dark else "#CCCCCC"
+    text_col = "#CDD6F4" if dark else "#333333"
+
+    # Collect node types that appear in this layout.
+    seen_types: list[str] = []
+    def _collect(nodes):
+        for n in nodes:
+            if n.type not in seen_types and n.type not in ("default",):
+                seen_types.append(n.type)
+            _collect(n.children)
+    _collect(layout.nodes)
+
+    # Collect edge types declared in the preset (skip 'default').
+    edge_bank = preset.edge_dark if dark else preset.edge_light
+    edge_types = [k for k in edge_bank.keys() if k != "default"]
+
+    rows = len(seen_types) + len(edge_types)
+    if rows == 0:
+        return
+    legend_h = PAD * 2 + rows * ROW_H
+
+    # Position the legend according to ann.position.
+    bounds = layout.bounds
+    if ann.position == "top-left":
+        lx, ly = bounds.x + ox + 4, bounds.y + oy + 4
+    elif ann.position == "top-right":
+        lx, ly = bounds.x2 + ox - LEGEND_W - 4, bounds.y + oy + 4
+    elif ann.position == "bottom-left":
+        lx, ly = bounds.x + ox + 4, bounds.y2 + oy - legend_h - 4
+    else:  # bottom-right
+        lx, ly = bounds.x2 + ox - LEGEND_W - 4, bounds.y2 + oy - legend_h - 4
+
+    # Background box.
+    g.append(dw.Rectangle(lx, ly, LEGEND_W, legend_h,
+                          fill=bg, stroke=border, stroke_width=1, rx=4, ry=4))
+
+    y = ly + PAD
+    # Node type swatches.
+    for ntype in seen_types:
+        style = node_styles.get(ntype, node_styles.get("default", NodeStyle()))
+        fill   = style.fill if style.fill != "none" else bg
+        stroke = style.stroke
+        g.append(dw.Rectangle(lx + PAD, y, SWATCH_W, SWATCH_H,
+                              fill=fill, stroke=stroke, stroke_width=1, rx=2, ry=2))
+        g.append(dw.Text(ntype, 10, lx + TEXT_X, y + SWATCH_H / 2,
+                         font_family=LABEL_FONT, fill=text_col,
+                         dominant_baseline="central"))
+        y += ROW_H
+
+    # Edge type line samples.
+    for etype in edge_types:
+        es = preset.edge(etype, dark=dark)
+        line_kwargs: dict = dict(stroke=es.stroke, stroke_width=es.stroke_width)
+        if es.stroke_dash:
+            line_kwargs["stroke_dasharray"] = es.stroke_dash
+        g.append(dw.Line(lx + PAD, y + SWATCH_H / 2,
+                         lx + PAD + SWATCH_W, y + SWATCH_H / 2, **line_kwargs))
+        g.append(dw.Text(etype, 10, lx + TEXT_X, y + SWATCH_H / 2,
+                         font_family=LABEL_FONT, fill=text_col,
+                         dominant_baseline="central"))
+        y += ROW_H
 
 
 # ---------------------------------------------------------------------------

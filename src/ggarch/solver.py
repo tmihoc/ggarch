@@ -93,8 +93,17 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     for node in selected:
         _register_vars(node, vars_by_id)
 
+    # Alias abstract ids → concrete vars for environment + node-level abstracts.
+    # This allows constraints like `controller left-of unit_agent` to work even
+    # when `controller` is resolved to `controller_k8s` in the current env.
+    abs_map = (model.environment_abstractions_map(diagram.select.environment)
+               if diagram.select.environment else model.abstractions_map())
+    for abstract_id, concrete_id in abs_map.items():
+        if concrete_id in vars_by_id and abstract_id not in vars_by_id:
+            vars_by_id[abstract_id] = vars_by_id[concrete_id]
+
     # Also register instance ids (view-local expansions of a type node).
-    instance_map: dict[str, str] = {}  # instance_id -> type_id
+    instance_map: dict[str, str] = {}
     for spec in diagram.select.instances:
         instance_map[spec.instance_id] = spec.type_id
         if spec.instance_id not in vars_by_id:
@@ -151,12 +160,21 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
 # ---------------------------------------------------------------------------
 
 def _selected_nodes(select: SelectClause, model: Model) -> list[Node]:
-    """Return the top-level model nodes included in this view."""
+    """Return the top-level model nodes included in this view.
+
+    If select.environment is set, abstract node ids in select.node_ids are
+    resolved to their environment-specific concrete ids.
+    """
+    abs_map = (model.environment_abstractions_map(select.environment)
+               if select.environment else model.abstractions_map())
+
     if not select.node_ids:
         return list(model.nodes)
+
     result = []
     for nid in select.node_ids:
-        node = model.find_node(nid)
+        concrete_id = abs_map.get(nid, nid)
+        node = model.find_node(concrete_id)
         if node is not None:
             result.append(node)
     return result
@@ -542,4 +560,5 @@ def _build_solved_node(
             if hasattr(node.cardinality, "value") else
             str(node.cardinality) if node.cardinality else "",
         fields=node.fields,
+        url=node.url,
     )
