@@ -146,3 +146,13 @@ auditable and the renderer safe.
 - Gantt, git graph, mindmap, kanban, BPMN, mathematical notation, packet/bit
   fields, interactive walkthroughs, programmatic generation are not part of
   ggarch's scope and will not be added.
+
+**Definition of done for feature parity:**
+Once phases 8–12 of the implementation plan are complete, ggarch has full
+expressive parity with existing docs-as-code tools for distributed systems
+architecture documentation. Anything a practitioner would reasonably put in an
+architecture document — topology, sequence, ER schema, class hierarchy, state
+machine, deployment environment view — is expressible in ggarch with stronger
+layout guarantees and model consistency than any current alternative. The
+out-of-scope items above are the deliberate boundary; they will not be revisited
+unless the scope statement in the SPEC changes first.

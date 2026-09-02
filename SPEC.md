@@ -19,6 +19,30 @@ meaningfully protecting the project.
 
 ---
 
+## Scope
+
+ggarch is for **distributed systems architecture documentation**: deployment
+topologies, control-flow sequences, data model schemas, and class/component
+structures of software systems running on cloud or on-premises infrastructure.
+
+**In scope:** anything you would reasonably put in an architecture document for
+a distributed system — topology diagrams, sequence diagrams, ER/schema
+diagrams, class diagrams, state machines, deployment environment views. After
+phases 8–12 of the implementation plan, ggarch offers full expressive parity
+with existing docs-as-code tools for this domain, with better layout guarantees
+(Cassowary constraints) and stronger model consistency (single declared model,
+all views derived from it) than any current alternative.
+
+**Out of scope, permanently:** Gantt charts, git graphs, mindmaps, kanban
+boards, BPMN process diagrams, mathematical/EBNF notation, packet/bit-field
+wire formats, interactive walkthroughs, and programmatic model generation from
+source code. These belong to different problem domains (project management,
+version control, formal languages, interactive UX) or require dependencies and
+execution models that conflict with ggarch's lightweight and secure-by-design
+principles. See ADR-001 for the full rejection reasoning.
+
+---
+
 
 ## Motivation
 
