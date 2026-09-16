@@ -514,37 +514,47 @@ def _render_person(
     style: NodeStyle,
     label: str,
 ) -> None:
-    """Person node: a rounded rect (same grammar as every other node) with a
-    small head+shoulders badge in the top-right corner, label centred inside.
+    """Person node: the shape IS the person.
+
+    A filled rounded rect with a head circle centred in the upper portion
+    and a body arc in the lower portion. Label centred in the box.
+    Both head and body use the fill colour so the shape reads as a solid
+    silhouette, same visual weight as every other filled rect.
     """
-    fill   = style.fill if style.fill != "none" else "none"
+    fill   = style.fill if style.fill != "none" else "#F5F5F5"
     stroke = style.stroke
     sw     = style.stroke_width
     r      = style.border_radius
+    cx     = x + w / 2
 
-    # Box -- same as _render_box.
+    # Background rect -- defines the bounding box.
     g.append(dw.Rectangle(x, y, w, h,
                           fill=fill, stroke=stroke, stroke_width=sw,
                           rx=r, ry=r))
 
-    # Small head+shoulders silhouette in the top-right corner.
-    bx = x + w - 18
-    by = y + 6
-    bs = 12   # badge size
-    head_r = bs * 0.28
-    head_cx = bx + bs / 2
-    head_cy = by + head_r + 1
-    shoulder_y = head_cy + head_r + 2
-    badge_color = style.font_color or stroke
-    g.append(dw.Circle(head_cx, head_cy, head_r,
-                       fill=badge_color, stroke="none"))
-    # Shoulders as a small arc/ellipse segment.
-    g.append(dw.Ellipse(head_cx, shoulder_y + bs * 0.2,
-                        bs * 0.42, bs * 0.28,
-                        fill=badge_color, stroke="none"))
+    # Head: circle centred at ~30% height.
+    head_r  = min(w, h) * 0.14
+    head_cy = y + h * 0.32
+    g.append(dw.Circle(cx, head_cy, head_r,
+                       fill=stroke, stroke="none"))
+
+    # Shoulders: half-ellipse centred at ~68% height.
+    # Clip to the box by drawing only what fits -- use a wide, shallow ellipse.
+    shoulder_cx = cx
+    shoulder_cy = y + h * 0.72
+    shoulder_rx = min(w * 0.38, w / 2 - 2)
+    shoulder_ry = h * 0.20
+    # Draw as a path: half-ellipse (top half only, closed at the chord).
+    import math as _math
+    g.append(dw.Path(
+        d=(f"M {shoulder_cx - shoulder_rx:.1f} {shoulder_cy:.1f} "
+           f"A {shoulder_rx:.1f} {shoulder_ry:.1f} 0 0 1 "
+           f"{shoulder_cx + shoulder_rx:.1f} {shoulder_cy:.1f} Z"),
+        fill=stroke, stroke="none",
+    ))
 
     # Label centred in the box.
-    _render_label(g, x + w / 2, y + h / 2, label, style)
+    _render_label(g, cx, y + h / 2, label, style)
 
 
 def _render_cylinder(
@@ -553,20 +563,31 @@ def _render_cylinder(
     style: NodeStyle,
     label: str,
 ) -> None:
-    """Database cylinder: rect with ellipses at top and bottom."""
-    ry = min(h * 0.15, 12)
+    """Database cylinder: rect body with shallow elliptical caps.
+
+    Cap depth is kept small (8px max) so it reads as a subtle type indicator
+    at the same visual weight as a rounded-rect border, not as a competing shape.
+    """
+    ry   = min(h * 0.10, 8)   # shallow caps
     fill   = style.fill if style.fill != "none" else "none"
     stroke = style.stroke
     sw     = style.stroke_width
-    # Body rect (no top/bottom stroke on the sides of the ellipse).
+
+    # Body: rect from top-cap-centre to bottom-cap-centre.
     g.append(dw.Rectangle(x, y + ry, w, h - ry * 2,
-                          fill=fill, stroke=stroke, stroke_width=sw))
-    # Bottom ellipse.
+                          fill=fill, stroke="none"))
+    # Side strokes only (left and right verticals).
+    g.append(dw.Line(x, y + ry, x, y + h - ry,
+                     stroke=stroke, stroke_width=sw))
+    g.append(dw.Line(x + w, y + ry, x + w, y + h - ry,
+                     stroke=stroke, stroke_width=sw))
+    # Bottom cap.
     g.append(dw.Ellipse(x + w / 2, y + h - ry, w / 2, ry,
                         fill=fill, stroke=stroke, stroke_width=sw))
-    # Top ellipse (filled to cover the body rect top edge).
+    # Top cap (drawn last to cover the body rect top edge).
     g.append(dw.Ellipse(x + w / 2, y + ry, w / 2, ry,
                         fill=fill, stroke=stroke, stroke_width=sw))
+
     _render_label(g, x + w / 2, y + h / 2, label, style)
 
 
