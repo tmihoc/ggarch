@@ -711,12 +711,20 @@ def _render_edge(
                 cur = w
         wrapped.append(cur)
 
-    # Gap must accommodate the text in whichever direction the arrow runs.
-    # Use the diagonal so it works for both horizontal and vertical arrows.
+    # Gap = projection of the text bounding box onto the arrow direction,
+    # plus padding. This makes the gap correct for horizontal, vertical,
+    # and diagonal arrows without over- or under-sizing.
     max_line_w = max(len(l) for l in wrapped) * char_w
     lh = font_size * 1.5
     text_h = lh * len(wrapped)
-    gap = min(math.hypot(max_line_w, text_h) + PADDING * 2, path_len * 0.8)
+    # Unit vector of the overall arrow direction.
+    adx = pts[-1][0] - pts[0][0]
+    ady = pts[-1][1] - pts[0][1]
+    alen = math.hypot(adx, ady)
+    ux = abs(adx / alen) if alen > 0 else 1.0
+    uy = abs(ady / alen) if alen > 0 else 0.0
+    projected = ux * max_line_w + uy * text_h
+    gap = min(projected + PADDING * 2, path_len * 0.8)
     half_gap = gap / 2
     mid_dist = path_len / 2
     # MIN_TAIL: minimum visible line on each side of the gap before an arrowhead.
