@@ -482,6 +482,27 @@ def _render_cardinality_badge(
 # Edge rendering
 # ---------------------------------------------------------------------------
 
+def _point_along_path(pts: list[tuple[float,float]], dist: float) -> tuple[float,float]:
+    """Return the point at `dist` px along the polyline pts."""
+    remaining = dist
+    for i in range(len(pts) - 1):
+        x0, y0 = pts[i]
+        x1, y1 = pts[i+1]
+        seg = math.hypot(x1 - x0, y1 - y0)
+        if remaining <= seg or i == len(pts) - 2:
+            t = remaining / seg if seg > 0 else 0
+            return (x0 + t * (x1 - x0), y0 + t * (y1 - y0))
+        remaining -= seg
+    return pts[-1]
+
+
+def _path_d(pts: list[tuple[float,float]]) -> str:
+    d = f"M {pts[0][0]:.1f} {pts[0][1]:.1f}"
+    for x, y in pts[1:]:
+        d += f" L {x:.1f} {y:.1f}"
+    return d
+
+
 def _render_edge(
     g: dw.Group,
     edge: RoutedEdge,
@@ -493,12 +514,6 @@ def _render_edge(
     es = preset.edge(edge.edge_type, dark=dark)
     pts = [(p.x + ox, p.y + oy) for p in edge.points]
 
-    # Build path data.
-    d_parts = [f"M {pts[0][0]:.1f} {pts[0][1]:.1f}"]
-    for px, py in pts[1:]:
-        d_parts.append(f"L {px:.1f} {py:.1f}")
-    d = " ".join(d_parts)
-
     path_kwargs: dict = dict(
         fill="none",
         stroke=es.stroke,
@@ -509,61 +524,81 @@ def _render_edge(
     elif edge.style == "dotted":
         path_kwargs["stroke_dasharray"] = "2,2"
 
-    if edge.arrow in ("forward", "both"):
-        path_kwargs["marker_end"] = "url(#arrow)"
+    if not edge.label:
+        # No label: single path with arrowhead.
+        if edge.arrow in ("forward", "both"):
+            path_kwargs["marker_end"] = "url(#arrow)"
+        if edge.arrow in ("back", "both"):
+            path_kwargs["marker_start"] = "url(#arrow)"
+        g.append(dw.Path(d=_path_d(pts), **path_kwargs))
+        return
+
+    # ---- Labelled edge: wrap label, split path around gap ----
+    path_len = sum(
+        math.hypot(pts[i+1][0] - pts[i][0], pts[i+1][1] - pts[i][1])
+        for i in range(len(pts) - 1)
+    )
+    font_size = 9
+    char_w = 5.0
+    usable_px = max(path_len - 8, char_w)
+    max_chars = max(int(usable_px / char_w), 1)
+
+    raw_lines = edge.label.split("\\n")
+    wrapped: list[str] = []
+    for raw in raw_lines:
+        words = raw.split()
+        if not words:
+            wrapped.append("")
+            continue
+        cur = words[0]
+        for w in words[1:]:
+            if len(cur) + 1 + len(w) <= max_chars:
+                cur += " " + w
+            else:
+                wrapped.append(cur)
+                cur = w
+        wrapped.append(cur)
+
+    # Gap: wide enough for the longest wrapped line, plus 4px padding.
+    max_line_w = max(len(l) for l in wrapped) * char_w + 4
+    lh = font_size * 1.5
+    # Gap height adds a small vertical margin so the path doesn't clip text.
+    gap_h = lh * len(wrapped) + 4
+    # Gap along the path is the diagonal of (max_line_w, gap_h) -- conservative.
+    gap = min(math.hypot(max_line_w, gap_h), path_len * 0.6)
+    half_gap = gap / 2
+    mid_dist = path_len / 2
+
+    gap_start = _point_along_path(pts, max(mid_dist - half_gap, 0))
+    gap_end   = _point_along_path(pts, min(mid_dist + half_gap, path_len))
+
+    # First segment: start → gap_start (arrowhead at back if needed).
+    seg1_pts = [pts[0], gap_start]
+    kw1 = dict(path_kwargs)
     if edge.arrow in ("back", "both"):
-        path_kwargs["marker_start"] = "url(#arrow)"
+        kw1["marker_start"] = "url(#arrow)"
+    g.append(dw.Path(d=_path_d(seg1_pts), **kw1))
 
-    g.append(dw.Path(d=d, **path_kwargs))
+    # Second segment: gap_end → end (arrowhead at front if needed).
+    seg2_pts = [gap_end, pts[-1]]
+    kw2 = dict(path_kwargs)
+    if edge.arrow in ("forward", "both"):
+        kw2["marker_end"] = "url(#arrow)"
+    g.append(dw.Path(d=_path_d(seg2_pts), **kw2))
 
-    # Edge label: sits on the arrow midpoint, interrupting the line.
-    # Always horizontal. Font is small (9px). Label is word-wrapped so no
-    # line exceeds the pixel length of the arrow -- preventing overflow into
-    # adjacent nodes. No background rect.
-    if edge.label:
-        # Measure total path length in px.
-        path_len = sum(
-            math.hypot(
-                edge.points[i+1].x - edge.points[i].x,
-                edge.points[i+1].y - edge.points[i].y,
-            )
-            for i in range(len(edge.points) - 1)
-        )
-        font_size = 9
-        char_w = 5.0   # px per character at 9px font
-        # Leave a small margin on each side of the arrow.
-        usable_px = max(path_len - 8, char_w)
-        max_chars = max(int(usable_px / char_w), 1)
-        # Wrap each \n-delimited segment to max_chars per line.
-        raw_lines = edge.label.split("\\n")
-        wrapped: list[str] = []
-        for raw in raw_lines:
-            words = raw.split()
-            if not words:
-                wrapped.append("")
-                continue
-            cur = words[0]
-            for w in words[1:]:
-                if len(cur) + 1 + len(w) <= max_chars:
-                    cur += " " + w
-                else:
-                    wrapped.append(cur)
-                    cur = w
-            wrapped.append(cur)
-        mid = edge.mid
-        mx, my = mid.x + ox, mid.y + oy
-        lh = font_size * 1.5
-        total_h = lh * len(wrapped)
-        start_y = my - total_h / 2 + lh * 0.5
-        for i, line in enumerate(wrapped):
-            g.append(dw.Text(
-                line, font_size, mx, start_y + i * lh,
-                font_family=LABEL_FONT,
-                fill=es.font_color,
-                text_anchor="middle",
-                dominant_baseline="central",
-            ))
-
+    # Label centred on the midpoint.
+    mid = edge.mid
+    mx, my = mid.x + ox, mid.y + oy
+    total_h = lh * len(wrapped)
+    start_y = my - total_h / 2 + lh * 0.5
+    for i, line in enumerate(wrapped):
+        g.append(dw.Text(
+            line, font_size, mx, start_y + i * lh,
+            font_family=LABEL_FONT,
+            fill=es.font_color,
+            text_anchor="middle",
+            dominant_baseline="central",
+        ))
 # ---------------------------------------------------------------------------
 # Annotation rendering
 # ---------------------------------------------------------------------------
