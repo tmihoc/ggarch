@@ -711,32 +711,23 @@ def _render_edge(
                 cur = w
         wrapped.append(cur)
 
-    # Gap = projection of the text bounding box onto the arrow direction,
-    # plus padding. This makes the gap correct for horizontal, vertical,
-    # and diagonal arrows without over- or under-sizing.
+    # Gap = projection of the text box onto the arrow direction + padding.
     max_line_w = max(len(l) for l in wrapped) * char_w
     lh = font_size * 1.5
     text_h = lh * len(wrapped)
-    # Unit vector of the overall arrow direction.
     adx = pts[-1][0] - pts[0][0]
     ady = pts[-1][1] - pts[0][1]
     alen = math.hypot(adx, ady)
     ux = abs(adx / alen) if alen > 0 else 1.0
     uy = abs(ady / alen) if alen > 0 else 0.0
     projected = ux * max_line_w + uy * text_h
-    gap = min(projected + PADDING * 2, path_len * 0.8)
+    MIN_TAIL = 12   # minimum visible line on each side before arrowhead
+    max_gap = max(path_len - MIN_TAIL * 2, 0)
+    gap = min(projected + PADDING * 2, max_gap)
     half_gap = gap / 2
     mid_dist = path_len / 2
-    # MIN_TAIL: minimum visible line on each side of the gap before an arrowhead.
-    MIN_TAIL = 10
     gap_start_dist = max(mid_dist - half_gap, MIN_TAIL)
     gap_end_dist   = min(mid_dist + half_gap, path_len - MIN_TAIL)
-    # If the gap was clamped asymmetrically, re-centre it within the clamped range.
-    actual_gap = gap_end_dist - gap_start_dist
-    if actual_gap < gap:
-        centre = (gap_start_dist + gap_end_dist) / 2
-        gap_start_dist = max(centre - half_gap, MIN_TAIL)
-        gap_end_dist   = min(centre + half_gap, path_len - MIN_TAIL)
     gap_start = _point_along_path(pts, gap_start_dist)
     gap_end   = _point_along_path(pts, gap_end_dist)
 
@@ -752,36 +743,16 @@ def _render_edge(
         kw2["marker_end"] = "url(#arrow)"
     g.append(dw.Path(d=_path_d([gap_end, pts[-1]]), **kw2))
 
-    # Label placement: centred on the path midpoint along the arrow axis.
-    # Perpendicular to the arrow, the text block is offset so it never
-    # straddles the arrow line -- the nearest line edge has PADDING clearance.
+    # Label: always centred on the true path midpoint, both along and across
+    # the arrow. No perpendicular shift -- the gap in the path is the
+    # visual indicator of interruption.
     pm = _point_along_path(pts, mid_dist)
     mx, my = pm[0], pm[1]
     total_h = lh * len(wrapped)
-
-    # Perpendicular unit vector (rotate arrow direction 90° CCW).
-    if alen > 0:
-        px_unit = -ady / alen   # perpendicular x
-        py_unit =  adx / alen   # perpendicular y
-    else:
-        px_unit, py_unit = 0.0, -1.0
-
-    if len(wrapped) == 1:
-        # Single line: centre exactly on the arrow.
-        base_x, base_y = mx, my
-    else:
-        # Multi-line: shift the block so it sits above the arrow with padding.
-        # The shift distance places the bottom edge of the block at -PADDING
-        # from the arrow line (i.e. the block floats above).
-        shift = total_h / 2 + PADDING
-        base_x = mx + px_unit * shift
-        base_y = my + py_unit * shift
-
-    start_y = base_y - total_h / 2 + lh * 0.5
-    start_x = base_x
+    start_y = my - total_h / 2 + lh * 0.5
     for i, line in enumerate(wrapped):
         g.append(dw.Text(
-            line, font_size, start_x, start_y + i * lh,
+            line, font_size, mx, start_y + i * lh,
             font_family=LABEL_FONT,
             fill=es.font_color,
             text_anchor="middle",
