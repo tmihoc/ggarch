@@ -517,25 +517,45 @@ def _render_edge(
     g.append(dw.Path(d=d, **path_kwargs))
 
     # Edge label: sits on the arrow midpoint, interrupting the line.
-    # Always horizontal, smaller font, transparent background to break the line.
+    # Always horizontal. Font is small (9px). Label is word-wrapped so no
+    # line exceeds the pixel length of the arrow -- preventing overflow into
+    # adjacent nodes. No background rect.
     if edge.label:
+        # Measure total path length in px.
+        path_len = sum(
+            math.hypot(
+                edge.points[i+1].x - edge.points[i].x,
+                edge.points[i+1].y - edge.points[i].y,
+            )
+            for i in range(len(edge.points) - 1)
+        )
+        font_size = 9
+        char_w = 5.0   # px per character at 9px font
+        # Leave a small margin on each side of the arrow.
+        usable_px = max(path_len - 8, char_w)
+        max_chars = max(int(usable_px / char_w), 1)
+        # Wrap each \n-delimited segment to max_chars per line.
+        raw_lines = edge.label.split("\\n")
+        wrapped: list[str] = []
+        for raw in raw_lines:
+            words = raw.split()
+            if not words:
+                wrapped.append("")
+                continue
+            cur = words[0]
+            for w in words[1:]:
+                if len(cur) + 1 + len(w) <= max_chars:
+                    cur += " " + w
+                else:
+                    wrapped.append(cur)
+                    cur = w
+            wrapped.append(cur)
         mid = edge.mid
         mx, my = mid.x + ox, mid.y + oy
-        font_size = 9
-        lines = edge.label.split("\\n")
         lh = font_size * 1.5
-        total_h = lh * len(lines)
-        max_chars = max(len(l) for l in lines)
-        bg_w = max_chars * 5.5 + 6
-        bg_h = total_h + 4
-        bg_color = "#1E1E2E" if dark else "#FFFFFF"
-        g.append(dw.Rectangle(
-            mx - bg_w / 2, my - bg_h / 2,
-            bg_w, bg_h,
-            fill=bg_color, stroke="none",
-        ))
+        total_h = lh * len(wrapped)
         start_y = my - total_h / 2 + lh * 0.5
-        for i, line in enumerate(lines):
+        for i, line in enumerate(wrapped):
             g.append(dw.Text(
                 line, font_size, mx, start_y + i * lh,
                 font_family=LABEL_FONT,

@@ -164,7 +164,9 @@ class TestEdgeRendering:
 
     def test_edge_label_present(self):
         svg = pipeline(SIMPLE)
-        assert "exec dispatch" in svg
+        # Label may be wrapped across lines; check all words appear.
+        assert "exec" in svg
+        assert "dispatch" in svg
 
     def test_stream_edge_dashed(self):
         src = """\
