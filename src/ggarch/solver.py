@@ -209,18 +209,6 @@ def _add_min_size_for_node(
     is_container = bool(node.children)
     collapsed = node.id in select.collapse
 
-    # Person nodes: pin to exact figure width early, before any REQUIRED mins
-    # that would conflict.
-    if node.type == "person":
-        from ggarch.renderer import _PERSON_SIZE
-        fig_w = round(_PERSON_SIZE * 0.78 * 0.7) + 16
-        fig_h = _PERSON_SIZE
-        solver.addConstraint((v.x >= 0)       | "required")
-        solver.addConstraint((v.y >= 0)       | "required")
-        solver.addConstraint((v.w == fig_w)   | "required")
-        solver.addConstraint((v.h == fig_h)   | "required")
-        return  # skip generic min-size — person has exact dimensions
-
     # Non-negativity — REQUIRED.
     solver.addConstraint((v.x >= 0) | "required")
     solver.addConstraint((v.y >= 0) | "required")

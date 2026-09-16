@@ -508,48 +508,43 @@ def _render_structured_node(
             ))
 
 
-# Fixed size for the person figure — independent of solver-allocated height.
-_PERSON_SIZE = 56   # px total height (figure + label)
-
-
 def _render_person(
     g: dw.Group,
     x: float, y: float, w: float, h: float,
     style: NodeStyle,
     label: str,
 ) -> None:
-    """Stick-figure person icon, fixed size, centred in allocated rect.
-
-    The label is placed below the legs, not inside the figure area.
-    The allocated rect height may be larger than the figure (solver
-    gives the person node the same height as its row neighbours);
-    the figure itself is drawn at the top of the allocated rect and
-    the label sits below the legs with a small gap.
+    """Person node: a rounded rect (same grammar as every other node) with a
+    small head+shoulders badge in the top-right corner, label centred inside.
     """
-    cx  = x + w / 2
-    fy  = y                         # figure starts at top of allocated rect
-    fh  = _PERSON_SIZE * 0.78       # figure body height (no label in fh)
-    fw  = fh * 0.7
+    fill   = style.fill if style.fill != "none" else "none"
+    stroke = style.stroke
+    sw     = style.stroke_width
+    r      = style.border_radius
 
-    head_r  = fh * 0.18
-    head_cy = fy + head_r + 2
-    g.append(dw.Circle(cx, head_cy, head_r,
-                       fill="none", stroke=style.font_color, stroke_width=1.5))
-    body_top = head_cy + head_r
-    body_bot = fy + fh * 0.60
-    g.append(dw.Line(cx, body_top, cx, body_bot,
-                     stroke=style.font_color, stroke_width=1.5))
-    arm_y = body_top + (body_bot - body_top) * 0.35
-    g.append(dw.Line(cx - fw * 0.35, arm_y, cx + fw * 0.35, arm_y,
-                     stroke=style.font_color, stroke_width=1.5))
-    leg_bot = fy + fh * 0.95
-    g.append(dw.Line(cx, body_bot, cx - fw * 0.30, leg_bot,
-                     stroke=style.font_color, stroke_width=1.5))
-    g.append(dw.Line(cx, body_bot, cx + fw * 0.30, leg_bot,
-                     stroke=style.font_color, stroke_width=1.5))
-    # Label below the legs with a small gap.
-    _render_label(g, cx, leg_bot + 10, label, style,
-                  anchor="middle", baseline="hanging")
+    # Box -- same as _render_box.
+    g.append(dw.Rectangle(x, y, w, h,
+                          fill=fill, stroke=stroke, stroke_width=sw,
+                          rx=r, ry=r))
+
+    # Small head+shoulders silhouette in the top-right corner.
+    bx = x + w - 18
+    by = y + 6
+    bs = 12   # badge size
+    head_r = bs * 0.28
+    head_cx = bx + bs / 2
+    head_cy = by + head_r + 1
+    shoulder_y = head_cy + head_r + 2
+    badge_color = style.font_color or stroke
+    g.append(dw.Circle(head_cx, head_cy, head_r,
+                       fill=badge_color, stroke="none"))
+    # Shoulders as a small arc/ellipse segment.
+    g.append(dw.Ellipse(head_cx, shoulder_y + bs * 0.2,
+                        bs * 0.42, bs * 0.28,
+                        fill=badge_color, stroke="none"))
+
+    # Label centred in the box.
+    _render_label(g, x + w / 2, y + h / 2, label, style)
 
 
 def _render_cylinder(
