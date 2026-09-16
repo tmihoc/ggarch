@@ -33,8 +33,9 @@ as the reader navigates. Both are optional independently.
 
 Options
 -------
-:view:            Name of the diagram view to render.
-:sequence:        Name of the sequence view to render.
+:view:            Name of any view to render -- diagram or sequence.
+                  Searches diagrams first, then sequences.
+:sequence:        Alias for :view:; kept for backwards compatibility.
 :slides:          Pipe-separated list of view/sequence names for a slideshow.
 :slide-captions:  Pipe-separated captions matching :slides:; updated on nav.
 :caption:         Single diagram: figure caption. Slideshow: static label
@@ -147,6 +148,9 @@ def _render_pair(
 ) -> tuple[tuple[str, str] | None, tuple[str, str] | None]:
     """Compile one view/sequence to a light+dark SVG pair.
 
+    view_name is tried against diagrams first, then sequences.
+    sequence_name is kept for backwards compatibility and slideshow internals.
+
     Returns ((relfn, outfn), (relfn, outfn)) or (None, None) on error.
     """
     outdir = os.path.join(self.builder.outdir, self.builder.imagedir)
@@ -163,17 +167,41 @@ def _render_pair(
         logger.warning(f"ggarch parse/validate error: {exc}")
         return None, None
 
+    # Resolve the name: explicit sequence_name wins; otherwise try view_name
+    # against diagrams first, then sequences.
+    resolved_sequence = None
+    resolved_diagram  = None
+
     if sequence_name:
-        seq = next((s for s in f.sequences if s.name == sequence_name), None)
-        if seq is None and f.sequences:
-            seq = f.sequences[0]
-        if seq is None:
-            logger.warning("ggarch: no sequence views in source")
+        resolved_sequence = next((s for s in f.sequences if s.name == sequence_name), None)
+        if resolved_sequence is None:
+            logger.warning(f"ggarch: sequence {sequence_name!r} not found")
             return None, None
+    elif view_name:
+        resolved_diagram = next((d for d in f.diagrams if d.name == view_name), None)
+        if resolved_diagram is None:
+            resolved_sequence = next((s for s in f.sequences if s.name == view_name), None)
+        if resolved_diagram is None and resolved_sequence is None:
+            avail = [d.name for d in f.diagrams] + [s.name for s in f.sequences]
+            logger.warning(f"ggarch: view {view_name!r} not found; available: {avail}")
+            return None, None
+    else:
+        # No name given: fall back to first diagram, then first sequence.
+        if f.diagrams:
+            resolved_diagram = f.diagrams[0]
+        elif f.sequences:
+            resolved_sequence = f.sequences[0]
+        else:
+            logger.warning("ggarch: no views in source")
+            return None, None
+
+    if resolved_sequence is not None:
+        seq = resolved_sequence
+        name_key = sequence_name or view_name
         model = f.get_model(seq.model_name)
         results = []
         for suffix, dark in (("light", False), ("dark", True)):
-            hashkey = (code + sequence_name + suffix + __version__ + mtime).encode()
+            hashkey = (code + name_key + suffix + __version__ + mtime).encode()
             basename = f"ggarch-{hashlib.sha1(hashkey).hexdigest()}"  # noqa: S324
             fname = f"{basename}.svg"
             relfn = posixpath.join(self.builder.imgpath, fname)
@@ -191,19 +219,7 @@ def _render_pair(
         return tuple(results)  # type: ignore[return-value]
 
     # Diagram view
-    if not f.diagrams:
-        logger.warning("ggarch: no diagram views in source")
-        return None, None
-
-    if view_name:
-        diagram = next((d for d in f.diagrams if d.name == view_name), None)
-        if diagram is None:
-            names = [d.name for d in f.diagrams]
-            logger.warning(f"ggarch: view {view_name!r} not found; available: {names}")
-            return None, None
-    else:
-        diagram = f.diagrams[0]
-
+    diagram = resolved_diagram
     model = f.get_model(diagram.model_name)
     try:
         layout = solve(diagram, model)
@@ -798,9 +814,19 @@ def html_visit_ggarch(self: object, node: ggarch) -> None:
         raise nodes.SkipNode
 
     # ---- Single diagram / sequence mode --------------------------------
-    # For diagram views, render without the in-SVG legend gutter and emit
-    # the legend as an HTML strip between the image and the figcaption.
-    is_diagram = bool(view_name) or (not sequence_name)
+    # Determine whether this resolves to a diagram (gets HTML legend strip)
+    # or a sequence (no legend). :view: can now resolve to either type.
+    try:
+        _f = parse(code); validate(_f)
+        _name = view_name or sequence_name
+        _is_seq = bool(sequence_name) or (
+            view_name
+            and not any(d.name == view_name for d in _f.diagrams)
+            and any(s.name == view_name for s in _f.sequences)
+        )
+    except Exception:
+        _is_seq = bool(sequence_name)
+    is_diagram = not _is_seq
     light, dark = _render_pair(
         self, code, view_name, sequence_name, file_path,
         skip_legend=is_diagram,

@@ -370,7 +370,8 @@ In a Markdown (MyST) document:
 ```
 ````
 
-For sequence views use `:sequence:` instead of `:view:`.
+`:view:` works for both diagram and sequence views -- the directive searches
+diagrams first, then sequences. `:sequence:` is kept as an alias.
 
 **Slideshow** -- render multiple views as a carousel with prev/next navigation:
 
@@ -395,8 +396,8 @@ Options:
 | Option | Effect |
 |---|---|
 | `:file:` | Path to `.ggarch` file, relative to the document |
-| `:view:` | Name of the diagram view to render |
-| `:sequence:` | Name of the sequence view to render |
+| `:view:` | Name of any view to render (diagram or sequence) |
+| `:sequence:` | Alias for `:view:`; backwards compatible |
 | `:slides:` | Pipe-separated view/sequence names for a slideshow |
 | `:caption:` | Single diagram: figure caption. Slideshow: static label above carousel. |
 | `:slide-captions:` | Pipe-separated per-slide captions; updated on navigation |
