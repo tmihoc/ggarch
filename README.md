@@ -48,14 +48,14 @@ themes and an optional expand modal.
 ## Sneak peek
 
 <div align="center">
-  <img src=".github/ggarch-demo.gif"
-       alt="Six-slide walkthrough: model source, overview diagram, zoomed-in pod detail, sequence diagram, embed directive, rendered result in Sphinx."
+  <img src=".github/ggarch-demo.gif?v=3"
+       alt="Three-slide walkthrough: juju.ggarch source file, the Markdown file with ggarch directives, and the rendered Sphinx page with diagram, expand button, and caption."
        width="100%">
 </div>
 
-*From one `.ggarch` model file to three views -- topology overview,
-zoomed-in pod detail, and sequence diagram -- and into Sphinx docs.
-Source for this demo: [`.github/demo.ggarch`](.github/demo.ggarch).*
+*From `juju.ggarch` to a Markdown file with `{ggarch}` directives to a live
+Sphinx page -- with the diagram, expand button, and caption all rendered.
+Source: [`docs/juju.ggarch`](https://github.com/tmihoc/juju/blob/4.0-docs-rewrite-juju-architecture-juju-9632/docs/juju.ggarch).*
 
 ## Get started
 
