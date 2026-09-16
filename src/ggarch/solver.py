@@ -124,8 +124,8 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
             solver.addConstraint((iv.w >= MIN_NODE_WIDTH)  | "required")
             solver.addConstraint((iv.h >= MIN_NODE_HEIGHT) | "required")
             mw, mh = min_size(spec.label or type_node.label, bool(type_node.children))
-            solver.addConstraint((iv.w >= mw) | "strong")
-            solver.addConstraint((iv.h >= mh) | "strong")
+            solver.addConstraint((iv.w >= mw) | "required")
+            solver.addConstraint((iv.h >= mh) | "required")
 
     # Add containment constraints (parent must contain all children).
     _add_containment_constraints(solver, selected, vars_by_id, diagram.select)
@@ -138,9 +138,8 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     # This runs before user constraints so user constraints can override.
     direction_map = _collect_directions(diagram.constraints)
     _add_auto_layout_pass(solver, selected, vars_by_id, diagram.select, direction_map)
-
-    # Add user-declared constraints.
-    _add_user_constraints(solver, diagram.constraints, vars_by_id, diagram.name)
+    # Add user-declared constraints, with label-aware gap expansion.
+    _add_user_constraints(solver, diagram.constraints, vars_by_id, diagram.name, model)
 
     # Solve.
     try:
@@ -232,8 +231,8 @@ def _add_min_size_for_node(
         min_w, min_h = field_node_min_size(node.label, len(node.fields))
     else:
         min_w, min_h = min_size(node.label, is_container and not collapsed)
-    solver.addConstraint((v.w >= min_w) | "strong")
-    solver.addConstraint((v.h >= min_h) | "strong")
+    solver.addConstraint((v.w >= min_w) | "required")
+    solver.addConstraint((v.h >= min_h) | "required")
 
     if not collapsed:
         for child in node.children:
@@ -342,18 +341,46 @@ def _add_auto_layout_pass(
 # User-declared constraints
 # ---------------------------------------------------------------------------
 
+# These constants mirror the renderer so the solver knows how much space
+# a label needs. Keep in sync with renderer.py.
+_LABEL_CHAR_W   = 5.0
+_LABEL_LINE_H   = 9 * 1.5   # font_size * 1.5
+_LABEL_PADDING  = 12         # px each side of gap
+_LABEL_MIN_TAIL = 12         # px of visible arrow on each side of gap
+
+
+def _label_min_gap(label: str) -> float:
+    """Minimum node-face-to-node-face distance needed for this edge label."""
+    lines = label.split("\\n")
+    max_line_w = max(len(l) for l in lines) * _LABEL_CHAR_W
+    text_h = _LABEL_LINE_H * len(lines)
+    projected = max(max_line_w, text_h)
+    return projected + _LABEL_PADDING * 2 + _LABEL_MIN_TAIL * 2
+
+
 _GAP_DEFAULT = 20  # px — default gap when not specified
 
 
 def _add_user_constraints(
     solver: Solver,
-    constraints: list[Constraint],
+    constraints: list,
     vars_by_id: dict[str, _NodeVars],
     view_name: str,
+    model: Model | None = None,
 ) -> None:
+    # Build a map from (src, tgt) pair → max label min_gap for labelled edges.
+    label_gaps: dict[frozenset, float] = {}
+    if model is not None:
+        for edge in model.edges:
+            if edge.label:
+                pair = frozenset([edge.source, edge.target])
+                lg = _label_min_gap(edge.label)
+                if lg > label_gaps.get(pair, 0):
+                    label_gaps[pair] = lg
+
     for c in constraints:
         try:
-            _add_one_constraint(solver, c, vars_by_id)
+            _add_one_constraint(solver, c, vars_by_id, label_gaps)
         except UnsatisfiableConstraint as exc:
             raise ValidationError(
                 f"diagram {view_name!r}: constraint {c.kind!r} on "
@@ -370,9 +397,14 @@ def _add_one_constraint(
     solver: Solver,
     c: Constraint,
     vars_by_id: dict[str, _NodeVars],
+    label_gaps: dict | None = None,
 ) -> None:
     s = vars_by_id[c.subject]
-    gap = c.gap if c.gap else _GAP_DEFAULT
+    user_gap = c.gap if c.gap else _GAP_DEFAULT
+    # Expand the gap if a labelled edge between these nodes needs more space.
+    pair = frozenset([c.subject, c.object]) if hasattr(c, "object") and c.object else None
+    label_min = (label_gaps or {}).get(pair, 0) if pair else 0
+    gap = max(user_gap, label_min)
 
     kind = c.kind
 
