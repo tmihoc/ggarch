@@ -711,15 +711,22 @@ def _render_edge(
                 cur = w
         wrapped.append(cur)
 
-    # Gap = text width + padding on each side; never exceeds path length.
+    # Gap = text width + padding on each side; never exceeds 80% of path.
     max_line_w = max(len(l) for l in wrapped) * char_w
     lh = font_size * 1.5
-    gap = min(max_line_w + PADDING * 2, path_len * 0.9)
+    gap = min(max_line_w + PADDING * 2, path_len * 0.8)
     half_gap = gap / 2
     mid_dist = path_len / 2
-
-    gap_start_dist = max(mid_dist - half_gap, 0)
-    gap_end_dist   = min(mid_dist + half_gap, path_len)
+    # MIN_TAIL: minimum visible line on each side of the gap before an arrowhead.
+    MIN_TAIL = 10
+    gap_start_dist = max(mid_dist - half_gap, MIN_TAIL)
+    gap_end_dist   = min(mid_dist + half_gap, path_len - MIN_TAIL)
+    # If the gap was clamped asymmetrically, re-centre it within the clamped range.
+    actual_gap = gap_end_dist - gap_start_dist
+    if actual_gap < gap:
+        centre = (gap_start_dist + gap_end_dist) / 2
+        gap_start_dist = max(centre - half_gap, MIN_TAIL)
+        gap_end_dist   = min(centre + half_gap, path_len - MIN_TAIL)
     gap_start = _point_along_path(pts, gap_start_dist)
     gap_end   = _point_along_path(pts, gap_end_dist)
 
