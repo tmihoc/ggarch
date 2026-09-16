@@ -540,7 +540,9 @@ def _render_edge(
     )
     font_size = 9
     char_w = 5.0
-    usable_px = max(path_len - 8, char_w)
+    # Clearance: minimum distance the gap must stay from each endpoint.
+    CLEARANCE = 14
+    usable_px = max(path_len - CLEARANCE * 2, char_w)
     max_chars = max(int(usable_px / char_w), 1)
 
     raw_lines = edge.label.split("\\n")
@@ -559,18 +561,20 @@ def _render_edge(
                 cur = w
         wrapped.append(cur)
 
-    # Gap: wide enough for the longest wrapped line, plus 4px padding.
+    # Gap width: longest line plus padding; capped so clearance is respected.
     max_line_w = max(len(l) for l in wrapped) * char_w + 4
     lh = font_size * 1.5
-    # Gap height adds a small vertical margin so the path doesn't clip text.
     gap_h = lh * len(wrapped) + 4
-    # Gap along the path is the diagonal of (max_line_w, gap_h) -- conservative.
-    gap = min(math.hypot(max_line_w, gap_h), path_len * 0.6)
+    gap = min(math.hypot(max_line_w, gap_h), path_len - CLEARANCE * 2)
+    gap = max(gap, 0)
     half_gap = gap / 2
     mid_dist = path_len / 2
 
-    gap_start = _point_along_path(pts, max(mid_dist - half_gap, 0))
-    gap_end   = _point_along_path(pts, min(mid_dist + half_gap, path_len))
+    # Clamp so gap never eats into the clearance zone at either end.
+    gap_start_dist = max(mid_dist - half_gap, CLEARANCE)
+    gap_end_dist   = min(mid_dist + half_gap, path_len - CLEARANCE)
+    gap_start = _point_along_path(pts, gap_start_dist)
+    gap_end   = _point_along_path(pts, gap_end_dist)
 
     # First segment: start → gap_start (arrowhead at back if needed).
     seg1_pts = [pts[0], gap_start]
