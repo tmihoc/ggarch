@@ -21,17 +21,24 @@ time with prev/next navigation)::
     ```{ggarch}
     :file: ../principles.ggarch
     :slides: "Notify then pull | Initial event"
+    :caption: How the watcher cycle works.
     :slide-captions: "Normal cycle. | On creation, the watcher fires immediately."
     :alt: Watcher notification sequence.
     ```
+
+In slideshow mode, ``:caption:`` is a static label rendered above the carousel
+(it frames the whole slideshow and does not change on navigation).
+``:slide-captions:`` supplies the per-slide text that updates in the figcaption
+as the reader navigates. Both are optional independently.
 
 Options
 -------
 :view:            Name of the diagram view to render.
 :sequence:        Name of the sequence view to render.
 :slides:          Pipe-separated list of view/sequence names for a slideshow.
-:slide-captions:  Pipe-separated captions matching :slides:.
-:caption:         Figure caption (rendered inside the figure, survives expand).
+:slide-captions:  Pipe-separated captions matching :slides:; updated on nav.
+:caption:         Single diagram: figure caption. Slideshow: static label
+                  above the carousel, does not change on navigation.
 :alt:             Required. Prose description for accessibility.
 :file:            Path to a .ggarch file, relative to the source document.
 :class:           Extra CSS class on the figure element.
@@ -301,6 +308,12 @@ figure.ggarch-figure figcaption {
 /* Slideshow */
 .ggarch-slides {
     position: relative;
+}
+.ggarch-slides-caption {
+    font-size: 0.9em;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: inherit;
 }
 .ggarch-slide { display: none; }
 .ggarch-slide.active { display: block; }
@@ -733,6 +746,8 @@ def html_visit_ggarch(self: object, node: ggarch) -> None:
         diag_names = {d.name for d in f.diagrams}
 
         self.body.append(f'<figure class="{figure_class}">\n')
+        if caption:
+            self.body.append(f'<p class="ggarch-slides-caption">{self.encode(caption)}</p>\n')
         self.body.append('<div class="ggarch-slides">\n')
 
         any_ok = False
@@ -773,10 +788,11 @@ def html_visit_ggarch(self: object, node: ggarch) -> None:
 
         self.body.append('</div>\n')  # .ggarch-slides
 
-        # figcaption starts with first slide's caption; JS updates it on nav
-        first_cap = captions[0] if captions else caption
-        if first_cap or caption:
-            self.body.append(f'<figcaption>{self.encode(first_cap or caption)}</figcaption>\n')
+        # figcaption shows the first slide-caption and is updated by JS on nav.
+        # :caption: is already rendered as a static label above; don't repeat it.
+        first_slide_cap = captions[0] if captions else ""
+        if first_slide_cap:
+            self.body.append(f'<figcaption>{self.encode(first_slide_cap)}</figcaption>\n')
 
         self.body.append('</figure>\n')
         raise nodes.SkipNode

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="900.1000000000001" height="320.0" viewBox="0 0 900.1000000000001 320.0">
+<defs>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="arrow" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8 Z" fill="#555555" />
+</marker>
+</defs>
+<rect x="0" y="0" width="900.1000000000001" height="320.0" fill="#FFFFFF" />
+<g id="ggarch-nodes">
+<rect x="20.0" y="130.0" width="226.4" height="60.0" fill="#FFFDE7" stroke="#F9A825" stroke-width="1" rx="2" ry="2" />
+<text x="133.2" y="150.9" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">application</text>
+<text x="133.2" y="169.1" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">(name, charm ref, config)</text>
+<rect x="306.4" y="130.0" width="284.0" height="60.0" fill="#FFFDE7" stroke="#F9A825" stroke-width="1" rx="2" ry="2" />
+<text x="448.4" y="150.9" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">unit</text>
+<text x="448.4" y="169.1" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">(application, charm rev, lifecycle)</text>
+<rect x="660.9000000000001" y="130.0" width="219.20000000000002" height="60.0" fill="#FFFDE7" stroke="#F9A825" stroke-width="1" rx="2" ry="2" />
+<text x="770.5000000000001" y="150.9" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">machine / pod</text>
+<text x="770.5000000000001" y="169.1" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">(constraints, provider ID)</text>
+<rect x="20.0" y="20.0" width="226.4" height="60.0" fill="#FFFDE7" stroke="#F9A825" stroke-width="1" rx="2" ry="2" />
+<text x="133.2" y="40.9" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">charm</text>
+<text x="133.2" y="59.099999999999994" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">(source, revision, archive)</text>
+<rect x="38.0" y="240.0" width="190.4" height="60.0" fill="#FFFDE7" stroke="#F9A825" stroke-width="1" rx="2" ry="2" />
+<text x="133.2" y="260.90000000000003" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">relation</text>
+<text x="133.2" y="279.1" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">(endpoints, data bags)</text>
+</g>
+<g id="ggarch-edges">
+<path d="M 133.2 130.0 L 133.2 111.8" fill="none" stroke="#F9A825" stroke-width="1" />
+<path d="M 133.2 98.2 L 133.2 80.0" fill="none" stroke="#F9A825" stroke-width="1" marker-end="url(#arrow)" />
+<text x="133.2" y="105.0" font-size="9" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">uses</text>
+<path d="M 246.4 160.0 L 268.1 160.0" fill="none" stroke="#F9A825" stroke-width="1" />
+<path d="M 284.6 160.0 L 306.4 160.0" fill="none" stroke="#F9A825" stroke-width="1" marker-end="url(#arrow)" />
+<text x="276.4" y="160.0" font-size="9" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">has</text>
+<path d="M 590.4 160.0 L 606.4 160.0" fill="none" stroke="#F9A825" stroke-width="1" />
+<path d="M 644.9 160.0 L 660.9 160.0" fill="none" stroke="#F9A825" stroke-width="1" marker-end="url(#arrow)" />
+<text x="625.6500000000001" y="160.0" font-size="9" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">runs on</text>
+<path d="M 133.2 240.0 L 133.2 221.8" fill="none" stroke="#F9A825" stroke-width="1" />
+<path d="M 133.2 208.2 L 133.2 190.0" fill="none" stroke="#F9A825" stroke-width="1" marker-end="url(#arrow)" />
+<text x="133.2" y="215.0" font-size="9" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">connects</text>
+</g>
+<g id="ggarch-annotations"></g>
+</svg>

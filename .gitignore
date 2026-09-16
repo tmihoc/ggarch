@@ -10,4 +10,5 @@ build/
 _build/
 *.svg
 !examples/*.svg
+!.github/*.svg
 HANDOFF.md
