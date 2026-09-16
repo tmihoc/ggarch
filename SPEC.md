@@ -967,6 +967,34 @@ This means:
 - An agent reading the model block understands the full system; an agent
   reading a view block understands only a perspective on it.
 
+**Design note -- view keyword unification (TODO):** The current grammar uses
+separate keywords for different rendering modes: `diagram` for topology/ER/class
+views, `sequence` for interaction views, `state` for state machine views. This
+encodes the rendering mode in the keyword rather than deriving it from the
+select content -- the wrong level of abstraction. A topology view and a sequence
+view are both projections of the same model; they should both be introduced by
+the same keyword. The rendering mode is fully determined by what the `select`
+block contains: `behaviour:` implies sequence rendering; `nodes:`/`positions:`
+implies topology rendering; `state:` implies state machine rendering. The unified
+grammar would be:
+
+```
+view "K8s deployment" from "Juju" {
+  select { nodes: controller_pod unit_pod
+           edges: type api type stream }
+  positions { ... }
+}
+
+view "Hook execution" from "Juju" {
+  select { behaviour: "Hook execution" }
+}
+```
+
+The Sphinx directive already implements this at the surface level -- `:view:`
+resolves to whichever type matches the name. The grammar and parser still use
+separate keywords. See Open questions item 7.
+
+
 ### Layers within a diagram view
 
 When a `diagram` view is rendered, layers are evaluated in this order:
@@ -1511,3 +1539,18 @@ Phases 8–12 add no new dependencies.
 6. **`abstracts:` rendering.** Currently affects validation only. Phase 12
    implements the rendering side: view selection substitutes the concrete node
    when an abstract id is selected. Tracked in phase 12.
+
+7. **View keyword unification.** The current grammar uses separate top-level
+   keywords -- `diagram`, `sequence`, `state` -- for different rendering modes.
+   This encodes the renderer in the keyword rather than deriving it from the
+   select content, which is the wrong level of abstraction. All views are
+   projections of the same model; they should share one keyword. The rendering
+   mode is fully determined by what the `select` block contains: `behaviour:`
+   implies sequence rendering; `nodes:`/`positions:` implies topology rendering;
+   `state:` implies state machine rendering. The target grammar is a single
+   `view` keyword throughout. The Sphinx directive already implements this at
+   the surface level (`:view:` resolves either type by name); the grammar,
+   parser, model dataclasses, and CLI need to follow.
+   **TODO:** Migrate `diagram`/`sequence`/`state` to `view` in the grammar and
+   parser. Keep `diagram`/`sequence` as deprecated aliases during a transition
+   window; remove them in the next MAJOR version bump.
