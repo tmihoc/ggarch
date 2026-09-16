@@ -48,7 +48,7 @@ themes and an optional expand modal.
 ## Sneak peek
 
 <div align="center">
-  <img src=".github/ggarch-demo.gif?v=3"
+  <img src=".github/ggarch-demo.gif?v=4"
        alt="Three-slide walkthrough: juju.ggarch source file, the Markdown file with ggarch directives, and the rendered Sphinx page with diagram, expand button, and caption."
        width="100%">
 </div>
