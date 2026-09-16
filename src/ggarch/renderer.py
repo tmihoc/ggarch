@@ -514,47 +514,43 @@ def _render_person(
     style: NodeStyle,
     label: str,
 ) -> None:
-    """Person node: the shape IS the person.
+    """Person node: rounded rect with a small person icon in the top-left corner.
 
-    A filled rounded rect with a head circle centred in the upper portion
-    and a body arc in the lower portion. Label centred in the box.
-    Both head and body use the fill colour so the shape reads as a solid
-    silhouette, same visual weight as every other filled rect.
+    The icon is small enough to leave the label area unobstructed regardless
+    of node height. Same bounding-box and stroke-weight convention as all
+    other shapes.
     """
-    fill   = style.fill if style.fill != "none" else "#F5F5F5"
+    fill   = style.fill if style.fill != "none" else "#F0F0F0"
     stroke = style.stroke
     sw     = style.stroke_width
     r      = style.border_radius
-    cx     = x + w / 2
 
-    # Background rect -- defines the bounding box.
+    # Bounding rect.
     g.append(dw.Rectangle(x, y, w, h,
                           fill=fill, stroke=stroke, stroke_width=sw,
                           rx=r, ry=r))
 
-    # Head: circle centred at ~30% height.
-    head_r  = min(w, h) * 0.14
-    head_cy = y + h * 0.32
-    g.append(dw.Circle(cx, head_cy, head_r,
+    # Small person icon: head + shoulders, confined to top-left ~14x14px.
+    icon_size = min(h * 0.38, 14)
+    ix = x + 5
+    iy = y + 4
+    head_r = icon_size * 0.28
+    head_cx = ix + icon_size * 0.40
+    head_cy = iy + head_r
+    g.append(dw.Circle(head_cx, head_cy, head_r,
                        fill=stroke, stroke="none"))
-
-    # Shoulders: half-ellipse centred at ~68% height.
-    # Clip to the box by drawing only what fits -- use a wide, shallow ellipse.
-    shoulder_cx = cx
-    shoulder_cy = y + h * 0.72
-    shoulder_rx = min(w * 0.38, w / 2 - 2)
-    shoulder_ry = h * 0.20
-    # Draw as a path: half-ellipse (top half only, closed at the chord).
-    import math as _math
+    shoulder_cy = head_cy + head_r + icon_size * 0.12
+    srx = icon_size * 0.40
+    sry = icon_size * 0.22
     g.append(dw.Path(
-        d=(f"M {shoulder_cx - shoulder_rx:.1f} {shoulder_cy:.1f} "
-           f"A {shoulder_rx:.1f} {shoulder_ry:.1f} 0 0 1 "
-           f"{shoulder_cx + shoulder_rx:.1f} {shoulder_cy:.1f} Z"),
+        d=(f"M {head_cx - srx:.1f} {shoulder_cy:.1f} "
+           f"A {srx:.1f} {sry:.1f} 0 0 1 "
+           f"{head_cx + srx:.1f} {shoulder_cy:.1f} Z"),
         fill=stroke, stroke="none",
     ))
 
     # Label centred in the box.
-    _render_label(g, cx, y + h / 2, label, style)
+    _render_label(g, x + w / 2, y + h / 2, label, style)
 
 
 def _render_cylinder(
