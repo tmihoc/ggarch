@@ -37,6 +37,7 @@ from ggarch.layout import (
 )
 from ggarch.model import (
     Constraint,
+    FanConstraint,
     DiagramView,
     GgarchFile,
     Lifecycle,
@@ -134,12 +135,19 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     # Without this the system is under-constrained (translatable).
     _add_origin_anchor(solver, selected, vars_by_id)
 
+    # Expand fan constraints into ordinary constraints before layout passes.
+    # Pass solver and vars_by_id so even-N fans can emit centroid constraints directly.
+    expanded_constraints = _expand_fan_constraints(diagram.constraints, solver, vars_by_id)
+
     # Auto-layout container children using direction constraints.
     # This runs before user constraints so user constraints can override.
-    direction_map = _collect_directions(diagram.constraints)
-    _add_auto_layout_pass(solver, selected, vars_by_id, diagram.select, direction_map)
+    direction_map = _collect_directions(expanded_constraints)
+    _add_auto_layout_pass(solver, selected, vars_by_id, diagram.select, direction_map, model)
     # Add user-declared constraints, with label-aware gap expansion.
-    _add_user_constraints(solver, diagram.constraints, vars_by_id, diagram.name, model)
+    _add_user_constraints(solver, expanded_constraints, vars_by_id, diagram.name, model)
+    # Ensure sufficient separation for every labelled edge (covers auto-layout children).
+    if model is not None:
+        _add_label_gap_constraints(solver, model, vars_by_id, expanded_constraints)
 
     # Solve.
     try:
@@ -313,6 +321,7 @@ def _add_auto_layout_pass(
     vars_by_id: dict[str, _NodeVars],
     select: SelectClause,
     direction_map: dict[str, str],
+    model: "Model | None" = None,
 ) -> None:
     """Add MEDIUM-priority sequential placement for container children.
 
@@ -322,11 +331,94 @@ def _add_auto_layout_pass(
     for node in nodes:
         if node.children and node.id not in select.collapse:
             direction = direction_map.get(node.id, "right")
-            _auto_layout_children(solver, node, vars_by_id, direction)
-            # Recurse into children that are themselves containers.
+            _auto_layout_children(solver, node, vars_by_id, direction, model)
             _add_auto_layout_pass(
-                solver, node.children, vars_by_id, select, direction_map
+                solver, node.children, vars_by_id, select, direction_map, model
             )
+
+
+# ---------------------------------------------------------------------------
+# Fan constraint expansion
+# ---------------------------------------------------------------------------
+
+def _expand_fan_constraints(
+    constraints: list[Constraint | FanConstraint],
+    solver: Solver | None = None,
+    vars_by_id: dict | None = None,
+) -> list[Constraint]:
+    """Expand FanConstraints into ordinary Constraints.
+
+    For each fan, emits:
+    - One cardinal constraint per member (correct plane relative to anchor).
+    - Sequential spacing constraints chaining members along the fan axis.
+    - Centering: for odd N, pins the middle member's perpendicular axis to
+      the anchor's. For even N, directly constrains
+      (left_cx + right_cx) == 2 * anchor_cx (requires solver + vars_by_id).
+    - Perpendicular alignment between all members (clean row or column).
+
+    Fan axis conventions:
+      above / below      → horizontal row, centred on anchor cx.
+      left-of / right-of → vertical column, centred on anchor cy.
+    """
+    result: list[Constraint] = []
+    for c in constraints:
+        if not isinstance(c, FanConstraint):
+            result.append(c)
+            continue
+
+        members = c.members
+        anchor  = c.anchor
+        n       = len(members)
+        gap     = c.gap
+        spacing = c.spacing
+        horiz   = c.direction in ("above", "below")
+
+        # -- 1. Place each member in the correct plane relative to anchor --
+        for m in members:
+            result.append(Constraint(kind=c.direction, subject=m, object=anchor, gap=gap))
+
+        if horiz:
+            # -- 2. Chain left-to-right with spacing --
+            for i in range(n - 1):
+                result.append(Constraint(kind="left-of", subject=members[i],
+                                         object=members[i + 1], gap=spacing))
+            # -- 3. All members on the same horizontal row --
+            for m in members:
+                result.append(Constraint(kind="align-middle", subject=m, object=members[0]))
+            # -- 4. Centre group on anchor cx --
+            if n % 2 == 1:
+                # Odd N: pin middle member cx to anchor cx.
+                result.append(Constraint(kind="align-centre",
+                                         subject=members[n // 2], object=anchor))
+            elif solver is not None and vars_by_id is not None:
+                # Even N: (left_of_centre.cx + right_of_centre.cx) == 2 * anchor.cx
+                left  = vars_by_id[members[n // 2 - 1]]
+                right = vars_by_id[members[n // 2]]
+                anch  = vars_by_id[anchor]
+                solver.addConstraint(
+                    (left.cx + right.cx == 2 * anch.cx) | "required"
+                )
+        else:
+            # -- 2. Chain top-to-bottom with spacing --
+            for i in range(n - 1):
+                result.append(Constraint(kind="above", subject=members[i],
+                                         object=members[i + 1], gap=spacing))
+            # -- 3. All members on the same vertical column --
+            for m in members:
+                result.append(Constraint(kind="align-centre", subject=m, object=members[0]))
+            # -- 4. Centre group on anchor cy --
+            if n % 2 == 1:
+                result.append(Constraint(kind="align-middle",
+                                         subject=members[n // 2], object=anchor))
+            elif solver is not None and vars_by_id is not None:
+                top    = vars_by_id[members[n // 2 - 1]]
+                bottom = vars_by_id[members[n // 2]]
+                anch   = vars_by_id[anchor]
+                solver.addConstraint(
+                    (top.cy + bottom.cy == 2 * anch.cy) | "required"
+                )
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -335,28 +427,123 @@ def _add_auto_layout_pass(
 
 # These constants mirror the renderer so the solver knows how much space
 # a label needs. Keep in sync with renderer.py.
-_LABEL_CHAR_W   = 5.0
+_LABEL_CHAR_W   = 5.5
 _LABEL_LINE_H   = 9 * 1.5   # font_size * 1.5
-_LABEL_PADDING  = 8          # px each side of gap
-_LABEL_MIN_TAIL = 12         # px of visible arrow on each side of gap
+_LABEL_PADDING  = 0          # px each side of gap — keep in sync with renderer.py
+_LABEL_MIN_TAIL = 16         # px of visible arrow on each side of gap
 
 
 def _label_min_gap_h(label: str) -> float:
-    """Minimum gap for a horizontal arrow (left-of/right-of): sized by text width."""
+    """Minimum gap for a horizontal arrow: label width + padding + tails."""
     lines = label.split("\\n")
     max_line_w = max(len(l) for l in lines) * _LABEL_CHAR_W
     return max_line_w + _LABEL_PADDING * 2 + _LABEL_MIN_TAIL * 2
 
 
 def _label_min_gap_v(label: str) -> float:
-    """Minimum gap for a vertical arrow (above/below): sized by text height."""
-    lines = label.split("\\n")
-    text_h = _LABEL_LINE_H * len(lines)
+    """Minimum gap for a vertical arrow: wrapped label height + padding + tails.
+
+    For vertical arrows the label is rendered horizontally above the arrow;
+    the gap size is the wrapped text height.  We estimate wrapping using a
+    conservative path width of 60px (typical inter-node vertical gap).
+    """
+    TYPICAL_PATH_PX = 60
+    lines_raw = label.split("\\n")
+    max_chars = max(int(TYPICAL_PATH_PX / _LABEL_CHAR_W), 1)
+    wrapped_lines = 0
+    for raw in lines_raw:
+        words = raw.split()
+        if not words:
+            wrapped_lines += 1
+            continue
+        cur = words[0]
+        for w in words[1:]:
+            if len(cur) + 1 + len(w) <= max_chars:
+                cur += " " + w
+            else:
+                wrapped_lines += 1
+                cur = w
+        wrapped_lines += 1
+    text_h = _LABEL_LINE_H * wrapped_lines
     return text_h + _LABEL_PADDING * 2 + _LABEL_MIN_TAIL * 2
 
 
 _GAP_DEFAULT = 20  # px — default gap when not specified
 
+def _add_label_gap_constraints(
+    solver: Solver,
+    model: Model,
+    vars_by_id: dict[str, _NodeVars],
+    constraints: list,
+) -> None:
+    """Emit STRONG-priority minimum-separation for every labelled edge.
+
+    Operates on top-level ancestors so container nodes get pushed.
+    Only emits horizontal constraints for horizontally-related pairs and
+    vertical constraints for vertically-related pairs, to avoid displacing
+    nodes that are related on the perpendicular axis.
+    """
+    # Build parent map.
+    parent: dict[str, str] = {}
+    def _walk(node: "Node", pid: str | None) -> None:
+        if pid is not None:
+            parent[node.id] = pid
+        for child in node.children:
+            _walk(child, node.id)
+    for node in model.nodes:
+        _walk(node, None)
+
+    def _top_ancestor(nid: str) -> str:
+        while parent.get(nid) in vars_by_id:
+            nid = parent[nid]
+        return nid
+
+    # Build axis relationship sets from expanded constraints.
+    right_of: set[tuple[str,str]] = set()  # (right_node, left_node)
+    above_of:  set[tuple[str,str]] = set()  # (above_node, below_node)
+    for c in constraints:
+        if not isinstance(c, Constraint):
+            continue
+        if c.kind == "right-of":
+            right_of.add((c.subject, c.object))
+        elif c.kind == "left-of":
+            right_of.add((c.object, c.subject))
+        elif c.kind == "above":
+            above_of.add((c.subject, c.object))
+        elif c.kind == "below":
+            above_of.add((c.object, c.subject))
+
+    for edge in model.edges:
+        if not edge.label:
+            continue
+        src_id = _top_ancestor(edge.source)
+        tgt_id = _top_ancestor(edge.target)
+        if src_id == tgt_id:
+            continue
+        src = vars_by_id.get(src_id)
+        tgt = vars_by_id.get(tgt_id)
+        if src is None or tgt is None:
+            continue
+        pair = (src_id, tgt_id)
+        rpair = (tgt_id, src_id)
+        h_related = pair in right_of or rpair in right_of
+        v_related = pair in above_of or rpair in above_of
+        if not h_related and not v_related:
+            # No declared spatial relationship — emit horizontal STRONG only
+            # (covers auto-layout children with direction: right).
+            min_h = _label_min_gap_h(edge.label)
+            solver.addConstraint((tgt.x - src.x2 >= min_h) | "strong")
+            solver.addConstraint((src.x - tgt.x2 >= min_h) | "strong")
+        elif h_related:
+            # Horizontal relationship — emit horizontal STRONG in correct direction.
+            min_h = _label_min_gap_h(edge.label)
+            if pair in right_of:
+                solver.addConstraint((src.x - tgt.x2 >= min_h) | "strong")
+            else:
+                solver.addConstraint((tgt.x - src.x2 >= min_h) | "strong")
+        # v_related: vertical relationship handled by _label_min_gap_v in
+        # _add_user_constraints (above/below constraint label expansion).
+        # Don't emit horizontal STRONG — it would push nodes sideways.
 
 def _add_user_constraints(
     solver: Solver,
@@ -365,6 +552,7 @@ def _add_user_constraints(
     view_name: str,
     model: Model | None = None,
 ) -> None:
+    """Apply user position constraints."""
     # Build maps from node pair → min gap, separated by axis.
     h_label_gaps: dict[frozenset, float] = {}
     v_label_gaps: dict[frozenset, float] = {}
@@ -502,25 +690,44 @@ def _auto_layout_children(
     node: Node,
     vars_by_id: dict[str, _NodeVars],
     direction: str = "right",
+    model: "Model | None" = None,
 ) -> None:
-    """Add sequential placement constraints for children that have no
-    explicit mutual constraints.
+    """Add sequential placement constraints for container children.
 
-    direction: 'right' places children left-to-right;
-               'down' places them top-to-bottom.
+    For consecutive child pairs with a labelled edge between them, the gap
+    is expanded to fit the label.  Uses REQUIRED priority so label gaps are
+    always respected, not just preferred.
     """
     children = node.children
     if len(children) < 2:
         return
-    gap = _GAP_DEFAULT
+
+    # Build lookup: pair of child ids -> max label min-gap from model edges.
+    label_gaps: dict[frozenset, float] = {}
+    if model is not None:
+        for edge in model.edges:
+            if not edge.label:
+                continue
+            pair = frozenset([edge.source, edge.target])
+            child_ids = {c.id for c in children}
+            if pair <= child_ids:  # both endpoints are children of this node
+                if direction == "right":
+                    lg = _label_min_gap_h(edge.label)
+                else:
+                    lg = _label_min_gap_v(edge.label)
+                if lg > label_gaps.get(pair, 0):
+                    label_gaps[pair] = lg
+
     for i in range(1, len(children)):
         prev = vars_by_id[children[i - 1].id]
         curr = vars_by_id[children[i].id]
+        pair = frozenset([children[i - 1].id, children[i].id])
+        gap = max(_GAP_DEFAULT, label_gaps.get(pair, 0))
         if direction == "right":
-            solver.addConstraint((curr.x >= prev.x2 + gap) | "medium")
+            solver.addConstraint((curr.x >= prev.x2 + gap) | "required")
             solver.addConstraint((curr.y == prev.y) | "medium")
         else:  # down
-            solver.addConstraint((curr.y >= prev.y2 + gap) | "medium")
+            solver.addConstraint((curr.y >= prev.y2 + gap) | "required")
             solver.addConstraint((curr.x == prev.x) | "medium")
 
 

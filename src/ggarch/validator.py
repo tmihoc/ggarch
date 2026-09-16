@@ -16,6 +16,7 @@ from ggarch.errors import ValidationError
 from ggarch.model import (
     Block,
     Constraint,
+    FanConstraint,
     DiagramView,
     GgarchFile,
     Model,
@@ -219,21 +220,32 @@ def _validate_select(select: SelectClause, model: Model, view_name: str) -> None
 
 
 def _validate_constraints(
-    constraints: list[Constraint],
+    constraints: list[Constraint | FanConstraint],
     model: Model,
     view_name: str,
     extra_ids: set[str] | None = None,
 ) -> None:
     valid_ids = model.all_node_ids() | (extra_ids or set())
     for c in constraints:
-        if c.subject not in valid_ids:
-            raise ValidationError(
-                f"view {view_name!r}: constraint subject {c.subject!r} is not declared in model {model.name!r}",
-            )
-        if c.object and c.object not in valid_ids:
-            raise ValidationError(
-                f"view {view_name!r}: constraint object {c.object!r} is not declared in model {model.name!r}",
-            )
+        if isinstance(c, FanConstraint):
+            for m in c.members:
+                if m not in valid_ids:
+                    raise ValidationError(
+                        f"view {view_name!r}: fan member {m!r} is not declared in model {model.name!r}",
+                    )
+            if c.anchor not in valid_ids:
+                raise ValidationError(
+                    f"view {view_name!r}: fan anchor {c.anchor!r} is not declared in model {model.name!r}",
+                )
+        else:
+            if c.subject not in valid_ids:
+                raise ValidationError(
+                    f"view {view_name!r}: constraint subject {c.subject!r} is not declared in model {model.name!r}",
+                )
+            if c.object and c.object not in valid_ids:
+                raise ValidationError(
+                    f"view {view_name!r}: constraint object {c.object!r} is not declared in model {model.name!r}",
+                )
 
 
 def _validate_diagram_view(diagram: DiagramView, f: GgarchFile) -> None:

@@ -193,6 +193,72 @@ diagram "D" from "M" {
         assert abs(e.mid.x - expected_mx) < 0.1
         assert abs(e.mid.y - expected_my) < 0.1
 
+    def test_diagonal_for_offset_horizontal_nodes(self):
+        """Primarily-horizontal but vertically offset → exactly 2 waypoints (diagonal)."""
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+  }
+  edges { a -> b [type: control, label: "operates"] }
+}
+diagram "D" from "M" {
+  select { nodes: a b }
+  positions {
+    a left-of b gap: 120
+    b above a   gap: 40
+  }
+}
+"""
+        rl, _, _ = solve_and_route(src)
+        e = rl.edges[0]
+        # Diagonal: 2 points, start at source right face, end at target left face.
+        assert len(e.points) == 2
+        src_node = rl.layout.find("a")
+        tgt_node = rl.layout.find("b")
+        assert abs(e.start.x - src_node.rect.x2) < 1.0
+        assert abs(e.end.x   - tgt_node.rect.x)  < 1.0
+
+    def test_fan_out_no_border_hugging(self):
+        """One source, three vertically stacked targets → all arrows are 2-point diagonals."""
+        src = """\
+model "M" {
+  nodes {
+    user [type: person,   label: "User"]
+    app1 [type: external, label: "application 1"]
+    app2 [type: external, label: "application 2"]
+    app3 [type: external, label: "application 3"]
+  }
+  edges {
+    user -> app1 [type: control, label: "operates"]
+    user -> app2 [type: control, label: "operates"]
+    user -> app3 [type: control, label: "operates"]
+  }
+}
+diagram "D" from "M" {
+  select { nodes: user app1 app2 app3 edges: type control }
+  positions {
+    user  left-of app1  gap: 20
+    user  align-middle app2
+    app1  above app2    gap: 20
+    app1  align-centre app2
+    app3  below app2    gap: 20
+    app3  align-centre app2
+  }
+}
+"""
+        rl, _, _ = solve_and_route(src)
+        # All three edges must be 2-point (no border-hugging intermediate bend).
+        for e in rl.edges:
+            assert len(e.points) == 2, (
+                f"edge {e.source_id}->{e.target_id} has {len(e.points)} points; expected 2"
+            )
+        # Each arrow exits the user's right face.
+        user_node = rl.layout.find("user")
+        for e in rl.edges:
+            if e.source_id == "user":
+                assert abs(e.start.x - user_node.rect.x2) < 1.0
 
 # ---------------------------------------------------------------------------
 # Auto-layout children (direction pass)

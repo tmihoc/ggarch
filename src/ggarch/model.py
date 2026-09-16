@@ -354,6 +354,20 @@ class Constraint:
 
 
 @dataclass
+class FanConstraint:
+    """Fan a group of nodes in one direction relative to an anchor node.
+
+    Places all members on the same plane (above/below/left-of/right-of the
+    anchor), spaced evenly, and centred on the anchor's perpendicular axis.
+    Expanded into ordinary Constraints before the solver runs.
+    """
+    members: list[str]      # node ids, left-to-right or top-to-bottom
+    direction: str          # above | below | left-of | right-of
+    anchor: str             # anchor node id
+    gap: int = 20           # px between fan plane and anchor
+    spacing: int = 20       # px between members
+
+@dataclass
 class AnnotationBox:
     """A dashed/solid rectangle enclosing a set of nodes."""
     nodes: list[str]
@@ -404,7 +418,7 @@ class DiagramView:
     name: str
     model_name: str
     select: SelectClause = field(default_factory=SelectClause)
-    constraints: list[Constraint] = field(default_factory=list)
+    constraints: list[Constraint | FanConstraint] = field(default_factory=list)
     annotations: list[Annotation] = field(default_factory=list)
 
 

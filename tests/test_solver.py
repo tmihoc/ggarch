@@ -365,3 +365,136 @@ class TestJujuLayout:
         ctrl = layout.find("controller_pod")
         # k8s above controller_pod means k8s.y2 <= controller_pod.y
         assert k8s.rect.y2 <= ctrl.rect.y + 0.5
+
+
+# ---------------------------------------------------------------------------
+# Fan constraint
+# ---------------------------------------------------------------------------
+
+FAN_MODEL = """\
+model "M" {
+  nodes {
+    anchor [type: t, label: "Anchor"]
+    a      [type: t, label: "A"]
+    b      [type: t, label: "B"]
+    c      [type: t, label: "C"]
+  }
+  edges {}
+}
+"""
+
+class TestFanConstraint:
+    def test_fan_above_places_members_above_anchor(self):
+        src = FAN_MODEL + """\
+diagram "D" from "M" {
+  select { nodes: anchor a b c }
+  positions { fan [a b c] above anchor gap: 40 }
+}
+"""
+        layout = solve_src(src)
+        anchor = layout.find("anchor")
+        for nid in ("a", "b", "c"):
+            n = layout.find(nid)
+            assert n.rect.y2 + 40 <= anchor.rect.y + 0.5, \
+                f"{nid} not above anchor (y2={n.rect.y2:.1f}, anchor.y={anchor.rect.y:.1f})"
+
+    def test_fan_above_members_same_row(self):
+        src = FAN_MODEL + """\
+diagram "D" from "M" {
+  select { nodes: anchor a b c }
+  positions { fan [a b c] above anchor gap: 40 }
+}
+"""
+        layout = solve_src(src)
+        cys = [layout.find(nid).rect.cy for nid in ("a", "b", "c")]
+        assert max(cys) - min(cys) < 0.5, "fan members not on same horizontal row"
+
+    def test_fan_above_members_spaced_left_to_right(self):
+        src = FAN_MODEL + """\
+diagram "D" from "M" {
+  select { nodes: anchor a b c }
+  positions { fan [a b c] above anchor gap: 40 spacing: 20 }
+}
+"""
+        layout = solve_src(src)
+        xa = layout.find("a").rect.x2
+        xb = layout.find("b").rect.x
+        xc_l = layout.find("c").rect.x
+        xb_r = layout.find("b").rect.x2
+        assert xb >= xa + 20 - 0.5, "a and b not spaced"
+        assert xc_l >= xb_r + 20 - 0.5, "b and c not spaced"
+
+    def test_fan_above_centred_on_anchor(self):
+        """Middle member of a 3-node fan should be centred on the anchor's cx."""
+        src = FAN_MODEL + """\
+diagram "D" from "M" {
+  select { nodes: anchor a b c }
+  positions { fan [a b c] above anchor gap: 40 }
+}
+"""
+        layout = solve_src(src)
+        mid_cx  = layout.find("b").rect.cx
+        anch_cx = layout.find("anchor").rect.cx
+        assert abs(mid_cx - anch_cx) < 1.0, \
+            f"middle member cx={mid_cx:.1f} not aligned to anchor cx={anch_cx:.1f}"
+
+    def test_fan_right_of_places_members_right_of_anchor(self):
+        src = FAN_MODEL + """\
+diagram "D" from "M" {
+  select { nodes: anchor a b c }
+  positions { fan [a b c] right-of anchor gap: 40 }
+}
+"""
+        layout = solve_src(src)
+        anchor = layout.find("anchor")
+        for nid in ("a", "b", "c"):
+            n = layout.find(nid)
+            assert n.rect.x >= anchor.rect.x2 + 40 - 0.5, \
+                f"{nid} not right of anchor"
+
+    def test_fan_right_of_centred_on_anchor(self):
+        """Middle member of a 3-node right-of fan centred on anchor's cy."""
+        src = FAN_MODEL + """\
+diagram "D" from "M" {
+  select { nodes: anchor a b c }
+  positions { fan [a b c] right-of anchor gap: 40 }
+}
+"""
+        layout = solve_src(src)
+        mid_cy  = layout.find("b").rect.cy
+        anch_cy = layout.find("anchor").rect.cy
+        assert abs(mid_cy - anch_cy) < 1.0, \
+            f"middle member cy={mid_cy:.1f} not aligned to anchor cy={anch_cy:.1f}"
+
+    def test_fan_two_members_above(self):
+        """Even-N fan: both members above anchor, group midpoint centred on anchor."""
+        src = FAN_MODEL + """\
+diagram "D" from "M" {
+  select { nodes: anchor a b }
+  positions { fan [a b] above anchor gap: 40 }
+}
+"""
+        layout = solve_src(src)
+        anchor = layout.find("anchor")
+        for nid in ("a", "b"):
+            n = layout.find(nid)
+            assert n.rect.y2 + 40 <= anchor.rect.y + 0.5
+        # Even N: group midpoint (average cx of all members) == anchor cx.
+        midpoint_cx = (layout.find("a").rect.cx + layout.find("b").rect.cx) / 2
+        assert abs(midpoint_cx - anchor.rect.cx) < 1.0, \
+            f"group midpoint cx={midpoint_cx:.1f} != anchor cx={anchor.rect.cx:.1f}"
+
+    def test_fan_parses_in_ggarch_source(self):
+        """fan constraint round-trips through parse → validate → solve."""
+        from ggarch import validate
+        src = FAN_MODEL + """\
+diagram "D" from "M" {
+  select { nodes: anchor a b c }
+  positions { fan [a b c] above anchor gap: 40 spacing: 20 }
+}
+"""
+        from ggarch import parse
+        f = parse(src)
+        validate(f)
+        d = f.diagrams[0]
+        assert any(hasattr(c, "members") for c in d.constraints)

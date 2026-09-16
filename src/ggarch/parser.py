@@ -21,6 +21,7 @@ from ggarch.model import (
     Block,
     Cardinality,
     Constraint,
+    FanConstraint,
     DiagramView,
     Edge,
     EdgeType,
@@ -410,7 +411,7 @@ class _GgarchTransformer(Transformer):
             if isinstance(item, SelectClause):
                 select = item
             elif isinstance(item, list):
-                if item and isinstance(item[0], Constraint):
+                if item and isinstance(item[0], (Constraint, FanConstraint)):
                     constraints = item
                 elif item and isinstance(item[0], (
                         AnnotationBox, AnnotationCallout,
@@ -467,7 +468,7 @@ class _GgarchTransformer(Transformer):
     # Positions
     # ------------------------------------------------------------------
 
-    def positions_block(self, *constraints) -> list[Constraint]:
+    def positions_block(self, *constraints) -> list[Constraint | FanConstraint]:
         return list(constraints)
 
     def constraint_cardinal(self, subject, kw, obj, *rest) -> Constraint:
@@ -493,6 +494,26 @@ class _GgarchTransformer(Transformer):
 
     def constraint_min_height(self, subject, value) -> Constraint:
         return Constraint(kind="min-height", subject=_str(subject), gap=_int(value))
+
+    def constraint_fan(self, *args) -> FanConstraint:
+        # Grammar: FAN_KW "[" ID+ "]" CARDINAL_KW ID ("gap" ":" INT)? ("spacing" ":" INT)?
+        # Lark passes all matched tokens; skip the FAN_KW, collect member IDs until
+        # a cardinal keyword, then anchor, then optional gap/spacing ints.
+        cardinals = {"above", "below", "left-of", "right-of"}
+        members: list[str] = []
+        i = 0
+        # Skip FAN_KW token ("fan").
+        if i < len(args) and _str(args[i]) == "fan":
+            i += 1
+        while i < len(args) and _str(args[i]) not in cardinals:
+            members.append(_str(args[i]))
+            i += 1
+        direction = _str(args[i]); i += 1
+        anchor    = _str(args[i]); i += 1
+        gap     = _int(args[i]) if i < len(args) else 20; i += 1
+        spacing = _int(args[i]) if i < len(args) else 20
+        return FanConstraint(members=members, direction=direction,
+                             anchor=anchor, gap=gap, spacing=spacing)
 
     # ------------------------------------------------------------------
     # Annotations

@@ -112,13 +112,16 @@ id_list: ID+
 
 positions_block: "positions" "{" constraint* "}"
 
-constraint: ID CARDINAL_KW ID ("gap" ":" INT)?  -> constraint_cardinal
-          | ID ALIGN_KW    ID                   -> constraint_align
-          | ID SAME_KW     ID                   -> constraint_same
-          | ID "direction" ":" ID               -> constraint_direction
-          | ID "grid" ":" INT INT               -> constraint_grid
-          | ID "min-width" ":" INT              -> constraint_min_width
-          | ID "min-height" ":" INT             -> constraint_min_height
+constraint: ID CARDINAL_KW ID ("gap" ":" INT)?                               -> constraint_cardinal
+          | ID ALIGN_KW    ID                                                 -> constraint_align
+          | ID SAME_KW     ID                                                 -> constraint_same
+          | ID "direction" ":" ID                                             -> constraint_direction
+          | ID "grid" ":" INT INT                                             -> constraint_grid
+          | ID "min-width" ":" INT                                            -> constraint_min_width
+          | ID "min-height" ":" INT                                           -> constraint_min_height
+          | FAN_KW "[" ID+ "]" CARDINAL_KW ID ("gap" ":" INT)? ("spacing" ":" INT)?  -> constraint_fan
+
+FAN_KW.2: "fan"
 
 CARDINAL_KW: "left-of" | "right-of" | "above" | "below"
 ALIGN_KW: "align-top" | "align-bottom" | "align-left" | "align-right" | "align-middle" | "align-centre"

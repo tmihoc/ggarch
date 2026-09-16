@@ -142,19 +142,36 @@ def _route_orthogonal(
     src_rect: Rect,
     tgt_rect: Rect,
 ) -> list[Point]:
-    """L-shaped orthogonal route for primarily-vertical travel.
+    """Primarily-vertical route.
 
-    Exits bottom/top face, horizontal jog at midpoint, enters top/bottom face.
+    - Same column (dx < 4px) → straight vertical.
+    - Small horizontal deviation (dx < dy * 0.4) → straight diagonal.
+      The horizontal offset is too small to warrant a jog; a diagonal
+      is cleaner and avoids producing degenerate short segments.
+    - Otherwise → L-shaped 4-point orthogonal with midpoint jog.
     """
     src_cx, src_cy = src_rect.cx, src_rect.cy
     tgt_cx, tgt_cy = tgt_rect.cx, tgt_rect.cy
+    dx = abs(tgt_cx - src_cx)
+    dy = abs(tgt_cy - src_cy)
 
     # Same column — straight vertical.
-    if abs(src_cx - tgt_cx) < 4:
+    if dx < 4:
         if tgt_cy > src_cy:
             return [_face_point(src_rect, "bottom"), _face_point(tgt_rect, "top")]
         else:
             return [_face_point(src_rect, "top"), _face_point(tgt_rect, "bottom")]
+
+    # Small horizontal deviation — diagonal is cleaner than a jog.
+    if dx < dy * 0.5:
+        going_right = tgt_cx >= src_cx
+        if tgt_cy < src_cy:  # target above source
+            src_pt = _face_point(src_rect, "top")
+            tgt_pt = _face_point(tgt_rect, "bottom")
+        else:
+            src_pt = _face_point(src_rect, "bottom")
+            tgt_pt = _face_point(tgt_rect, "top")
+        return [src_pt, tgt_pt]
 
     if tgt_cy >= src_cy:
         src_pt = _face_point(src_rect, "bottom")
@@ -183,10 +200,10 @@ def _route_edge(
 ) -> list[Point]:
     """Choose routing strategy based on relative position and face alignment.
 
-    - Truly horizontal (face points at same y within 4px) → straight 2-point.
-    - Primarily horizontal (dx >= dy) but different y → ⌐-shape 3-point:
-        exit source right/left face horizontally, then drop/rise vertically
-        at the target's near edge to enter the target face.
+    - Primarily horizontal (dx >= dy) → straight line from source right/left
+        face to target left/right face (diagonal or flat). The former ⌐-shape
+        3-point route placed its bend at the target's near face, making the
+        final segment traverse the target's own border — always degenerate.
     - Primarily vertical (dy > dx) → L-shaped 4-point orthogonal.
     """
     dx = abs(tgt_rect.cx - src_rect.cx)
@@ -200,16 +217,10 @@ def _route_edge(
         src_pt = _face_point(src_rect, src_face)
         tgt_pt = _face_point(tgt_rect, tgt_face)
 
-        if abs(src_pt.y - tgt_pt.y) < 10:
-            # Face points genuinely at the same height — pure horizontal.
-            return [src_pt, tgt_pt]
-
-        # Different y: go horizontal at source height, then vertical to target.
-        return [
-            src_pt,
-            Point(tgt_pt.x, src_pt.y),
-            tgt_pt,
-        ]
+        # Straight line: flat when same height, diagonal otherwise.
+        # The old ⌐ bend always landed on the target face, so the last segment
+        # ran down the target's own border.  Direct is always better here.
+        return [src_pt, tgt_pt]
 
     return _route_orthogonal(src_rect, tgt_rect)
 
@@ -310,6 +321,8 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                     url=edge.url,
                     points=points,
                 ))
+    _spread_shared_face_anchors(routed_edges, layout)
+    _simplify_spread_paths(routed_edges)
     return RoutedLayout(layout=layout, edges=routed_edges)
 
 
@@ -323,3 +336,101 @@ def _default_style(edge_type: str) -> str:
         "control": "solid",
         "ipc":     "dotted",
     }.get(edge_type, "solid")
+
+
+def _simplify_spread_paths(edges: list[RoutedEdge]) -> None:
+    """After face-spread, collapse L-shaped paths to diagonals when the
+    horizontal deviation is small relative to the vertical travel.
+
+    The face-spread adjusts endpoint positions but doesn't re-route, so an
+    L-shape that was valid before spreading may now be nearly vertical and
+    better rendered as a diagonal.  Threshold: dx < dy * 0.5.
+    """
+    for e in edges:
+        if len(e.points) != 4:
+            continue
+        src, tgt = e.points[0], e.points[-1]
+        dx = abs(tgt.x - src.x)
+        dy = abs(tgt.y - src.y)
+        if dy > 0 and dx <= dy * 0.5:
+            e.points[:] = [src, tgt]
+
+
+# ---------------------------------------------------------------------------
+# Face anchor spreading
+# ---------------------------------------------------------------------------
+
+def _spread_shared_face_anchors(
+    edges: list[RoutedEdge],
+    layout: SolvedLayout,
+) -> None:
+    """Redistribute endpoint anchor points when multiple edges share the same
+    node face, so arrowheads fan across the face instead of piling up.
+
+    Groups edges by (node_id, which_end, face).  For each group with >1 edge,
+    evenly spaces the anchor points along the face, with a 20% inset from each
+    corner.  Adjusts the adjacent waypoint to keep the path rectilinear.
+    """
+    INSET = 0.20  # fraction of face length kept clear at each end
+
+    def _face_of(pt: Point, rect: Rect) -> str | None:
+        """Identify which face of rect the point lies on (within 1px)."""
+        if abs(pt.y - rect.y)  < 1: return "top"
+        if abs(pt.y - rect.y2) < 1: return "bottom"
+        if abs(pt.x - rect.x)  < 1: return "left"
+        if abs(pt.x - rect.x2) < 1: return "right"
+        return None
+
+    # Collect groups: key = (node_id, end, face_name)
+    # end: "start" or "end"
+    from collections import defaultdict
+    groups: dict = defaultdict(list)
+    for e in edges:
+        for end, pt in (("start", e.points[0]), ("end", e.points[-1])):
+            node_id = e.source_id if end == "start" else e.target_id
+            node = layout.find(node_id)
+            if node is None:
+                continue
+            face = _face_of(pt, node.rect)
+            if face:
+                groups[(node_id, end, face)].append(e)
+
+    for (node_id, end, face), group in groups.items():
+        if len(group) < 2:
+            continue
+        node = layout.find(node_id)
+        r = node.rect
+        horiz_face = face in ("top", "bottom")
+        if horiz_face:
+            lo = r.x  + r.w * INSET
+            hi = r.x2 - r.w * INSET
+        else:
+            lo = r.y  + r.h * INSET
+            hi = r.y2 - r.h * INSET
+
+        n = len(group)
+        step = (hi - lo) / (n - 1) if n > 1 else 0
+        for i, e in enumerate(group):
+            coord = lo + i * step
+            pts = list(e.points)
+            if end == "start":
+                old = pts[0]
+                if horiz_face:
+                    pts[0] = Point(coord, old.y)
+                    if len(pts) > 1 and abs(pts[1].x - old.x) < 1:
+                        pts[1] = Point(coord, pts[1].y)
+                else:
+                    pts[0] = Point(old.x, coord)
+                    if len(pts) > 1 and abs(pts[1].y - old.y) < 1:
+                        pts[1] = Point(pts[1].x, coord)
+            else:
+                old = pts[-1]
+                if horiz_face:
+                    pts[-1] = Point(coord, old.y)
+                    if len(pts) > 1 and abs(pts[-2].x - old.x) < 1:
+                        pts[-2] = Point(coord, pts[-2].y)
+                else:
+                    pts[-1] = Point(old.x, coord)
+                    if len(pts) > 1 and abs(pts[-2].y - old.y) < 1:
+                        pts[-2] = Point(pts[-2].x, coord)
+            e.points[:] = pts

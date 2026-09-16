@@ -716,6 +716,38 @@ def _point_along_path(pts: list[tuple[float,float]], dist: float) -> tuple[float
     return pts[-1]
 
 
+def _pts_before_dist(pts: list[tuple[float,float]], dist: float) -> list[tuple[float,float]]:
+    """Return the sub-polyline from pts[0] up to the point at `dist` along the path."""
+    result = [pts[0]]
+    remaining = dist
+    for i in range(len(pts) - 1):
+        x0, y0 = pts[i]
+        x1, y1 = pts[i+1]
+        seg = math.hypot(x1 - x0, y1 - y0)
+        if remaining <= seg or i == len(pts) - 2:
+            t = remaining / seg if seg > 0 else 0
+            result.append((x0 + t * (x1 - x0), y0 + t * (y1 - y0)))
+            return result
+        result.append((x1, y1))
+        remaining -= seg
+    return result
+
+
+def _pts_after_dist(pts: list[tuple[float,float]], dist: float) -> list[tuple[float,float]]:
+    """Return the sub-polyline from the point at `dist` along the path to pts[-1]."""
+    remaining = dist
+    for i in range(len(pts) - 1):
+        x0, y0 = pts[i]
+        x1, y1 = pts[i+1]
+        seg = math.hypot(x1 - x0, y1 - y0)
+        if remaining <= seg or i == len(pts) - 2:
+            t = remaining / seg if seg > 0 else 0
+            start = (x0 + t * (x1 - x0), y0 + t * (y1 - y0))
+            return [start] + list(pts[i+1:])
+        remaining -= seg
+    return [pts[-1]]
+
+
 def _path_d(pts: list[tuple[float,float]]) -> str:
     d = f"M {pts[0][0]:.1f} {pts[0][1]:.1f}"
     for x, y in pts[1:]:
@@ -753,19 +785,40 @@ def _render_edge(
         g.append(dw.Path(d=_path_d(pts), **path_kwargs))
         return
 
-    # ---- Labelled edge: always split path around label gap ----
+    # ---- Labelled edge: gap interrupt or perpendicular offset ----
     path_len = sum(
         math.hypot(pts[i+1][0] - pts[i][0], pts[i+1][1] - pts[i][1])
         for i in range(len(pts) - 1)
     )
-    font_size = 9
-    char_w = 5.0
-    # Padding on each side of the gap -- enough to be clearly visible.
-    PADDING = 8
-    # Wrap label to at most the full path width (no hard clearance floor --
-    # let the gap be as small as it needs to be so we always interrupt).
-    max_chars = max(int(path_len / char_w), 1)
+    font_size  = 9
+    char_w     = 5.5   # px — must match solver _LABEL_CHAR_W to avoid gap/text mismatch
+    PADDING    = 0     # px each side of gap — char_w overestimate provides implicit clearance
+    MIN_TAIL   = 16    # px of visible arrow on each side of gap (shaft beyond arrowhead)
+    PERP_OFFSET = 9   # px perpendicular shift in offset mode
 
+    # Identify the longest segment — the label lives there.
+    seg_lens = [
+        math.hypot(pts[i+1][0] - pts[i][0], pts[i+1][1] - pts[i][1])
+        for i in range(len(pts) - 1)
+    ]
+    longest_i      = seg_lens.index(max(seg_lens))
+    seg_start_dist = sum(seg_lens[:longest_i])
+    seg_end_dist   = seg_start_dist + seg_lens[longest_i]
+    mid_dist       = (seg_start_dist + seg_end_dist) / 2
+
+    # Direction of the longest segment.
+    sx0, sy0 = pts[longest_i]
+    sx1, sy1 = pts[longest_i + 1]
+    seg_dx = sx1 - sx0; seg_dy = sy1 - sy0
+    seg_len = seg_lens[longest_i]
+    ux = abs(seg_dx / seg_len) if seg_len > 0 else 1.0
+    uy = abs(seg_dy / seg_len) if seg_len > 0 else 0.0
+    # Unit perpendicular — points "above" the arrow (used in offset mode).
+    px = -seg_dy / seg_len if seg_len > 0 else 0.0
+    py =  seg_dx / seg_len if seg_len > 0 else 1.0
+
+    # Wrap label using the longest segment as the budget (not total path).
+    max_chars = max(int(seg_lens[longest_i] / char_w), 1)
     raw_lines = edge.label.split("\\n")
     wrapped: list[str] = []
     for raw in raw_lines:
@@ -782,43 +835,62 @@ def _render_edge(
                 cur = w
         wrapped.append(cur)
 
-    # Gap = projection of the text box onto the arrow direction + padding.
     max_line_w = max(len(l) for l in wrapped) * char_w
     lh = font_size * 1.5
     text_h = lh * len(wrapped)
-    adx = pts[-1][0] - pts[0][0]
-    ady = pts[-1][1] - pts[0][1]
-    alen = math.hypot(adx, ady)
-    ux = abs(adx / alen) if alen > 0 else 1.0
-    uy = abs(ady / alen) if alen > 0 else 0.0
-    projected = ux * max_line_w + uy * text_h
-    MIN_TAIL = 12   # minimum visible line on each side before arrowhead
-    max_gap = max(path_len - MIN_TAIL * 2, 0)
-    gap = min(projected + PADDING * 2, max_gap)
-    half_gap = gap / 2
-    mid_dist = path_len / 2
-    gap_start_dist = max(mid_dist - half_gap, MIN_TAIL)
-    gap_end_dist   = min(mid_dist + half_gap, path_len - MIN_TAIL)
-    gap_start = _point_along_path(pts, gap_start_dist)
-    gap_end   = _point_along_path(pts, gap_end_dist)
 
-    # First segment with optional back arrowhead.
-    kw1 = dict(path_kwargs)
-    if edge.arrow in ("back", "both"):
-        kw1["marker_start"] = "url(#arrow)"
-    g.append(dw.Path(d=_path_d([pts[0], gap_start]), **kw1))
+    # Gap size = width of the label along the arrow direction.
+    # The label is always rendered horizontally (not rotated), so for an arrow
+    # at angle θ the gap along the arrow that clears the label is:
+    #   max_line_w / ux   (when the arrow is mostly horizontal)
+    #   text_h / uy       (when mostly vertical)
+    # We take the larger of the two non-degenerate projections so the label
+    # always clears the line, then add padding.
+    if ux >= uy:
+        # Mostly horizontal — gap driven by label width.
+        gap_needed = max_line_w / ux if ux > 0.1 else max_line_w
+    else:
+        # Mostly vertical — gap driven by label height.
+        gap_needed = text_h / uy if uy > 0.1 else text_h
 
-    # Second segment with optional forward arrowhead.
-    kw2 = dict(path_kwargs)
-    if edge.arrow in ("forward", "both"):
-        kw2["marker_end"] = "url(#arrow)"
-    g.append(dw.Path(d=_path_d([gap_end, pts[-1]]), **kw2))
+    min_seg_for_gap = gap_needed + PADDING * 2 + MIN_TAIL * 2
+    use_gap = seg_lens[longest_i] >= min_seg_for_gap
 
-    # Label: always centred on the true path midpoint, both along and across
-    # the arrow. No perpendicular shift -- the gap in the path is the
-    # visual indicator of interruption.
-    pm = _point_along_path(pts, mid_dist)
-    mx, my = pm[0], pm[1]
+    lm = _point_along_path(pts, mid_dist)
+    mx, my = lm[0], lm[1]
+
+    if use_gap:
+        max_gap = seg_lens[longest_i] - MIN_TAIL * 2
+        gap = min(gap_needed + PADDING * 2, max_gap)
+        half_gap = gap / 2
+        gap_start_dist = max(mid_dist - half_gap, seg_start_dist + MIN_TAIL)
+        gap_end_dist   = min(mid_dist + half_gap, seg_end_dist   - MIN_TAIL)
+
+        kw1 = dict(path_kwargs)
+        if edge.arrow in ("back", "both"):
+            kw1["marker_start"] = "url(#arrow)"
+        pre_pts = _pts_before_dist(pts, gap_start_dist)
+        if len(pre_pts) >= 2:
+            g.append(dw.Path(d=_path_d(pre_pts), **kw1))
+
+        kw2 = dict(path_kwargs)
+        if edge.arrow in ("forward", "both"):
+            kw2["marker_end"] = "url(#arrow)"
+        post_pts = _pts_after_dist(pts, gap_end_dist)
+        if len(post_pts) >= 2:
+            g.append(dw.Path(d=_path_d(post_pts), **kw2))
+    else:
+        # Offset mode: draw path whole, float label perpendicularly.
+        kw = dict(path_kwargs)
+        if edge.arrow in ("forward", "both"):
+            kw["marker_end"] = "url(#arrow)"
+        if edge.arrow in ("back", "both"):
+            kw["marker_start"] = "url(#arrow)"
+        g.append(dw.Path(d=_path_d(pts), **kw))
+        mx += px * PERP_OFFSET
+        my += py * PERP_OFFSET
+
+    # Render label text.
     total_h = lh * len(wrapped)
     start_y = my - total_h / 2 + lh * 0.5
     for i, line in enumerate(wrapped):
