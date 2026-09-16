@@ -690,7 +690,7 @@ def _render_edge(
     font_size = 9
     char_w = 5.0
     # Clearance: minimum distance the gap must stay from each endpoint.
-    CLEARANCE = 18
+    CLEARANCE = 24
     # If the arrow is too short to show any label with clearance, draw it
     # unlabelled rather than overflowing into adjacent nodes.
     if path_len <= CLEARANCE * 2 + char_w:
@@ -748,9 +748,9 @@ def _render_edge(
         kw2["marker_end"] = "url(#arrow)"
     g.append(dw.Path(d=_path_d(seg2_pts), **kw2))
 
-    # Label centred on the midpoint.
-    mid = edge.mid
-    mx, my = mid.x + ox, mid.y + oy
+    # Label centred on the true path-length midpoint (not waypoint index).
+    pm = _point_along_path(pts, mid_dist)
+    mx, my = pm[0], pm[1]
     total_h = lh * len(wrapped)
     start_y = my - total_h / 2 + lh * 0.5
     for i, line in enumerate(wrapped):
