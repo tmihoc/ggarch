@@ -1,4 +1,3 @@
-// demo.ggarch — a toy web service for the ggarch README slideshow.
 
 model "Web service" {
 
@@ -26,7 +25,7 @@ model "Web service" {
     api    -> cache  [type: api,    label: "read / write"]
     api    -> worker [type: stream, label: "job queue"]
     worker -> db     [type: data,   label: "persist"]
-    api    -> db     [type: data,   label: "query"]
+    api    -> db     [type: api,    label: "query"]
   }
 
   behaviours {
@@ -65,7 +64,7 @@ diagram "Overview" from "Web service" {
 diagram "Pod detail" from "Web service" {
   select {
     nodes: client api_pod db cache
-    edges: type api type data type stream
+    edges: type api type stream
   }
   positions {
     client    left-of api_pod  gap: 60
