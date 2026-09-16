@@ -37,7 +37,8 @@ from ggarch.renderer import ANNOTATION_FONT, ARROWHEAD_SIZE, LABEL_FONT
 # ---------------------------------------------------------------------------
 
 LIFELINE_WIDTH     = 120   # px — width of each lifeline column
-LIFELINE_HEADER_H  = 40    # px — height of lifeline header box
+LIFELINE_HEADER_H  = 40    # px — single-line header height; extended per diagram
+LIFELINE_LINE_H    = 16    # px — line height inside a header label
 LIFELINE_SPACING   = 40    # px — horizontal gap between lifeline columns
 STEP_HEIGHT        = 36    # px — vertical space per step row
 BLOCK_PAD          = 8     # px — padding inside loop/alt/opt/par regions
@@ -138,10 +139,18 @@ def render_sequence(
     n = len(participants)
     total_rows = _count_rows(behaviour.steps)
 
+    # Header height: accommodate the tallest multi-line label.
+    max_lines = max(
+        (len((model.find_node(pid).label if model.find_node(pid) else pid).split("\\n"))
+         for pid in participants),
+        default=1,
+    )
+    header_h = max(LIFELINE_HEADER_H, 12 + max_lines * LIFELINE_LINE_H)
+
     col_step  = LIFELINE_WIDTH + LIFELINE_SPACING
     diagram_w = MARGIN_SIDE * 2 + n * col_step - LIFELINE_SPACING + SELF_LOOP_W + 100
-    lifeline_h = LIFELINE_HEADER_H + total_rows * STEP_HEIGHT + MARGIN_BOTTOM
-    diagram_h  = MARGIN_TOP + lifeline_h + LIFELINE_HEADER_H
+    lifeline_h = header_h + total_rows * STEP_HEIGHT + MARGIN_BOTTOM
+    diagram_h  = MARGIN_TOP + lifeline_h + header_h
 
     # Column centre positions.
     col_cx: dict[str, float] = {}
@@ -180,21 +189,25 @@ def render_sequence(
 
         content.append(dw.Rectangle(
             cx - LIFELINE_WIDTH / 2, MARGIN_TOP,
-            LIFELINE_WIDTH, LIFELINE_HEADER_H,
+            LIFELINE_WIDTH, header_h,
             **rect_kwargs,
         ))
-        # Header label.
+        # Header label — split on \n.
         text_color = style.font_color or ("#CDD6F4" if dark else "#333333")
-        content.append(dw.Text(
-            label, 12,
-            cx, MARGIN_TOP + LIFELINE_HEADER_H / 2,
-            font_family=LABEL_FONT,
-            fill=text_color,
-            text_anchor="middle",
-            dominant_baseline="central",
-        ))
-        # Vertical lifeline — visually distinct from arrows: thinner, lighter.
-        lifeline_top = MARGIN_TOP + LIFELINE_HEADER_H
+        lines = label.split("\\n")
+        lh = LIFELINE_LINE_H
+        total_text_h = len(lines) * lh
+        start_y = MARGIN_TOP + header_h / 2 - total_text_h / 2 + lh * 0.5
+        for i, line in enumerate(lines):
+            content.append(dw.Text(
+                line, 12, cx, start_y + i * lh,
+                font_family=LABEL_FONT,
+                fill=text_color,
+                text_anchor="middle",
+                dominant_baseline="central",
+            ))
+        # Vertical lifeline.
+        lifeline_top = MARGIN_TOP + header_h
         lifeline_bot = MARGIN_TOP + lifeline_h - MARGIN_BOTTOM
         line_color = "#666666" if dark else "#CCCCCC"
         content.append(dw.Line(
@@ -242,18 +255,22 @@ def render_sequence(
             rect_kwargs["stroke_dasharray"] = "4,3"
         content.append(dw.Rectangle(
             cx - LIFELINE_WIDTH / 2, lifeline_bot_y,
-            LIFELINE_WIDTH, LIFELINE_HEADER_H,
+            LIFELINE_WIDTH, header_h,
             **rect_kwargs,
         ))
         text_color = style.font_color or ("#CDD6F4" if dark else "#333333")
-        content.append(dw.Text(
-            label, 12,
-            cx, lifeline_bot_y + LIFELINE_HEADER_H / 2,
-            font_family=LABEL_FONT,
-            fill=text_color,
-            text_anchor="middle",
-            dominant_baseline="central",
-        ))
+        lines = label.split("\\n")
+        lh = LIFELINE_LINE_H
+        total_text_h = len(lines) * lh
+        start_y = lifeline_bot_y + header_h / 2 - total_text_h / 2 + lh * 0.5
+        for i, line in enumerate(lines):
+            content.append(dw.Text(
+                line, 12, cx, start_y + i * lh,
+                font_family=LABEL_FONT,
+                fill=text_color,
+                text_anchor="middle",
+                dominant_baseline="central",
+            ))
     content.append(bars_group)
     drawing.append(content)
     return drawing.as_svg()
@@ -408,15 +425,18 @@ def _render_arrow(
 
     if label:
         mx = (x1 + x2) / 2
-        # Label floats above the line with no background fill — avoids
-        # occluding lifeline headers and other diagram elements.
-        g.append(dw.Text(
-            label, 11, mx, y - 10,
-            font_family=LABEL_FONT,
-            fill=ctx.text_color,
-            text_anchor="middle",
-            dominant_baseline="central",
-        ))
+        lines = label.split("\\n")
+        lh = 13
+        total_h = lh * len(lines)
+        start_y = (y - 10) - total_h / 2 + lh * 0.5
+        for i, line in enumerate(lines):
+            g.append(dw.Text(
+                line, 11, mx, start_y + i * lh,
+                font_family=LABEL_FONT,
+                fill=ctx.text_color,
+                text_anchor="middle",
+                dominant_baseline="central",
+            ))
 
 
 def _render_self_step(

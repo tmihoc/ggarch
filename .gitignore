@@ -10,3 +10,4 @@ build/
 _build/
 *.svg
 !examples/*.svg
+HANDOFF.md

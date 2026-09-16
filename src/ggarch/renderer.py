@@ -516,7 +516,7 @@ def _render_edge(
 
     g.append(dw.Path(d=d, **path_kwargs))
 
-    # Edge label: offset 12px perpendicular to the edge direction.
+    # Edge label: offset perpendicular to the edge direction.
     if edge.label:
         mid = edge.mid
         mx, my = mid.x + ox, mid.y + oy
@@ -527,18 +527,18 @@ def _render_edge(
         nx, ny = -dy / length, dx / length
         lx = mx + nx * 14
         ly = my + ny * 14
-        label_bg = "#1E1E2E" if dark else "#FFFFFF"
-        lw = len(edge.label) * 6.5
-        g.append(dw.Rectangle(lx - lw / 2 - 3, ly - 9, lw + 6, 14,
-                               fill=label_bg, stroke="none",
-                               fill_opacity=0.85))
-        g.append(dw.Text(
-            edge.label, es.font_size, lx, ly,
-            font_family=LABEL_FONT,
-            fill=es.font_color,
-            text_anchor="middle",
-            dominant_baseline="central",
-        ))
+        lines = edge.label.split("\\n")
+        lh = es.font_size * 1.4
+        total_h = lh * len(lines)
+        start_y = ly - total_h / 2 + lh * 0.5
+        for i, line in enumerate(lines):
+            g.append(dw.Text(
+                line, es.font_size, lx, start_y + i * lh,
+                font_family=LABEL_FONT,
+                fill=es.font_color,
+                text_anchor="middle",
+                dominant_baseline="central",
+            ))
 
 # ---------------------------------------------------------------------------
 # Annotation rendering
@@ -607,19 +607,15 @@ def _render_ann_box(
         rect_kwargs["stroke_dasharray"] = dash
     g.append(dw.Rectangle(x, y, w, h, **rect_kwargs))
     if ann.label:
+        # Label sits inside the box, just below the top border.
         lx = x + w / 2
-        ly = y - 6
-        label_bg = "#1E1E2E" if dark else "#FFFFFF"
-        lw_px = len(ann.label) * 7
-        g.append(dw.Rectangle(lx - lw_px / 2 - 4, ly - 10,
-                               lw_px + 8, 14,
-                               fill=label_bg, stroke="none"))
+        ly = y + 14
         g.append(dw.Text(
             ann.label, 11, lx, ly,
             font_family=ANNOTATION_FONT,
             fill=color,
             text_anchor="middle",
-            dominant_baseline="auto",
+            dominant_baseline="central",
         ))
 
 
