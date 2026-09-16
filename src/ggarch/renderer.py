@@ -866,9 +866,10 @@ def _render_edge(
     seg_len = seg_lens[longest_i]
     ux = abs(seg_dx / seg_len) if seg_len > 0 else 1.0
     uy = abs(seg_dy / seg_len) if seg_len > 0 else 0.0
-    # Unit perpendicular — points "above" the arrow (used in offset mode).
-    px = -seg_dy / seg_len if seg_len > 0 else 0.0
-    py =  seg_dx / seg_len if seg_len > 0 else 1.0
+    # Unit perpendicular — points "above" the arrow (CW rotation, used in offset mode).
+    # SVG y increases downward, so "above" = negative y for rightward arrows.
+    px =  seg_dy / seg_len if seg_len > 0 else 0.0
+    py = -seg_dx / seg_len if seg_len > 0 else -1.0
 
     # Wrap label using the longest segment as the budget (not total path).
     max_chars = max(int(seg_lens[longest_i] / char_w), 1)
