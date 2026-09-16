@@ -541,7 +541,16 @@ def _render_edge(
     font_size = 9
     char_w = 5.0
     # Clearance: minimum distance the gap must stay from each endpoint.
-    CLEARANCE = 14
+    CLEARANCE = 18
+    # If the arrow is too short to show any label with clearance, draw it
+    # unlabelled rather than overflowing into adjacent nodes.
+    if path_len <= CLEARANCE * 2 + char_w:
+        if edge.arrow in ("forward", "both"):
+            path_kwargs["marker_end"] = "url(#arrow)"
+        if edge.arrow in ("back", "both"):
+            path_kwargs["marker_start"] = "url(#arrow)"
+        g.append(dw.Path(d=_path_d(pts), **path_kwargs))
+        return
     usable_px = max(path_len - CLEARANCE * 2, char_w)
     max_chars = max(int(usable_px / char_w), 1)
 
