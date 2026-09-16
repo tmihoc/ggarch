@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="953.6" height="288.5" viewBox="0 0 953.6 288.5">
+<defs>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="arrow" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8 Z" fill="#AAAAAA" />
+</marker>
+</defs>
+<rect x="0" y="0" width="953.6" height="288.5" fill="#1E1E2E" />
+<g id="ggarch-nodes">
+<rect x="20.0" y="125.5" width="80.0" height="42.0" fill="#252525" stroke="#999999" stroke-width="1" rx="4" ry="4" />
+<circle cx="30.6" cy="133.42" r="3.9200000000000004" fill="#999999" stroke="none" />
+<path d="M 25.0 139.0 A 5.6 3.1 0 0 1 36.2 139.0 Z" fill="#999999" stroke="none" />
+<text x="60.0" y="146.5" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CCCCCC" text-anchor="middle" dominant-baseline="central">User</text>
+<rect x="225.5" y="125.5" width="80.0" height="42.0" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="265.5" y="146.5" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Client</text>
+<rect x="420.0" y="125.5" width="104.0" height="42.0" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="472.0" y="146.5" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Controller</text>
+<rect x="677.0" y="125.5" width="80.0" height="42.0" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="717.0" y="146.5" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Agent</text>
+<rect x="844.0" y="125.5" width="89.6" height="42.0" fill="#2A2A2A" stroke="#666666" stroke-width="1" rx="4" ry="4" />
+<text x="888.8" y="146.5" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CCCCCC" text-anchor="middle" dominant-baseline="central">Workload</text>
+<rect x="398.4" y="20.0" width="147.2" height="60.0" fill="#2A2A2A" stroke="#666666" stroke-width="1" rx="4" ry="4" />
+<text x="472.0" y="40.9" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CCCCCC" text-anchor="middle" dominant-baseline="central">Cloud</text>
+<text x="472.0" y="59.099999999999994" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CCCCCC" text-anchor="middle" dominant-baseline="central">(AWS, GCP, K8s…)</text>
+<rect x="427.2" y="226.5" width="89.6" height="42.0" fill="#2A2A2A" stroke="#666666" stroke-width="1" rx="4" ry="4" />
+<text x="472.0" y="247.5" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CCCCCC" text-anchor="middle" dominant-baseline="central">Charmhub</text>
+</g>
+<g id="ggarch-edges">
+<path d="M 100.0 146.5 L 116.0 146.5" fill="none" stroke="#AAAAAA" stroke-width="1" />
+<path d="M 209.5 146.5 L 225.5 146.5" fill="none" stroke="#AAAAAA" stroke-width="1" marker-end="url(#arrow)" />
+<text x="162.75" y="146.5" font-size="9" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">sends commands to</text>
+<path d="M 305.5 146.5 L 321.5 146.5" fill="none" stroke="#AAAAAA" stroke-width="1" />
+<path d="M 404.0 146.5 L 420.0 146.5" fill="none" stroke="#AAAAAA" stroke-width="1" marker-end="url(#arrow)" />
+<text x="362.75" y="146.5" font-size="9" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">declares intent</text>
+<path d="M 677.0 146.5 L 661.0 146.5" fill="none" stroke="#AAAAAA" stroke-width="1" stroke-dasharray="6,3" />
+<path d="M 540.0 146.5 L 524.0 146.5" fill="none" stroke="#AAAAAA" stroke-width="1" stroke-dasharray="6,3" marker-end="url(#arrow)" />
+<text x="600.5" y="146.5" font-size="9" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">watches for changes on</text>
+<path d="M 757.0 146.5 L 773.0 146.5" fill="none" stroke="#AAAAAA" stroke-width="1" />
+<path d="M 828.0 146.5 L 844.0 146.5" fill="none" stroke="#AAAAAA" stroke-width="1" marker-end="url(#arrow)" />
+<text x="800.5" y="146.5" font-size="9" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">reconciles</text>
+<path d="M 472.0 125.5 L 472.0 109.5" fill="none" stroke="#AAAAAA" stroke-width="1" />
+<path d="M 472.0 96.0 L 472.0 80.0" fill="none" stroke="#AAAAAA" stroke-width="1" marker-end="url(#arrow)" />
+<text x="472.0" y="102.75" font-size="9" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">provisions</text>
+<path d="M 472.0 167.5 L 472.0 183.5" fill="none" stroke="#AAAAAA" stroke-width="1" />
+<path d="M 472.0 210.5 L 472.0 226.5" fill="none" stroke="#AAAAAA" stroke-width="1" marker-end="url(#arrow)" />
+<text x="472.0" y="190.25" font-size="9" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">fetches</text>
+<text x="472.0" y="203.75" font-size="9" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">charms</text>
+</g>
+<g id="ggarch-annotations">
+<path d="M215.5,115.5 L466.0,115.5" stroke="#888" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M478.0,115.5 L534.0,115.5" stroke="#888" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M215.5,177.5 L466.0,177.5" stroke="#888" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M478.0,177.5 L534.0,177.5" stroke="#888" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M215.5,115.5 L215.5,140.5" stroke="#888" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M215.5,152.5 L215.5,177.5" stroke="#888" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M534.0,115.5 L534.0,140.5" stroke="#888" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M534.0,152.5 L534.0,177.5" stroke="#888" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<text x="374.75" y="129.5" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888" text-anchor="middle" dominant-baseline="central">intent &amp; persistence</text>
+<path d="M667.0,115.5 L943.6,115.5" stroke="#888" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M667.0,177.5 L943.6,177.5" stroke="#888" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M667.0,115.5 L667.0,140.5" stroke="#888" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M667.0,152.5 L667.0,177.5" stroke="#888" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M943.6,115.5 L943.6,177.5" stroke="#888" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<text x="805.3" y="129.5" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#888" text-anchor="middle" dominant-baseline="central">execution</text>
+</g>
+</svg>
