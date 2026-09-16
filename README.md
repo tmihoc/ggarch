@@ -12,21 +12,24 @@
 > hand-tuned SVG) require manual drawing: slow, error-prone, and resistant
 > to AI assistance.
 >
-> **The fix:** A grammar that hits all three. Looks right: Ubuntu font, Juju
-> orange, light and dark themes, a visual grammar where every colour and dash
-> pattern carries meaning. Says what you mean: constraint layout, typed edges,
-> lifecycle, one model shared by every view. Stays current: plain text,
-> AI-writable, rename a node once and it propagates everywhere.
+> **The fix:** A grammar that hits all three. Looks right: Juju/Canonical
+> branding out of the box (Ubuntu font, Juju orange, light and dark themes),
+> with a style grammar designed for customisation. Says what you mean:
+> constraint layout, typed edges, lifecycle, one model shared by every view.
+> Stays current: plain text, AI-writable, rename a node once and it
+> propagates everywhere.
 
 See [COMPARISON.md](COMPARISON.md) for a detailed comparison with Mermaid,
 D2, Graphviz, PlantUML, Structurizr, and Ilograph.
 
 ## What you get
 
-1. **Branding** -- Ubuntu font, Juju orange, light and dark themes out of the
-   box. A coherent visual grammar: colour encodes ownership, dash pattern
-   encodes edge semantics. Per-project presets extend the defaults; no fork
-   required.
+1. **Branding** -- ships with Juju/Canonical branding: Ubuntu font, Juju
+   orange, light and dark themes. A coherent visual grammar where colour
+   encodes ownership and dash pattern encodes edge semantics. The `style`
+   block lets any project override colours and shapes without touching
+   ggarch itself; a clean API for registering named presets and swapping
+   fonts is on the roadmap.
 2. **Expressive power** -- nodes with types, lifecycle (`init`, `persistent`,
    `ephemeral`), cardinality, and scope; typed edges (`api`, `stream`,
    `event`, `control`, `ipc`, `data`); constraint-based layout (`left-of`,
