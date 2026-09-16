@@ -79,7 +79,7 @@ _JUJU_LIGHT_NODES: dict[str, NodeStyle] = {
         fill="#F5F5F5", stroke="#AAAAAA", font_color="#444444",
     ),
     "pebble": NodeStyle(
-        fill="#74AADC", stroke="#4A90D9", font_color="#FFFFFF",
+        fill="#F5F5F5", stroke="#AAAAAA", font_color="#444444",
     ),
     "database": NodeStyle(
         fill="#FFF8E1", stroke="#F9A825", font_color="#333333",
@@ -136,7 +136,7 @@ _JUJU_DARK_NODES: dict[str, NodeStyle] = {
         fill="#2A2A2A", stroke="#666666", font_color="#CCCCCC",
     ),
     "pebble": NodeStyle(
-        fill="#1A3050", stroke="#74AADC", font_color="#CDD6F4",
+        fill="#2A2A2A", stroke="#666666", font_color="#CCCCCC",
     ),
     "database": NodeStyle(
         fill="#2A2200", stroke="#F9A825", font_color="#FFE082",

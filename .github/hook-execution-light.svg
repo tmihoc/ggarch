@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="660" height="598" viewBox="0 0 660 598">
+<defs>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="seq-arrow" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8 Z" fill="#555555" />
+</marker>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="seq-arrow-open" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8" fill="none" stroke="#555555" stroke-width="1.5" />
+</marker>
+</defs>
+<rect x="0" y="0" width="660" height="598" fill="#FFFFFF" />
+<g>
+<rect x="30.0" y="20" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="90.0" y="40.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">API server</text>
+<path d="M90.0,60 L90.0,528" stroke="#CCCCCC" stroke-width="1" stroke-dasharray="6,4" />
+<rect x="210.0" y="20" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="270.0" y="40.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Unit agent</text>
+<path d="M270.0,60 L270.0,528" stroke="#CCCCCC" stroke-width="1" stroke-dasharray="6,4" />
+<rect x="390.0" y="20" width="120" height="40" fill="#FFFFFF" stroke="#E95420" stroke-width="1" rx="4" ry="4" />
+<text x="450.0" y="40.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#000000" text-anchor="middle" dominant-baseline="central">Charm</text>
+<path d="M450.0,60 L450.0,528" stroke="#CCCCCC" stroke-width="1" stroke-dasharray="6,4" />
+<g>
+<rect x="85.0" y="276" width="10" height="36" fill="#CCCCEE" stroke="#8888CC" stroke-width="1" />
+<rect x="265.0" y="240" width="10" height="108" fill="#CCCCEE" stroke="#8888CC" stroke-width="1" />
+<rect x="445.0" y="204" width="10" height="180" fill="#CCCCEE" stroke="#8888CC" stroke-width="1" />
+</g>
+<path d="M90.0,96 L270.0,96" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow-open)" />
+<text x="180.0" y="82.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">watcher fires</text>
+<path d="M 270.0,125.0 L 285.0,125.0 Q 290.0,125.0 290.0,130.0 L 290.0,134.0 Q 290.0,139.0 285.0,139.0 L 270.0,139.0" fill="none" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="270.0" y="117.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">snapshot remote state</text>
+<path d="M 270.0,161.0 L 285.0,161.0 Q 290.0,161.0 290.0,166.0 L 290.0,170.0 Q 290.0,175.0 285.0,175.0 L 270.0,175.0" fill="none" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="270.0" y="153.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">resolve next hook</text>
+<path d="M270.0,204 L450.0,204" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="360.0" y="190.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">exec dispatch</text>
+<rect x="26.0" y="232" width="488.0" height="160" fill="#F0F4FF" stroke="#8888CC" stroke-width="1" rx="4" ry="4" fill-opacity="0.4" />
+<rect x="26.0" y="219" width="109.0" height="14" fill="#8888CC" stroke="none" rx="2" ry="2" fill-opacity="0.9" />
+<text x="31.0" y="226.0" font-size="9" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" dominant-baseline="central">[loop] during hook</text>
+<path d="M450.0,240 L270.0,240" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="360.0" y="226.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">hook command</text>
+<path d="M270.0,276 L90.0,276" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="180.0" y="262.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">serve via API</text>
+<path d="M90.0,312 L270.0,312" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" stroke-dasharray="5,3" />
+<path d="M270.0,348 L450.0,348" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" stroke-dasharray="5,3" />
+<rect x="26.0" y="376" width="488.0" height="196" fill="#F0F4FF" stroke="#8888CC" stroke-width="1" rx="4" ry="4" fill-opacity="0.4" />
+<rect x="26.0" y="363" width="76.0" height="14" fill="#8888CC" stroke="none" rx="2" ry="2" fill-opacity="0.9" />
+<text x="31.0" y="370.0" font-size="9" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" dominant-baseline="central">[alt] exit 0</text>
+<path d="M450.0,384 L270.0,384" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" stroke-dasharray="5,3" />
+<text x="360.0" y="370.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">success</text>
+<path d="M270.0,420 L90.0,420" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="180.0" y="406.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">flush writes</text>
+<path d="M26.0,456 L514.0,456" stroke="#8888CC" stroke-width="1" stroke-dasharray="4,3" />
+<text x="32.0" y="460" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#8888CC" dominant-baseline="hanging">[else] failure</text>
+<path d="M450.0,492 L270.0,492" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" stroke-dasharray="5,3" />
+<text x="360.0" y="478.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">failure</text>
+<path d="M270.0,528 L90.0,528" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="180.0" y="514.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">discard writes, unit error</text>
+<rect x="30.0" y="528" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="90.0" y="548.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">API server</text>
+<rect x="210.0" y="528" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="270.0" y="548.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Unit agent</text>
+<rect x="390.0" y="528" width="120" height="40" fill="#FFFFFF" stroke="#E95420" stroke-width="1" rx="4" ry="4" />
+<text x="450.0" y="548.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#000000" text-anchor="middle" dominant-baseline="central">Charm</text>
+</g>
+</svg>

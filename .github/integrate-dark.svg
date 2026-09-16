@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="1020" height="742" viewBox="0 0 1020 742">
+<defs>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="seq-arrow" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8 Z" fill="#AAAAAA" />
+</marker>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="seq-arrow-open" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8" fill="none" stroke="#AAAAAA" stroke-width="1.5" />
+</marker>
+</defs>
+<rect x="0" y="0" width="1020" height="742" fill="#1E1E2E" />
+<g>
+<rect x="30.0" y="20" width="120" height="40" fill="#252525" stroke="#999999" stroke-width="1" rx="4" ry="4" />
+<text x="90.0" y="40.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CCCCCC" text-anchor="middle" dominant-baseline="central">User</text>
+<path d="M90.0,60 L90.0,672" stroke="#666666" stroke-width="1" stroke-dasharray="6,4" />
+<rect x="210.0" y="20" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="270.0" y="40.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Client</text>
+<path d="M270.0,60 L270.0,672" stroke="#666666" stroke-width="1" stroke-dasharray="6,4" />
+<rect x="390.0" y="20" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="450.0" y="40.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Controller</text>
+<path d="M450.0,60 L450.0,672" stroke="#666666" stroke-width="1" stroke-dasharray="6,4" />
+<rect x="570.0" y="20" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="630.0" y="40.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Unit agent (app A)</text>
+<path d="M630.0,60 L630.0,672" stroke="#666666" stroke-width="1" stroke-dasharray="6,4" />
+<rect x="750.0" y="20" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="810.0" y="40.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Unit agent (app B)</text>
+<path d="M810.0,60 L810.0,672" stroke="#666666" stroke-width="1" stroke-dasharray="6,4" />
+<g></g>
+<path d="M90.0,96 L270.0,96" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="180.0" y="82.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">juju integrate A B</text>
+<path d="M270.0,132 L450.0,132" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="360.0" y="118.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">Integrate RPC call</text>
+<path d="M 450.0,161.0 L 465.0,161.0 Q 470.0,161.0 470.0,166.0 L 470.0,170.0 Q 470.0,175.0 465.0,175.0 L 450.0,175.0" fill="none" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="450.0" y="153.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">Write relation record</text>
+<path d="M450.0,204 L630.0,204" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow-open)" />
+<text x="540.0" y="190.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">watcher fires</text>
+<path d="M450.0,240 L810.0,240" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow-open)" />
+<text x="630.0" y="226.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">watcher fires</text>
+<path d="M630.0,276 L450.0,276" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="540.0" y="262.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">relation-created hook</text>
+<path d="M810.0,312 L450.0,312" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="630.0" y="298.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">relation-created hook</text>
+<path d="M630.0,348 L450.0,348" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="540.0" y="334.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">relation-joined hook</text>
+<path d="M810.0,384 L450.0,384" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="630.0" y="370.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">relation-joined hook</text>
+<path d="M630.0,420 L450.0,420" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="540.0" y="406.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">relation-changed hook</text>
+<path d="M810.0,456 L450.0,456" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="630.0" y="442.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">relation-changed hook</text>
+<path d="M630.0,492 L450.0,492" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="540.0" y="478.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">Write relation data (app A)</text>
+<path d="M450.0,528 L810.0,528" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow-open)" />
+<text x="630.0" y="514.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">watcher fires (data changed)</text>
+<path d="M810.0,564 L450.0,564" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="630.0" y="550.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">relation-changed hook</text>
+<path d="M810.0,600 L450.0,600" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="630.0" y="586.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">Write relation data (app B)</text>
+<path d="M450.0,636 L630.0,636" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow-open)" />
+<text x="540.0" y="615.5" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">watcher fires (data</text>
+<text x="540.0" y="628.5" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">changed)</text>
+<path d="M630.0,672 L450.0,672" stroke="#AAAAAA" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="540.0" y="658.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CDD6F4" text-anchor="middle" dominant-baseline="central">relation-changed hook</text>
+<rect x="30.0" y="672" width="120" height="40" fill="#252525" stroke="#999999" stroke-width="1" rx="4" ry="4" />
+<text x="90.0" y="692.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#CCCCCC" text-anchor="middle" dominant-baseline="central">User</text>
+<rect x="210.0" y="672" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="270.0" y="692.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Client</text>
+<rect x="390.0" y="672" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="450.0" y="692.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Controller</text>
+<rect x="570.0" y="672" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="630.0" y="692.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Unit agent (app A)</text>
+<rect x="750.0" y="672" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="810.0" y="692.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Unit agent (app B)</text>
+</g>
+</svg>

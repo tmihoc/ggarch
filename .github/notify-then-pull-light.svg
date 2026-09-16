@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="660" height="318" viewBox="0 0 660 318">
+<defs>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="seq-arrow" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8 Z" fill="#555555" />
+</marker>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="seq-arrow-open" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8" fill="none" stroke="#555555" stroke-width="1.5" />
+</marker>
+</defs>
+<rect x="0" y="0" width="660" height="318" fill="#FFFFFF" />
+<g>
+<rect x="30.0" y="20" width="120" height="44" fill="#FFF8E1" stroke="#F9A825" stroke-width="1" rx="4" ry="4" />
+<text x="90.0" y="34.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">Controller DB</text>
+<text x="90.0" y="50.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">(goal state)</text>
+<path d="M90.0,64 L90.0,244" stroke="#CCCCCC" stroke-width="1" stroke-dasharray="6,4" />
+<rect x="210.0" y="20" width="120" height="44" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="270.0" y="34.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Watcher</text>
+<text x="270.0" y="50.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">(agent-side)</text>
+<path d="M270.0,64 L270.0,244" stroke="#CCCCCC" stroke-width="1" stroke-dasharray="6,4" />
+<rect x="390.0" y="20" width="120" height="44" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="450.0" y="42.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Agent</text>
+<path d="M450.0,64 L450.0,244" stroke="#CCCCCC" stroke-width="1" stroke-dasharray="6,4" />
+<g>
+<rect x="85.0" y="172" width="10" height="36" fill="#CCCCEE" stroke="#8888CC" stroke-width="1" />
+</g>
+<path d="M90.0,100 L270.0,100" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow-open)" />
+<text x="180.0" y="79.5" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">change committed</text>
+<text x="180.0" y="92.5" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">(signal only)</text>
+<path d="M270.0,136 L450.0,136" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow-open)" />
+<text x="360.0" y="122.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">Changes() fires</text>
+<path d="M450.0,172 L90.0,172" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="270.0" y="158.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">fetch current state</text>
+<path d="M90.0,208 L450.0,208" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" stroke-dasharray="5,3" />
+<text x="270.0" y="194.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">authoritative state</text>
+<path d="M 450.0,237.0 L 465.0,237.0 Q 470.0,237.0 470.0,242.0 L 470.0,246.0 Q 470.0,251.0 465.0,251.0 L 450.0,251.0" fill="none" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="450.0" y="229.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">reconcile</text>
+<rect x="30.0" y="244" width="120" height="44" fill="#FFF8E1" stroke="#F9A825" stroke-width="1" rx="4" ry="4" />
+<text x="90.0" y="258.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">Controller DB</text>
+<text x="90.0" y="274.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">(goal state)</text>
+<rect x="210.0" y="244" width="120" height="44" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="270.0" y="258.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Watcher</text>
+<text x="270.0" y="274.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">(agent-side)</text>
+<rect x="390.0" y="244" width="120" height="44" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="450.0" y="266.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Agent</text>
+</g>
+</svg>

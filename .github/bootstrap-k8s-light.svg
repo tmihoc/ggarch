@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="840" height="490" viewBox="0 0 840 490">
+<defs>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="seq-arrow" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8 Z" fill="#555555" />
+</marker>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="seq-arrow-open" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8" fill="none" stroke="#555555" stroke-width="1.5" />
+</marker>
+</defs>
+<rect x="0" y="0" width="840" height="490" fill="#FFFFFF" />
+<g>
+<rect x="30.0" y="20" width="120" height="40" fill="#F0F0F0" stroke="#777777" stroke-width="1" rx="4" ry="4" />
+<text x="90.0" y="40.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">User</text>
+<path d="M90.0,60 L90.0,420" stroke="#CCCCCC" stroke-width="1" stroke-dasharray="6,4" />
+<rect x="210.0" y="20" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="270.0" y="40.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Client</text>
+<path d="M270.0,60 L270.0,420" stroke="#CCCCCC" stroke-width="1" stroke-dasharray="6,4" />
+<rect x="390.0" y="20" width="120" height="40" fill="#F5F5F5" stroke="#AAAAAA" stroke-width="1" rx="4" ry="4" />
+<text x="450.0" y="40.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">Kubernetes cloud</text>
+<path d="M450.0,60 L450.0,420" stroke="#CCCCCC" stroke-width="1" stroke-dasharray="6,4" />
+<rect x="570.0" y="20" width="120" height="40" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="4" ry="4" />
+<text x="630.0" y="40.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#5A2800" text-anchor="middle" dominant-baseline="central">Controller pod</text>
+<path d="M630.0,60 L630.0,420" stroke="#CCCCCC" stroke-width="1" stroke-dasharray="6,4" />
+<g>
+<rect x="445.0" y="132" width="10" height="36" fill="#CCCCEE" stroke="#8888CC" stroke-width="1" />
+<rect x="445.0" y="204" width="10" height="36" fill="#CCCCEE" stroke="#8888CC" stroke-width="1" />
+<rect x="265.0" y="96" width="10" height="324" fill="#CCCCEE" stroke="#8888CC" stroke-width="1" />
+</g>
+<path d="M90.0,96 L270.0,96" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="180.0" y="82.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">juju bootstrap</text>
+<path d="M270.0,132 L450.0,132" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="360.0" y="118.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">Authenticate</text>
+<path d="M450.0,168 L270.0,168" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" stroke-dasharray="5,3" />
+<text x="360.0" y="154.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">OK</text>
+<path d="M270.0,204 L450.0,204" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="360.0" y="183.5" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">Create namespace + deploy</text>
+<text x="360.0" y="196.5" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">controller pod</text>
+<path d="M450.0,240 L270.0,240" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" stroke-dasharray="5,3" />
+<text x="360.0" y="226.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">Pod scheduled</text>
+<path d="M 630.0,269.0 L 645.0,269.0 Q 650.0,269.0 650.0,274.0 L 650.0,278.0 Q 650.0,283.0 645.0,283.0 L 630.0,283.0" fill="none" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="630.0" y="261.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">Start jujud</text>
+<path d="M 630.0,305.0 L 645.0,305.0 Q 650.0,305.0 650.0,310.0 L 650.0,314.0 Q 650.0,319.0 645.0,319.0 L 630.0,319.0" fill="none" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="630.0" y="297.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">Start API server</text>
+<path d="M 630.0,341.0 L 645.0,341.0 Q 650.0,341.0 650.0,346.0 L 650.0,350.0 Q 650.0,355.0 645.0,355.0 L 630.0,355.0" fill="none" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" />
+<text x="630.0" y="333.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">Initialise database</text>
+<path d="M630.0,384 L270.0,384" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" stroke-dasharray="5,3" />
+<text x="450.0" y="370.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">API ready</text>
+<path d="M270.0,420 L90.0,420" stroke="#555555" stroke-width="1" marker-end="url(#seq-arrow)" stroke-dasharray="5,3" />
+<text x="180.0" y="406.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">Bootstrap complete</text>
+<rect x="30.0" y="420" width="120" height="40" fill="#F0F0F0" stroke="#777777" stroke-width="1" rx="4" ry="4" />
+<text x="90.0" y="440.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">User</text>
+<rect x="210.0" y="420" width="120" height="40" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="270.0" y="440.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Client</text>
+<rect x="390.0" y="420" width="120" height="40" fill="#F5F5F5" stroke="#AAAAAA" stroke-width="1" rx="4" ry="4" />
+<text x="450.0" y="440.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">Kubernetes cloud</text>
+<rect x="570.0" y="420" width="120" height="40" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="4" ry="4" />
+<text x="630.0" y="440.0" font-size="12" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#5A2800" text-anchor="middle" dominant-baseline="central">Controller pod</text>
+</g>
+</svg>
