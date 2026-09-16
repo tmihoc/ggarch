@@ -340,6 +340,9 @@ def _render_node_content(
         _render_nodes(g, node.children, node_styles, ox, oy, view, dark, border_gaps)
     if node.cardinality:
         _render_cardinality_badge(g, x + w - 4, y + 4, node.cardinality)
+    scope = node.properties.get("scope", "")
+    if scope:
+        _render_scope_chip(g, x, y, w, h, scope, dark)
 
 
 def _lifecycle_stroke_dash(lifecycle: str) -> str:
@@ -637,6 +640,62 @@ def _render_cardinality_badge(
     g.append(dw.Text(short, 9, x - badge_w / 2, y + badge_h / 2,
                      font_family=LABEL_FONT, fill="#EEE",
                      text_anchor="middle", dominant_baseline="central"))
+
+
+# ---------------------------------------------------------------------------
+# Scope chip
+# ---------------------------------------------------------------------------
+
+# Small palette of distinguishable colors for scope chips.
+# Chosen to be readable against both light and dark backgrounds.
+_SCOPE_PALETTE_LIGHT = [
+    "#4A90D9",  # blue
+    "#7B68EE",  # medium slate blue
+    "#2ECC71",  # emerald
+    "#E67E22",  # carrot orange (distinct from Juju orange)
+    "#E91E8C",  # pink
+    "#00BCD4",  # cyan
+    "#8BC34A",  # light green
+    "#FF5722",  # deep orange
+]
+_SCOPE_PALETTE_DARK = [
+    "#74AADC",
+    "#9F8FEF",
+    "#58D68D",
+    "#F0A060",
+    "#F06AAE",
+    "#40D8EC",
+    "#A8D470",
+    "#FF8A65",
+]
+
+
+def _scope_color(scope: str, dark: bool = False) -> str:
+    """Derive a stable color for a scope string from the palette."""
+    palette = _SCOPE_PALETTE_DARK if dark else _SCOPE_PALETTE_LIGHT
+    idx = hash(scope) % len(palette)
+    return palette[idx]
+
+
+def _render_scope_chip(
+    g: dw.Group,
+    x: float, y: float, w: float, h: float,
+    scope: str,
+    dark: bool = False,
+) -> None:
+    """Render a small colored scope pill at the bottom-right of a node."""
+    color = _scope_color(scope, dark)
+    # Pill dimensions: small, fixed size.
+    ph, pw = 7, min(len(scope) * 4.5 + 6, w * 0.7)
+    px = x + w - pw - 3
+    py = y + h - ph - 3
+    g.append(dw.Rectangle(px, py, pw, ph,
+                           fill=color, stroke="none", rx=3, ry=3))
+    g.append(dw.Text(scope, 6, px + pw / 2, py + ph / 2,
+                     font_family=LABEL_FONT,
+                     fill="#FFFFFF",
+                     text_anchor="middle",
+                     dominant_baseline="central"))
 
 
 # ---------------------------------------------------------------------------

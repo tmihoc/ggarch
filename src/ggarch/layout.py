@@ -51,6 +51,7 @@ class SolvedNode:
     cardinality: str = ""
     fields: list = field(default_factory=list)  # list[NodeField]
     url: str = ""
+    properties: dict = field(default_factory=dict)
 
     def find(self, node_id: str) -> SolvedNode | None:
         if self.id == node_id:

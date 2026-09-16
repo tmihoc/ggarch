@@ -603,4 +603,5 @@ def _build_solved_node(
             str(node.cardinality) if node.cardinality else "",
         fields=node.fields,
         url=node.url,
+        properties=node.properties,
     )
