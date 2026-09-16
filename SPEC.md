@@ -1553,4 +1553,51 @@ Phases 8–12 add no new dependencies.
    parser, model dataclasses, and CLI need to follow.
    **TODO:** Migrate `diagram`/`sequence`/`state` to `view` in the grammar and
    parser. Keep `diagram`/`sequence` as deprecated aliases during a transition
-   window; remove them in the next MAJOR version bump.
+   window; remove them in the next MINOR version bump.
+
+8. **Contextual edge descriptions -- the label multiplicity problem.**
+   The current grammar has two places where edges are described:
+
+   - `edges {}` in the model assigns one canonical label per edge
+     (e.g. `unit_agent -> charm [type: control, label: "runs"]`).
+   - `behaviours {}` step labels shadow that canonical label in the context
+     of a specific interaction
+     (e.g. `unit_agent -> charm: call "exec dispatch"`).
+
+   The shadowing is informal -- the grammar has no concept of what is
+   happening. This creates a real design tension: both descriptions are
+   correct. "runs" is the right description at the topology level; "exec
+   dispatch" is the right description in the context of the hook execution
+   sequence. Neither is more true than the other. Labels are not intrinsic
+   properties of edges; they are properties of (edge, context) pairs.
+
+   This is the same principle as `abstracts:` -- same structural entity,
+   different description at a different level of abstraction -- but applied
+   to edge descriptions rather than node identity. ggarch's placement of
+   behaviours inside the model is a meaningful conceptual improvement over
+   Structurizr's dynamic views (which were declared at the view level,
+   breaking rename propagation and declare-once). But it does not yet fully
+   resolve the label multiplicity: step labels in behaviours are implicitly
+   contextual refinements of edge labels, but the grammar provides no formal
+   account of that relationship.
+
+   The correct resolution would make the (edge, context) pairing explicit.
+   Candidate approaches:
+
+   - **Contextual labels on edges.** Allow multiple named label slots per
+     edge: `unit_agent -> charm [type: control, label: "runs",
+     label.dispatch: "exec dispatch"]`. A behaviour or view selects which
+     slot to use. Explicit, but verbose.
+   - **Behaviours as formal context declarations.** A behaviour formally
+     declares that it provides contextual descriptions for a subset of edges.
+     Step labels are then recognised as contextual overrides, not shadow
+     values. The validator could check that step labels only appear on edges
+     that are declared in `edges {}`.
+   - **Accept the current implicit shadowing**, document it as intentional,
+     and trust that the behaviour name provides sufficient context. This is
+     the current state.
+
+   **TODO:** Decide whether the implicit shadowing should be formalised or
+   left as a deliberate convention. Collect evidence from real diagram
+   authoring (does the ambiguity cause errors or confusion in practice?)
+   before committing to a grammar change.
