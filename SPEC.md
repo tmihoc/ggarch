@@ -239,6 +239,104 @@ implicit.
 minimal plugin protocol (e.g. entry_points `ggarch.presets`, `ggarch.icons`,
 `ggarch.renderers`) so extensions are discoverable and composable.
 
+### Visual grammar and shape ontology
+
+ggarch's visual grammar follows the Grammar of Graphics principle: each visual
+channel (shape, colour, size) encodes one orthogonal dimension of meaning.
+Nothing is decorated for its own sake; every visual element is semantically
+load-bearing.
+
+**Current state:** colour already encodes ownership/provenance cleanly (Juju
+orange, workload blue, external gray, charm white+orange border). Shape encodes
+categorical entity type with a small honest vocabulary: rect (process/software),
+cylinder (storage), person (actor). All shapes fill their bounding box to the
+same margin so the constraint solver's geometry is honest for every type.
+
+**Decisions made:**
+
+- Workload nodes use `external` styling (gray), not a distinct blue. Blue added
+  no semantic information orthogonal to what colour was already encoding and
+  created visual noise.
+- Person nodes are a rounded rect with a small head+shoulders badge in the
+  top-right corner. The badge is the type indicator; the label is centred
+  inside the box. Same bounding-box convention as every other shape.
+- The shape vocabulary is intentionally small: rect, cylinder, person. C4-style
+  shape proliferation (person, software system, container, component, database,
+  queue...) is avoided because C4's hierarchy encodes abstraction level via
+  shape, which ggarch handles better through multi-view + `abstracts:`.
+
+**TODO: investigate zoom-level annotation.** C4's zoom-in hierarchy is
+genuinely useful for readers -- seeing that "Juju" expands to client +
+controller + agents at deploy time is a real insight. ggarch's `abstracts:`
+relationship handles the model side (a concrete node realises an abstract one),
+but there is no first-class way to annotate a diagram with "this is a zoom-in
+of that node in the parent diagram" or to generate a breadcrumb trail. Explore
+whether a `zooms-in-on: "parent_view"` attribute on a view, or a callout
+annotation linking to a parent view, would satisfy this without importing C4's
+prescriptive type hierarchy.
+
+**TODO: infrastructure substrate types.** For reference architecture diagrams
+showing MAAS + OpenStack + K8s + Juju + applications, a richer substrate
+vocabulary is useful: compute (machine, pod, VM), network (space, subnet,
+ingress, load balancer), storage (volume, bucket). These are orthogonal to
+the process/actor/storage categories above -- they describe the infrastructure
+a process runs on, not the process itself. The current `container` type
+conflates compute boundary with software container. A future `compute` type
+would separate them. The complete list of recurring infrastructure components
+worth standardising is an open design question.
+
+### Runtime/persistence duality
+
+Every significant entity in a stateful distributed system has two faces: a
+**runtime face** (the process, pod, or agent that runs) and a **persistence
+face** (the record in the database that backs it). These faces appear in
+entirely separate diagram types today -- topology diagrams show the runtime,
+ER/schema diagrams show the persistence -- and the reader must mentally
+connect them.
+
+For Juju this connection is especially load-bearing. When an operator runs
+`juju status`, what they see IS the model database projected at them. The unit
+agent running on a machine corresponds to a `unit` record in a model database,
+which lives in a specific model namespace, which is associated with a specific
+cloud credential and cloud. An observability stack in model A on K8s and the
+controller in model `controller` on MAAS are visually identical boxes in a
+topology diagram -- but they are in completely different models with completely
+different operational contexts. A reference architecture diagram for a complex
+deployment (multiple models, multiple clouds, multiple operators) needs a way
+to surface this.
+
+No existing tool addresses this. The gap is not just missing notation -- it
+reflects a deeper category that distributed systems documentation has not
+formalised: **the record is the declared intent; the process is the
+realisation**. This is the intent/execution separation showing up at the data
+layer.
+
+**TODO: `records:` relationship.** Introduce a `records:` attribute on nodes,
+symmetric with `abstracts:` but on the persistence axis rather than the
+abstraction axis. Example: `unit_agent [records: "unit_rec"]` declares that the
+`unit_agent` node's runtime state is persisted as the `unit_rec` data model
+node. This relationship would:
+- Be declared in the model, not in views.
+- Allow topology views to optionally surface data-model links as annotations
+  or cross-references ("show me the persistence face of everything in this view").
+- Allow data-model views to optionally show which runtime entities write to each
+  record.
+- Be validated: a `records:` target must be a declared `record`-type node.
+
+**TODO: model-scoped node annotations.** In Juju, every deployed entity belongs
+to a model (namespace in the controller database). A topology diagram spanning
+multiple models currently has no way to indicate model membership. A
+`model: "controller"` or `model: "prod-k8s"` attribute on a node, rendered as
+a subtle label or boundary annotation, would let operators connect what they
+see in a diagram to what they see in `juju status` and `juju models`.
+
+**TODO: investigate.** Whether `records:` and `abstracts:` are instances of a
+more general **relationship axis** concept -- where a node can declare its
+relationship to other nodes along named axes (abstraction, persistence,
+model-membership, lifecycle-phase) -- rather than accumulating ad hoc
+attributes. This may be the right generalisation but needs more evidence from
+real diagram authoring before committing to a grammar change.
+
 ---
 
 
