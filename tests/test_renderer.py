@@ -30,7 +30,7 @@ model "M" {
 }
 diagram "D" from "M" {
   select { nodes: a b }
-  positions { a left-of b gap: 40 }
+  positions { a left-of b gap: 80 }
 }
 """
 
