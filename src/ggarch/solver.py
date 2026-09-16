@@ -97,7 +97,7 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     # This allows constraints like `controller left-of unit_agent` to work even
     # when `controller` is resolved to `controller_k8s` in the current env.
     abs_map = (model.environment_abstractions_map(diagram.select.environment)
-               if diagram.select.environment else model.abstractions_map())
+               if diagram.select.environment else {})
     for abstract_id, concrete_id in abs_map.items():
         if concrete_id in vars_by_id and abstract_id not in vars_by_id:
             vars_by_id[abstract_id] = vars_by_id[concrete_id]
@@ -165,7 +165,7 @@ def _selected_nodes(select: SelectClause, model: Model) -> list[Node]:
     resolved to their environment-specific concrete ids.
     """
     abs_map = (model.environment_abstractions_map(select.environment)
-               if select.environment else model.abstractions_map())
+               if select.environment else {})
 
     if not select.node_ids:
         return list(model.nodes)
