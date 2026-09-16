@@ -689,8 +689,8 @@ def _render_edge(
     )
     font_size = 9
     char_w = 5.0
-    # Padding on each side of the gap.
-    PADDING = 6
+    # Padding on each side of the gap -- enough to be clearly visible.
+    PADDING = 12
     # Wrap label to at most the full path width (no hard clearance floor --
     # let the gap be as small as it needs to be so we always interrupt).
     max_chars = max(int(path_len / char_w), 1)
@@ -711,10 +711,12 @@ def _render_edge(
                 cur = w
         wrapped.append(cur)
 
-    # Gap = text width + padding on each side; never exceeds 80% of path.
+    # Gap must accommodate the text in whichever direction the arrow runs.
+    # Use the diagonal so it works for both horizontal and vertical arrows.
     max_line_w = max(len(l) for l in wrapped) * char_w
     lh = font_size * 1.5
-    gap = min(max_line_w + PADDING * 2, path_len * 0.8)
+    text_h = lh * len(wrapped)
+    gap = min(math.hypot(max_line_w, text_h) + PADDING * 2, path_len * 0.8)
     half_gap = gap / 2
     mid_dist = path_len / 2
     # MIN_TAIL: minimum visible line on each side of the gap before an arrowhead.
