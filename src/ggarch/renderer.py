@@ -691,15 +691,9 @@ def _render_edge(
     char_w = 5.0
     # Clearance: minimum distance the gap must stay from each endpoint.
     CLEARANCE = 24
-    # If the arrow is too short to show any label with clearance, draw it
-    # unlabelled rather than overflowing into adjacent nodes.
-    if path_len <= CLEARANCE * 2 + char_w:
-        if edge.arrow in ("forward", "both"):
-            path_kwargs["marker_end"] = "url(#arrow)"
-        if edge.arrow in ("back", "both"):
-            path_kwargs["marker_start"] = "url(#arrow)"
-        g.append(dw.Path(d=_path_d(pts), **path_kwargs))
-        return
+    # If the arrow is too short for a full gap with clearance, still render
+    # the label but draw the path unsplit rather than dropping the label.
+    too_short = path_len <= CLEARANCE * 2 + char_w
     usable_px = max(path_len - CLEARANCE * 2, char_w)
     max_chars = max(int(usable_px / char_w), 1)
 
@@ -723,30 +717,35 @@ def _render_edge(
     max_line_w = max(len(l) for l in wrapped) * char_w + 4
     lh = font_size * 1.5
     gap_h = lh * len(wrapped) + 4
-    gap = min(math.hypot(max_line_w, gap_h), path_len - CLEARANCE * 2)
-    gap = max(gap, 0)
-    half_gap = gap / 2
     mid_dist = path_len / 2
 
-    # Clamp so gap never eats into the clearance zone at either end.
-    gap_start_dist = max(mid_dist - half_gap, CLEARANCE)
-    gap_end_dist   = min(mid_dist + half_gap, path_len - CLEARANCE)
-    gap_start = _point_along_path(pts, gap_start_dist)
-    gap_end   = _point_along_path(pts, gap_end_dist)
+    if too_short:
+        # Arrow too short to gap cleanly -- draw full path with arrowheads.
+        if edge.arrow in ("forward", "both"):
+            path_kwargs["marker_end"] = "url(#arrow)"
+        if edge.arrow in ("back", "both"):
+            path_kwargs["marker_start"] = "url(#arrow)"
+        g.append(dw.Path(d=_path_d(pts), **path_kwargs))
+    else:
+        gap = min(math.hypot(max_line_w, gap_h), path_len - CLEARANCE * 2)
+        gap = max(gap, 0)
+        half_gap = gap / 2
+        gap_start_dist = max(mid_dist - half_gap, CLEARANCE)
+        gap_end_dist   = min(mid_dist + half_gap, path_len - CLEARANCE)
+        gap_start = _point_along_path(pts, gap_start_dist)
+        gap_end   = _point_along_path(pts, gap_end_dist)
 
-    # First segment: start → gap_start (arrowhead at back if needed).
-    seg1_pts = [pts[0], gap_start]
-    kw1 = dict(path_kwargs)
-    if edge.arrow in ("back", "both"):
-        kw1["marker_start"] = "url(#arrow)"
-    g.append(dw.Path(d=_path_d(seg1_pts), **kw1))
+        seg1_pts = [pts[0], gap_start]
+        kw1 = dict(path_kwargs)
+        if edge.arrow in ("back", "both"):
+            kw1["marker_start"] = "url(#arrow)"
+        g.append(dw.Path(d=_path_d(seg1_pts), **kw1))
 
-    # Second segment: gap_end → end (arrowhead at front if needed).
-    seg2_pts = [gap_end, pts[-1]]
-    kw2 = dict(path_kwargs)
-    if edge.arrow in ("forward", "both"):
-        kw2["marker_end"] = "url(#arrow)"
-    g.append(dw.Path(d=_path_d(seg2_pts), **kw2))
+        seg2_pts = [gap_end, pts[-1]]
+        kw2 = dict(path_kwargs)
+        if edge.arrow in ("forward", "both"):
+            kw2["marker_end"] = "url(#arrow)"
+        g.append(dw.Path(d=_path_d(seg2_pts), **kw2))
 
     # Label centred on the true path-length midpoint (not waypoint index).
     pm = _point_along_path(pts, mid_dist)
