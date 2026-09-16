@@ -8,14 +8,26 @@
 </defs>
 <rect x="0" y="0" width="817.6" height="264.0" fill="#1E1E2E" />
 <g id="ggarch-nodes">
-<rect x="20.0" y="74.0" width="352.0" height="104.0" fill="#2D1A0E" stroke="#C07040" stroke-width="1" rx="6" ry="6" />
+<rect x="20.0" y="74.0" width="352.0" height="104.0" fill="#2D1A0E" stroke="none" rx="6" ry="6" />
+<path d="M20.0,74.0 L270.0,74.0" stroke="#C07040" stroke-width="1" fill="none" />
+<path d="M282.0,74.0 L372.0,74.0" stroke="#C07040" stroke-width="1" fill="none" />
+<path d="M20.0,178.0 L270.0,178.0" stroke="#C07040" stroke-width="1" fill="none" />
+<path d="M282.0,178.0 L372.0,178.0" stroke="#C07040" stroke-width="1" fill="none" />
+<path d="M20.0,74.0 L20.0,178.0" stroke="#C07040" stroke-width="1" fill="none" />
+<path d="M372.0,74.0 L372.0,126.0" stroke="#C07040" stroke-width="1" fill="none" />
+<path d="M372.0,138.0 L372.0,178.0" stroke="#C07040" stroke-width="1" fill="none" />
 <text x="196.0" y="88.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFD0A0" text-anchor="middle" dominant-baseline="central">Controller pod</text>
 <rect x="36.0" y="102.0" width="140.0" height="60.0" fill="#2D1A0E" stroke="#C07040" stroke-width="1" rx="6" ry="6" />
 <text x="106.0" y="132.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFD0A0" text-anchor="middle" dominant-baseline="central">Init containers</text>
 <rect x="196.0" y="102.0" width="160.0" height="60.0" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
 <text x="276.0" y="122.89999999999999" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Controller agent</text>
 <text x="276.0" y="141.1" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">(jujud)</text>
-<rect x="452.0" y="83.0" width="345.6" height="86.0" fill="#2D1A0E" stroke="#C07040" stroke-width="1" rx="6" ry="6" />
+<rect x="452.0" y="83.0" width="345.6" height="86.0" fill="#2D1A0E" stroke="none" rx="6" ry="6" />
+<path d="M452.0,83.0 L797.6,83.0" stroke="#C07040" stroke-width="1" fill="none" />
+<path d="M452.0,169.0 L797.6,169.0" stroke="#C07040" stroke-width="1" fill="none" />
+<path d="M452.0,83.0 L452.0,126.0" stroke="#C07040" stroke-width="1" fill="none" />
+<path d="M452.0,138.0 L452.0,169.0" stroke="#C07040" stroke-width="1" fill="none" />
+<path d="M797.6,83.0 L797.6,169.0" stroke="#C07040" stroke-width="1" fill="none" />
 <text x="624.8" y="97.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFD0A0" text-anchor="middle" dominant-baseline="central">Unit pod</text>
 <rect x="468.0" y="111.0" width="104.0" height="42.0" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
 <text x="520.0" y="132.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Unit agent</text>

@@ -10,5 +10,6 @@ build/
 _build/
 *.svg
 !examples/*.svg
-!.github/*.svg
+assets/*.svg
+!assets/ggarch-demo.gif
 HANDOFF.md

@@ -14,10 +14,10 @@
 <text x="300.8" y="69.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Unit agent</text>
 <rect x="372.8" y="48.0" width="80.0" height="42.0" fill="#FFFFFF" stroke="#E95420" stroke-width="2" rx="4" ry="4" />
 <text x="412.8" y="69.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#000000" text-anchor="middle" dominant-baseline="central">Charm</text>
-<rect x="472.8" y="48.0" width="80.0" height="42.0" fill="#74AADC" stroke="#4A90D9" stroke-width="1" rx="4" ry="4" />
-<text x="512.8" y="69.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Pebble</text>
-<rect x="572.8" y="48.0" width="89.6" height="42.0" fill="#4A90D9" stroke="#2C6FAC" stroke-width="1" rx="4" ry="4" />
-<text x="617.5999999999999" y="69.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Workload</text>
+<rect x="472.8" y="48.0" width="80.0" height="42.0" fill="#F5F5F5" stroke="#AAAAAA" stroke-width="1" rx="4" ry="4" />
+<text x="512.8" y="69.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">Pebble</text>
+<rect x="572.8" y="48.0" width="89.6" height="42.0" fill="#F5F5F5" stroke="#AAAAAA" stroke-width="1" rx="4" ry="4" />
+<text x="617.5999999999999" y="69.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">Workload</text>
 <rect x="20.0" y="20.0" width="132.8" height="86.0" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="6" ry="6" />
 <text x="86.4" y="63.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#5A2800" text-anchor="middle" dominant-baseline="central">Controller pod</text>
 </g>
@@ -30,8 +30,11 @@
 </g>
 <g id="ggarch-annotations">
 <text x="86.4" y="4.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#555555" text-anchor="middle" dominant-baseline="auto">collapsed — context only</text>
-<rect x="238.8" y="38.0" width="224.0" height="62.0" fill="none" stroke="#E95420" stroke-width="1" rx="6" ry="6" stroke-dasharray="6,4" />
-<rect x="283.8" y="22.0" width="134" height="14" fill="#FFFFFF" stroke="none" />
-<text x="350.8" y="32.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="middle" dominant-baseline="auto">charm control loop</text>
+<path d="M238.8,38.0 L462.8,38.0" stroke="#E95420" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M238.8,100.0 L462.8,100.0" stroke="#E95420" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M238.8,38.0 L238.8,100.0" stroke="#E95420" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M462.8,38.0 L462.8,63.0" stroke="#E95420" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<path d="M462.8,75.0 L462.8,100.0" stroke="#E95420" stroke-width="1" fill="none" stroke-dasharray="6,4" />
+<text x="350.8" y="52.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="middle" dominant-baseline="central">charm control loop</text>
 </g>
 </svg>

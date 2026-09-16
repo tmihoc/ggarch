@@ -4,31 +4,29 @@
 // render with a dashed border), selective zoom (collapse/expand).
 //
 // Colour legend (juju preset):
-//   Orange fill          — Juju software (controller agent, unit agent)
-//   White/orange border  — Charm code
-//   Light/dark blue fill — Workload containers (Pebble + workload services);
-//                          Juju operates these via Pebble but does not own them
-//   Dashed arrow         — Long-lived stream (Juju API websocket)
-//   Solid arrow          — Direct control or API call
-//   Double-headed arrow  — Bidirectional (hook commands: unit agent ↔ charm)
+//   Orange fill         — Juju software (controller agent, unit agent)
+//   White/orange border — Charm code
+//   Gray fill           — External/workload nodes (Pebble, workload services);
+//                         colour encodes ownership, not entity category
+//   Dashed arrow        — Long-lived stream (Juju API websocket)
+//   Solid arrow         — Direct control or API call
+//   Dotted arrow        — IPC (hook commands: unit agent ↔ charm, Unix socket)
 //
 // Caption for topology-0 (K8s deployment topology):
 //   A live Kubernetes deployment. The controller pod (left) runs the
-//   controller agent (jujud), which schedules pods via the Kubernetes cloud
+//   controller agent (jujud), which provisions pods via the Kubernetes cloud
 //   API and fetches charms from Charmhub. The dashed arrow is the Juju API
-//   websocket — a long-lived stream over which the controller drives the unit
-//   agent. Inside the unit pod (right): the unit agent (orange) dispatches
-//   the charm (white/orange border), which calls back via hook commands
-//   (bidirectional arrow, Unix socket). The workload container is collapsed
-//   here; see Unit focus for its internal structure.
+//   websocket — a long-lived stream over which the unit agent watches the
+//   controller. Inside the unit pod (right): the unit agent dispatches the
+//   charm (white/orange border). The workload container is collapsed here;
+//   see Unit focus for its internal structure.
 //
 // Caption for topology-1 (Unit focus):
 //   Zoomed in on the unit pod. The controller pod is collapsed to an opaque
 //   box — context only. Inside the unit pod: the unit agent dispatches the
-//   charm (hook commands flow both ways); the charm drives Pebble over the
-//   Pebble HTTP API; Pebble (light blue) manages the workload services
-//   (blue). Blue = workload containers; Juju operates them via Pebble but
-//   does not own them directly.
+//   charm; the charm drives Pebble over the Pebble HTTP API; Pebble manages
+//   the workload services. Gray = external/workload nodes Juju operates
+//   but does not own.
 
 model "Juju" {
 
