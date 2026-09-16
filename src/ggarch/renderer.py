@@ -752,14 +752,36 @@ def _render_edge(
         kw2["marker_end"] = "url(#arrow)"
     g.append(dw.Path(d=_path_d([gap_end, pts[-1]]), **kw2))
 
-    # Label centred on the true path-length midpoint.
+    # Label placement: centred on the path midpoint along the arrow axis.
+    # Perpendicular to the arrow, the text block is offset so it never
+    # straddles the arrow line -- the nearest line edge has PADDING clearance.
     pm = _point_along_path(pts, mid_dist)
     mx, my = pm[0], pm[1]
     total_h = lh * len(wrapped)
-    start_y = my - total_h / 2 + lh * 0.5
+
+    # Perpendicular unit vector (rotate arrow direction 90° CCW).
+    if alen > 0:
+        px_unit = -ady / alen   # perpendicular x
+        py_unit =  adx / alen   # perpendicular y
+    else:
+        px_unit, py_unit = 0.0, -1.0
+
+    if len(wrapped) == 1:
+        # Single line: centre exactly on the arrow.
+        base_x, base_y = mx, my
+    else:
+        # Multi-line: shift the block so it sits above the arrow with padding.
+        # The shift distance places the bottom edge of the block at -PADDING
+        # from the arrow line (i.e. the block floats above).
+        shift = total_h / 2 + PADDING
+        base_x = mx + px_unit * shift
+        base_y = my + py_unit * shift
+
+    start_y = base_y - total_h / 2 + lh * 0.5
+    start_x = base_x
     for i, line in enumerate(wrapped):
         g.append(dw.Text(
-            line, font_size, mx, start_y + i * lh,
+            line, font_size, start_x, start_y + i * lh,
             font_family=LABEL_FONT,
             fill=es.font_color,
             text_anchor="middle",
