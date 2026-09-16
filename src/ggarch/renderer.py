@@ -690,7 +690,7 @@ def _render_edge(
     font_size = 9
     char_w = 5.0
     # Padding on each side of the gap -- enough to be clearly visible.
-    PADDING = 12
+    PADDING = 8
     # Wrap label to at most the full path width (no hard clearance floor --
     # let the gap be as small as it needs to be so we always interrupt).
     max_chars = max(int(path_len / char_w), 1)

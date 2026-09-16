@@ -345,17 +345,22 @@ def _add_auto_layout_pass(
 # a label needs. Keep in sync with renderer.py.
 _LABEL_CHAR_W   = 5.0
 _LABEL_LINE_H   = 9 * 1.5   # font_size * 1.5
-_LABEL_PADDING  = 12         # px each side of gap
+_LABEL_PADDING  = 8          # px each side of gap
 _LABEL_MIN_TAIL = 12         # px of visible arrow on each side of gap
 
 
-def _label_min_gap(label: str) -> float:
-    """Minimum node-face-to-node-face distance needed for this edge label."""
+def _label_min_gap_h(label: str) -> float:
+    """Minimum gap for a horizontal arrow (left-of/right-of): sized by text width."""
     lines = label.split("\\n")
     max_line_w = max(len(l) for l in lines) * _LABEL_CHAR_W
+    return max_line_w + _LABEL_PADDING * 2 + _LABEL_MIN_TAIL * 2
+
+
+def _label_min_gap_v(label: str) -> float:
+    """Minimum gap for a vertical arrow (above/below): sized by text height."""
+    lines = label.split("\\n")
     text_h = _LABEL_LINE_H * len(lines)
-    projected = max(max_line_w, text_h)
-    return projected + _LABEL_PADDING * 2 + _LABEL_MIN_TAIL * 2
+    return text_h + _LABEL_PADDING * 2 + _LABEL_MIN_TAIL * 2
 
 
 _GAP_DEFAULT = 20  # px — default gap when not specified
@@ -368,19 +373,37 @@ def _add_user_constraints(
     view_name: str,
     model: Model | None = None,
 ) -> None:
-    # Build a map from (src, tgt) pair → max label min_gap for labelled edges.
-    label_gaps: dict[frozenset, float] = {}
+    # Build maps from node pair → min gap, separated by axis.
+    h_label_gaps: dict[frozenset, float] = {}
+    v_label_gaps: dict[frozenset, float] = {}
+    h_kinds = {"left-of", "right-of"}
+    v_kinds = {"above", "below"}
     if model is not None:
+        # Collect which pairs have which axis constraints.
+        h_pairs: set[frozenset] = set()
+        v_pairs: set[frozenset] = set()
+        for c in constraints:
+            if hasattr(c, "object") and c.object:
+                pair = frozenset([c.subject, c.object])
+                if c.kind in h_kinds:
+                    h_pairs.add(pair)
+                elif c.kind in v_kinds:
+                    v_pairs.add(pair)
         for edge in model.edges:
             if edge.label:
                 pair = frozenset([edge.source, edge.target])
-                lg = _label_min_gap(edge.label)
-                if lg > label_gaps.get(pair, 0):
-                    label_gaps[pair] = lg
+                if pair in h_pairs:
+                    lg = _label_min_gap_h(edge.label)
+                    if lg > h_label_gaps.get(pair, 0):
+                        h_label_gaps[pair] = lg
+                if pair in v_pairs:
+                    lg = _label_min_gap_v(edge.label)
+                    if lg > v_label_gaps.get(pair, 0):
+                        v_label_gaps[pair] = lg
 
     for c in constraints:
         try:
-            _add_one_constraint(solver, c, vars_by_id, label_gaps)
+            _add_one_constraint(solver, c, vars_by_id, h_label_gaps, v_label_gaps)
         except UnsatisfiableConstraint as exc:
             raise ValidationError(
                 f"diagram {view_name!r}: constraint {c.kind!r} on "
@@ -397,31 +420,35 @@ def _add_one_constraint(
     solver: Solver,
     c: Constraint,
     vars_by_id: dict[str, _NodeVars],
-    label_gaps: dict | None = None,
+    h_label_gaps: dict | None = None,
+    v_label_gaps: dict | None = None,
 ) -> None:
     s = vars_by_id[c.subject]
     user_gap = c.gap if c.gap else _GAP_DEFAULT
-    # Expand the gap if a labelled edge between these nodes needs more space.
     pair = frozenset([c.subject, c.object]) if hasattr(c, "object") and c.object else None
-    label_min = (label_gaps or {}).get(pair, 0) if pair else 0
-    gap = max(user_gap, label_min)
+    h_min = (h_label_gaps or {}).get(pair, 0) if pair else 0
+    v_min = (v_label_gaps or {}).get(pair, 0) if pair else 0
 
     kind = c.kind
 
     if kind == "left-of":
         o = vars_by_id[c.object]
+        gap = max(user_gap, h_min)
         solver.addConstraint((s.x2 + gap <= o.x) | "required")
 
     elif kind == "right-of":
         o = vars_by_id[c.object]
+        gap = max(user_gap, h_min)
         solver.addConstraint((s.x >= o.x2 + gap) | "required")
 
     elif kind == "above":
         o = vars_by_id[c.object]
+        gap = max(user_gap, v_min)
         solver.addConstraint((s.y2 + gap <= o.y) | "required")
 
     elif kind == "below":
         o = vars_by_id[c.object]
+        gap = max(user_gap, v_min)
         solver.addConstraint((s.y >= o.y2 + gap) | "required")
 
     elif kind == "align-left":
@@ -441,12 +468,10 @@ def _add_one_constraint(
         solver.addConstraint((s.y2 == o.y2) | "required")
 
     elif kind == "align-middle":
-        # Vertical centres aligned.
         o = vars_by_id[c.object]
         solver.addConstraint((s.cy == o.cy) | "required")
 
     elif kind == "align-centre":
-        # Horizontal centres aligned.
         o = vars_by_id[c.object]
         solver.addConstraint((s.cx == o.cx) | "required")
 
@@ -464,24 +489,17 @@ def _add_one_constraint(
         solver.addConstraint((s.h == o.h) | "required")
 
     elif kind == "min-width":
-        # gap field holds the value for min-width/height.
         solver.addConstraint((s.w >= c.gap) | "required")
 
     elif kind == "min-height":
         solver.addConstraint((s.h >= c.gap) | "required")
 
     elif kind in ("direction", "grid"):
-        # Direction and grid affect child layout — handled by the
-        # auto-layout pass (Phase 2b), not direct constraints.
-        # For now, direction/grid constraints are accepted but ignored
-        # so the grammar round-trips cleanly.
         pass
 
     else:
-        # Unknown constraint kind — warn but don't fail.
         import warnings
         warnings.warn(f"ggarch: unknown constraint kind {kind!r} — ignored")
-
 
 # ---------------------------------------------------------------------------
 # Auto-layout for children without explicit constraints
