@@ -221,6 +221,10 @@ def _add_min_size_for_node(
         min_w, min_h = min_size(node.label, is_container and not collapsed)
     solver.addConstraint((v.w >= min_w) | "required")
     solver.addConstraint((v.h >= min_h) | "required")
+    # For leaf nodes, also pin height at min_h at STRONG priority so align-middle
+    # doesn't cause unbounded height growth.
+    if not is_container and not collapsed:
+        solver.addConstraint((v.h == min_h) | "strong")
 
     if not collapsed:
         for child in node.children:
