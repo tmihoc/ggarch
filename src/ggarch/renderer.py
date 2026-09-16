@@ -226,7 +226,8 @@ def render(
         _render_edge(edges_g, edge, preset, dark, ox, oy)
 
     for ann in view.annotations:
-        _render_annotation(ann_g, ann, layout, ox, oy, dark, preset, node_styles)
+        _render_annotation(ann_g, ann, layout, ox, oy, dark, preset, node_styles,
+                           routed.edges)
 
     drawing.append(nodes_g)
     drawing.append(edges_g)
@@ -773,9 +774,10 @@ def _render_annotation(
     dark: bool,
     preset: ResolvedStyle | None = None,
     node_styles: dict | None = None,
+    edges: list | None = None,
 ) -> None:
     if isinstance(ann, AnnotationBox):
-        _render_ann_box(g, ann, layout, ox, oy, dark)
+        _render_ann_box(g, ann, layout, ox, oy, dark, edges or [])
     elif isinstance(ann, AnnotationCallout):
         _render_ann_callout(g, ann, layout, ox, oy, dark)
     elif isinstance(ann, AnnotationSeparator):
@@ -808,6 +810,7 @@ def _render_ann_box(
     layout: SolvedLayout,
     ox: float, oy: float,
     dark: bool,
+    edges: list | None = None,
 ) -> None:
     pad = 10
     br = _nodes_bounding_rect(ann.nodes, layout)
@@ -817,17 +820,38 @@ def _render_ann_box(
     w, h = br.w + pad * 2, br.h + pad * 2
     color = ann.color or ("#888888" if dark else "#666666")
     dash = "6,4" if ann.style == "dashed" else ""
-    rect_kwargs: dict = dict(
-        fill="none",
-        stroke=color,
-        stroke_width=1,
-        rx=6, ry=6,
-    )
-    if dash:
-        rect_kwargs["stroke_dasharray"] = dash
-    g.append(dw.Rectangle(x, y, w, h, **rect_kwargs))
+
+    # Compute where routed edges cross each side of the annotation box.
+    side_gaps: dict[str, list[float]] = {'top': [], 'bottom': [], 'left': [], 'right': []}
+    for edge in (edges or []):
+        pts = [(p.x + ox, p.y + oy) for p in edge.points]
+        for i in range(len(pts) - 1):
+            x1, y1 = pts[i]; x2, y2 = pts[i+1]
+            cx = _seg_intersect_horiz(x1, y1, x2, y2, x, x+w, y)
+            if cx is not None: side_gaps['top'].append(cx)
+            cx = _seg_intersect_horiz(x1, y1, x2, y2, x, x+w, y+h)
+            if cx is not None: side_gaps['bottom'].append(cx)
+            cy = _seg_intersect_vert(x1, y1, x2, y2, y, y+h, x)
+            if cy is not None: side_gaps['left'].append(cy)
+            cy = _seg_intersect_vert(x1, y1, x2, y2, y, y+h, x+w)
+            if cy is not None: side_gaps['right'].append(cy)
+
+    has_gaps = any(side_gaps[f] for f in side_gaps)
+    if has_gaps:
+        for face, pts2, crossings in (
+            ('top',    [(x, y),   (x+w, y)],   side_gaps['top']),
+            ('bottom', [(x, y+h), (x+w, y+h)], side_gaps['bottom']),
+            ('left',   [(x, y),   (x, y+h)],   side_gaps['left']),
+            ('right',  [(x+w, y), (x+w, y+h)], side_gaps['right']),
+        ):
+            _draw_side_with_gaps(g, pts2, crossings, color, 1, dash)
+    else:
+        rect_kwargs: dict = dict(fill="none", stroke=color, stroke_width=1, rx=6, ry=6)
+        if dash:
+            rect_kwargs["stroke_dasharray"] = dash
+        g.append(dw.Rectangle(x, y, w, h, **rect_kwargs))
+
     if ann.label:
-        # Label sits inside the box, just below the top border.
         lx = x + w / 2
         ly = y + 14
         g.append(dw.Text(
