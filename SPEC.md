@@ -323,19 +323,72 @@ node. This relationship would:
   record.
 - Be validated: a `records:` target must be a declared `record`-type node.
 
-**TODO: model-scoped node annotations.** In Juju, every deployed entity belongs
-to a model (namespace in the controller database). A topology diagram spanning
-multiple models currently has no way to indicate model membership. A
-`model: "controller"` or `model: "prod-k8s"` attribute on a node, rendered as
-a subtle label or boundary annotation, would let operators connect what they
-see in a diagram to what they see in `juju status` and `juju models`.
+### Provenance and scope: faceted tags, not buckets
 
-**TODO: investigate.** Whether `records:` and `abstracts:` are instances of a
-more general **relationship axis** concept -- where a node can declare its
-relationship to other nodes along named axes (abstraction, persistence,
-model-membership, lifecycle-phase) -- rather than accumulating ad hoc
-attributes. This may be the right generalisation but needs more evidence from
-real diagram authoring before committing to a grammar change.
+Every deployed entity in a stateful system belongs to one or more scopes
+simultaneously: a model, a cloud, an availability zone, a namespace, an
+owner. Naively, you represent this by drawing bounding regions -- one box per
+model, one box per cloud. This works when the groupings are clean and
+non-overlapping. It breaks the moment a node belongs to multiple orthogonal
+hierarchies at once, producing nested or intersecting regions that are harder
+to read than the inline text they were meant to replace.
+
+The failure mode is Dewey vs. Ranganathan. Dewey's decimal system forces each
+book into exactly one hierarchical location; a book on "the mathematics of
+music" must choose a home. Ranganathan's faceted classification assigns each
+book a set of independent facets (subject, form, language, era) that can be
+combined freely. The shelf -- the physical location, the bucket -- is a
+rendering decision made from the facets, not a classification decision made at
+authoring time. Buckets can be generated from tags; tags cannot be recovered
+from buckets.
+
+Applied to ggarch: **provenance is a set of facets on a node, not a spatial
+bucket the node is placed in**. A unit agent node might have facets:
+`model: "prod-k8s"`, `cloud: "k8s-eu"`, `az: "eu-west-1"`. A view can choose
+to render those facets as bounding regions (grouped by model), as column
+headers (grouped by cloud), as colored indicators on each node, or not at all.
+The facets are the ground truth in the model; the visual grouping is a
+view-level rendering decision.
+
+This is consistent with how `environment:` already works in ggarch -- it is a
+view-level rendering decision that resolves which concrete nodes to show. The
+`properties` map on nodes is already a tag bag. The gaps are:
+
+1. No first-class provenance facets with known semantics (model, cloud, az, namespace).
+2. No visual encoding for provenance on individual nodes.
+3. No view-level `group-by:` that generates bounding regions or column
+   separators from a node facet.
+
+**TODO: provenance facets on nodes.** Define a `scope` block or structured
+property keys with known semantics for common provenance dimensions (model,
+cloud, namespace). Distinguished from free-form `properties` by being
+queryable and renderable. For Juju: `scope { model: "prod-k8s", cloud: "gke-eu" }`.
+For Kubernetes: `scope { cluster: "prod", namespace: "monitoring" }`.
+
+**TODO: visual provenance indicator.** A small colored indicator -- a pill,
+dot, or flag -- at a fixed position on each node (bottom-right corner),
+color-coded by scope membership, with a legend. Not a bounding region. Not
+inline text. A compact, tag-style mark that encodes provenance without
+restructuring the layout. The color mapping is declared in the view's
+annotations block as a `scope-legend`. Multiple scope dimensions can each
+have their own indicator position or combined into one multi-segment pill.
+This is the visual analog of a flag on a map: compact, learnable, governed
+by a legend, and -- unlike a bounding region -- composable across multiple
+orthogonal dimensions simultaneously.
+
+**TODO: `group-by:` in views.** A view-level option `group-by: scope.model`
+that generates bounding annotation regions automatically from a node facet.
+For clean, non-overlapping groupings, regions are the right visual; this
+makes them a rendering choice rather than a modelling choice. Authors who
+want clean bucket-style layouts get them; authors with overlapping provenance
+use the indicator approach instead.
+
+**TODO: investigate.** Whether `records:`, `abstracts:`, and scope facets are
+instances of a more general **relationship axis** concept -- where a node
+can declare its relationship to other entities along named axes (abstraction,
+persistence, scope-membership, lifecycle-phase) -- rather than accumulating
+ad hoc attributes. This may be the right generalisation but needs more
+evidence from real diagram authoring before committing to a grammar change.
 
 ---
 
