@@ -76,7 +76,7 @@ _JUJU_LIGHT_NODES: dict[str, NodeStyle] = {
         fill="#FFFFFF", stroke="#E95420", font_color="#000000", stroke_width=2,
     ),
     "workload": NodeStyle(
-        fill="#4A90D9", stroke="#2C6FAC", font_color="#FFFFFF",
+        fill="#F5F5F5", stroke="#AAAAAA", font_color="#444444",
     ),
     "pebble": NodeStyle(
         fill="#74AADC", stroke="#4A90D9", font_color="#FFFFFF",
@@ -133,7 +133,7 @@ _JUJU_DARK_NODES: dict[str, NodeStyle] = {
         fill="#1E1E2E", stroke="#E95420", font_color="#CDD6F4", stroke_width=2,
     ),
     "workload": NodeStyle(
-        fill="#1E3A5F", stroke="#4A90D9", font_color="#CDD6F4",
+        fill="#2A2A2A", stroke="#666666", font_color="#CCCCCC",
     ),
     "pebble": NodeStyle(
         fill="#1A3050", stroke="#74AADC", font_color="#CDD6F4",
@@ -163,12 +163,12 @@ _JUJU_DARK_NODES: dict[str, NodeStyle] = {
 }
 
 _JUJU_DARK_EDGES: dict[str, EdgeStyle] = {
-    "default": EdgeStyle(stroke="#888888", stroke_dash="", font_color="#CDD6F4"),
-    "api":     EdgeStyle(stroke="#AAAAAA", stroke_dash="", font_color="#CDD6F4"),
+    "default": EdgeStyle(stroke="#888888", stroke_dash="",    font_color="#CDD6F4"),
+    "api":     EdgeStyle(stroke="#AAAAAA", stroke_dash="",    font_color="#CDD6F4"),
     "stream":  EdgeStyle(stroke="#AAAAAA", stroke_dash="6,3", font_color="#CDD6F4"),
     "event":   EdgeStyle(stroke="#888888", stroke_dash="6,3", font_color="#CDD6F4"),
-    "data":    EdgeStyle(stroke="#F9A825", stroke_dash="", font_color="#CDD6F4"),
-    "control": EdgeStyle(stroke="#AAAAAA", stroke_dash="", font_color="#CDD6F4"),
+    "data":    EdgeStyle(stroke="#F9A825", stroke_dash="",    font_color="#CDD6F4"),
+    "control": EdgeStyle(stroke="#AAAAAA", stroke_dash="",    font_color="#CDD6F4"),
     "ipc":     EdgeStyle(stroke="#888888", stroke_dash="2,2", font_color="#CDD6F4"),
 }
 

@@ -52,12 +52,14 @@ from sphinx.util.docutils import SphinxDirective
 from sphinx.util.osutil import ensuredir
 
 from ggarch.errors import GgarchError
+from ggarch.model import AnnotationLegend
 from ggarch.parser import parse
-from ggarch.renderer import render
+from ggarch.renderer import render, _legend_items
 from ggarch.router import route
 from ggarch.solver import solve
 from ggarch.validator import validate
 from ggarch.sequence_renderer import render_sequence
+from ggarch.presets import get_preset, resolve_style
 from ggarch import __version__
 
 logger = logging.getLogger(__name__)
@@ -90,6 +92,7 @@ class GgarchDirective(SphinxDirective):
         "caption":        directives.unchanged,
         "alt":            directives.unchanged,
         "class":          directives.unchanged,
+        "no-legend":      directives.flag,        # suppress HTML legend strip
     }
 
     def run(self) -> list[nodes.Node]:
@@ -118,6 +121,7 @@ class GgarchDirective(SphinxDirective):
         node["caption"]        = self.options.get("caption", "")
         node["alt"]            = self.options.get("alt", "Architecture diagram")
         node["css_class"]      = self.options.get("class", "")
+        node["no_legend"]      = "no-legend" in self.options
         self.set_source_info(node)
         return [node]
 
@@ -132,6 +136,7 @@ def _render_pair(
     view_name: str = "",
     sequence_name: str = "",
     file_path: str = "",
+    skip_legend: bool = False,
 ) -> tuple[tuple[str, str] | None, tuple[str, str] | None]:
     """Compile one view/sequence to a light+dark SVG pair.
 
@@ -202,14 +207,15 @@ def _render_pair(
 
     results = []
     for suffix, dark in (("light", False), ("dark", True)):
-        hashkey = (code + (view_name or "") + suffix + __version__ + mtime).encode()
+        hashkey = (code + (view_name or "") + suffix + __version__ + mtime
+                   + ("L" if skip_legend else "")).encode()
         basename = f"ggarch-{hashlib.sha1(hashkey).hexdigest()}"  # noqa: S324
         fname = f"{basename}.svg"
         relfn = posixpath.join(self.builder.imgpath, fname)
         outfn = os.path.join(outdir, fname)
         if not os.path.isfile(outfn):
             try:
-                svg = render(rl, model, diagram, dark=dark)
+                svg = render(rl, model, diagram, dark=dark, skip_legend=skip_legend)
                 with open(outfn, "w", encoding="utf-8") as fh:
                     fh.write(svg)
             except GgarchError as exc:
@@ -248,6 +254,42 @@ figure.ggarch-figure figcaption {
 .dark figure.ggarch-figure figcaption {
     color: #aaa;
 }
+/* Inline HTML legend strip */
+.ggarch-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.15em 1.2em;
+    justify-content: center;
+    font-size: 0.78em;
+    color: #555;
+    margin: 0.5em auto 0;
+    max-width: 100%;
+    line-height: 1.8;
+}
+[data-theme="dark"] .ggarch-legend,
+.dark .ggarch-legend { color: #aaa; }
+.ggarch-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    white-space: nowrap;
+}
+.ggarch-legend-swatch {
+    display: inline-block;
+    width: 20px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    vertical-align: middle;
+}
+.ggarch-legend-line {
+    display: inline-block;
+    width: 28px;
+    height: 0;
+    flex-shrink: 0;
+    vertical-align: middle;
+}
+[data-theme="dark"] .ggarch-legend-swatch { opacity: 0.85; }
 .ggarch-diagram {
     position: relative;
 }
@@ -300,7 +342,8 @@ figure.ggarch-figure figcaption {
     align-items: center;
     justify-content: center;
     padding: 0;
-    opacity: 0.55;
+    color: #444;
+    opacity: 0.65;
     transition: opacity 0.15s, box-shadow 0.15s;
     box-shadow: 0 1px 4px rgba(0,0,0,0.15);
     z-index: 10;
@@ -310,7 +353,7 @@ figure.ggarch-figure figcaption {
 .dark .ggarch-expand-btn {
     background: rgba(40, 40, 40, 0.92);
     border-color: rgba(255,255,255,0.2);
-    color: #eee;
+    color: #ddd;
 }
 /* Modal */
 .ggarch-modal {
@@ -335,7 +378,7 @@ figure.ggarch-figure figcaption {
 }
 [data-theme="dark"] .ggarch-modal-inner,
 .dark .ggarch-modal-inner { background: #1e1e2e; }
-.ggarch-modal-inner img { display: block; max-width: 85vw; max-height: 78vh; width: auto; height: auto; }
+.ggarch-modal-inner img { display: block; width: 100%; max-width: 85vw; max-height: 78vh; object-fit: contain; }
 .ggarch-modal-caption {
     font-size: 0.85em;
     font-style: italic;
@@ -359,6 +402,7 @@ figure.ggarch-figure figcaption {
     align-items: center;
     justify-content: center;
     padding: 0;
+    color: #444;
     z-index: 10000;
     box-shadow: 0 1px 4px rgba(0,0,0,0.15);
 }
@@ -394,10 +438,10 @@ _GGARCH_JS = """\
 
   function closeModal() {
     modal.classList.remove('active');
-    var old = inner.querySelector('.ggarch-modal-img');
-    if (old) inner.removeChild(old);
-    var oldCap = inner.querySelector('.ggarch-modal-caption');
-    if (oldCap) inner.removeChild(oldCap);
+    ['ggarch-modal-img', 'ggarch-modal-legend', 'ggarch-modal-caption'].forEach(function(cls) {
+      var el = inner.querySelector('.' + cls);
+      if (el) inner.removeChild(el);
+    });
     document.body.style.overflow = '';
   }
   closeBtn.addEventListener('click', closeModal);
@@ -406,11 +450,16 @@ _GGARCH_JS = """\
     if (e.key === 'Escape' && modal.classList.contains('active')) closeModal();
   });
 
-  function openModal(src, alt, caption) {
+  function openModal(src, alt, legendEl, caption) {
     var clone = document.createElement('img');
     clone.className = 'ggarch-modal-img';
     clone.src = src; clone.alt = alt;
     inner.appendChild(clone);
+    if (legendEl) {
+      var legClone = legendEl.cloneNode(true);
+      legClone.className = 'ggarch-legend ggarch-modal-legend';
+      inner.appendChild(legClone);
+    }
     if (caption) {
       var cap = document.createElement('p');
       cap.className = 'ggarch-modal-caption';
@@ -446,7 +495,8 @@ _GGARCH_JS = """\
       btn.addEventListener('click', function() {
         var r = getVisibleSrc(wrap);
         var caption = figure ? (figure.querySelector('figcaption') || {}).textContent || '' : '';
-        openModal(r.src, r.alt, caption);
+        var legendEl = figure ? figure.querySelector('.ggarch-legend') : null;
+        openModal(r.src, r.alt, legendEl, caption);
       });
       wrap.appendChild(btn);
     });
@@ -473,7 +523,7 @@ _GGARCH_JS = """\
         var wrap = activeSlide || slides;
         var r = getVisibleSrc(wrap);
         var caption = figcap ? figcap.textContent : '';
-        openModal(r.src, r.alt, caption);
+        openModal(r.src, r.alt, null, caption);
       });
       slides.style.position = 'relative';
       slides.appendChild(expandBtn);
@@ -535,6 +585,114 @@ def _ensure_ggarch_assets(self: object) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Legend HTML extraction
+# ---------------------------------------------------------------------------
+
+# Node fill/stroke colours used for swatches — inline styles, no SVG overhead.
+_SWATCH_LIGHT: dict[str, tuple[str, str]] = {
+    "juju-software": ("#E95420", "#C74210"),
+    "charm":         ("#FFFFFF", "#E95420"),
+    "container":     ("#FFF3EE", "#E0956A"),
+    "external":      ("#F5F5F5", "#AAAAAA"),
+    "workload":      ("#F5F5F5", "#AAAAAA"),
+    "pebble":        ("#74AADC", "#4A90D9"),
+    "database":      ("#FFF8E1", "#F9A825"),
+    "record":        ("#FFFDE7", "#F9A825"),
+    "person":        ("#F0F0F0", "#777777"),
+    "infrastructure":("#E8F5E9", "#66BB6A"),
+    "unit":          ("#EEF2FF", "#9999AA"),
+}
+
+_EDGE_DASH_STYLE: dict[str, str] = {
+    "stream":  "6,3",
+    "event":   "6,3",
+    "ipc":     "2,2",
+    "default": "",
+}
+
+_EDGE_STROKE_LIGHT: dict[str, str] = {
+    "api":     "#555555",
+    "control": "#555555",
+    "stream":  "#555555",
+    "event":   "#888888",
+    "data":    "#F9A825",
+    "ipc":     "#888888",
+    "default": "#888888",
+}
+
+
+def _extract_legend_html(
+    code: str,
+    view_name: str,
+    encode,  # self.encode from the visitor
+) -> str:
+    """Return an HTML legend strip for the view, or '' if no legend annotation."""
+    try:
+        f = parse(code)
+    except GgarchError:
+        return ""
+
+    diagram = next((d for d in f.diagrams if d.name == view_name), None)
+    if diagram is None and f.diagrams:
+        diagram = f.diagrams[0]
+    if diagram is None:
+        return ""
+
+    leg = next((a for a in diagram.annotations if isinstance(a, AnnotationLegend)), None)
+    if leg is None:
+        return ""
+
+    # Resolve which types are actually used — requires layout solve.
+    model = f.get_model(diagram.model_name)
+    try:
+        layout = solve(diagram, model)
+        rl = route(layout, model, diagram.select)
+    except GgarchError:
+        return ""
+
+    node_types, edge_types = _legend_items(layout, rl.edges)
+
+    items_html: list[str] = []
+
+    for ntype in node_types:
+        label = leg.labels.get(ntype, ntype)
+        fill, stroke = _SWATCH_LIGHT.get(ntype, ("#FFFFFF", "#AAAAAA"))
+        swatch = (
+            f'<span class="ggarch-legend-swatch" '
+            f'style="background:{fill}; border:1.5px solid {stroke};"></span>'
+        )
+        items_html.append(
+            f'<span class="ggarch-legend-item">{swatch} {encode(label)}</span>'
+        )
+
+    for etype in edge_types:
+        label  = leg.labels.get(etype, etype)
+        stroke = _EDGE_STROKE_LIGHT.get(etype, "#888888")
+        dash   = _EDGE_DASH_STYLE.get(etype, "")
+        # SVG line sample — inline, 28×12px viewBox.
+        ah = 4  # arrowhead half-height
+        arrow = (
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="28" height="12" '
+            f'viewBox="0 0 28 12" class="ggarch-legend-line" style="overflow:visible">'
+            f'<line x1="0" y1="6" x2="24" y2="6" '
+            f'stroke="{stroke}" stroke-width="1.5"'
+            + (f' stroke-dasharray="{dash}"' if dash else "")
+            + f'/>'
+            f'<polyline points="24 {6-ah} 28 6 24 {6+ah}" '
+            f'fill="{stroke}" stroke="none"/>'
+            f'</svg>'
+        )
+        items_html.append(
+            f'<span class="ggarch-legend-item">{arrow} {encode(label)}</span>'
+        )
+
+    if not items_html:
+        return ""
+
+    return '<div class="ggarch-legend">' + "".join(items_html) + "</div>\n"
+
+
+# ---------------------------------------------------------------------------
 # HTML visitor
 # ---------------------------------------------------------------------------
 
@@ -548,6 +706,7 @@ def html_visit_ggarch(self: object, node: ggarch) -> None:
     alt            = node.get("alt", "") or "Architecture diagram"
     caption        = node.get("caption", "")
     extra_class    = node.get("css_class", "")
+    no_legend      = node.get("no_legend", False)
 
     figure_class = "ggarch-figure" + (f" {extra_class}" if extra_class else "")
 
@@ -623,8 +782,12 @@ def html_visit_ggarch(self: object, node: ggarch) -> None:
         raise nodes.SkipNode
 
     # ---- Single diagram / sequence mode --------------------------------
+    # For diagram views, render without the in-SVG legend gutter and emit
+    # the legend as an HTML strip between the image and the figcaption.
+    is_diagram = bool(view_name) or (not sequence_name)
     light, dark = _render_pair(
-        self, code, view_name, sequence_name, file_path
+        self, code, view_name, sequence_name, file_path,
+        skip_legend=is_diagram,
     )
 
     if light is None and dark is None:
@@ -650,6 +813,11 @@ def html_visit_ggarch(self: object, node: ggarch) -> None:
         )
 
     self.body.append('</div>\n')  # .ggarch-diagram
+
+    if is_diagram and not no_legend:
+        legend_html = _extract_legend_html(code, view_name, self.encode)
+        if legend_html:
+            self.body.append(legend_html)
 
     if caption:
         self.body.append(f'<figcaption>{self.encode(caption)}</figcaption>\n')

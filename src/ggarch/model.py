@@ -403,11 +403,12 @@ class AnnotationBadge:
 class AnnotationLegend:
     """A visual key rendered from the model's style block.
 
-    Renders node-type colour swatches and edge-type line samples.
+    Renders only node types and edge types actually used in the current view.
     position: one of 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+    labels: optional dict mapping internal type names to human-readable display names.
     """
     position: str = "bottom-right"
-
+    labels: dict = field(default_factory=dict)
 
 Annotation = AnnotationBox | AnnotationCallout | AnnotationSeparator | AnnotationBadge | AnnotationLegend
 

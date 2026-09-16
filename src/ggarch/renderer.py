@@ -191,30 +191,81 @@ def _draw_side_with_gaps(
             g.append(dw.Line(x0, cursor, x0, end, **kwargs))
 
 
+# Legend sizing constants — kept here so render() can use them before drawing.
+_LEGEND_W   = 200
+_LEGEND_PAD = 10
+_LEGEND_ROW = 22
+_LEGEND_GAP = 16   # px gap between diagram edge and legend box
+
+
+def _legend_items(
+    layout: SolvedLayout,
+    edges: list,
+) -> tuple[list[str], list[str]]:
+    """Return (node_types, edge_types) actually present in the view."""
+    seen_node: list[str] = []
+    def _collect(nodes):
+        for n in nodes:
+            if n.type not in seen_node and n.type not in ("default",):
+                seen_node.append(n.type)
+            _collect(n.children)
+    _collect(layout.nodes)
+    seen_edge: list[str] = []
+    for e in edges:
+        if e.edge_type not in seen_edge and e.edge_type != "default":
+            seen_edge.append(e.edge_type)
+    return seen_node, seen_edge
+
+
+def _legend_dims(node_types: list[str], edge_types: list[str]) -> tuple[float, float]:
+    rows = len(node_types) + len(edge_types)
+    return _LEGEND_W, _LEGEND_PAD * 2 + rows * _LEGEND_ROW
+
+
 def render(
     routed: RoutedLayout,
     model: Model,
     view: DiagramView,
     dark: bool = False,
+    skip_legend: bool = False,
 ) -> str:
-    """Render a RoutedLayout to an SVG string."""
+    """Render a RoutedLayout to an SVG string.
+
+    skip_legend: when True, AnnotationLegend annotations are omitted from the
+    SVG and no gutter is reserved.  Used by the Sphinx extension, which renders
+    the legend as HTML below the image instead.
+    """
     preset = get_preset(model.style.extends)
     node_styles = resolve_style(model.style, dark=dark)
 
     layout = routed.layout
     bounds = layout.bounds
 
-    vw = bounds.w + MARGIN * 2
-    vh = bounds.h + MARGIN * 2
-    ox = MARGIN - bounds.x
-    oy = MARGIN - bounds.y
+    # Detect legend annotations and reserve gutter space (unless suppressed).
+    legend_anns = [a for a in view.annotations if isinstance(a, AnnotationLegend)]
+    right_extra = left_extra = top_extra = bottom_extra = 0.0
+    if not skip_legend:
+        for ann in legend_anns:
+            node_types, edge_types = _legend_items(layout, routed.edges)
+            if not node_types and not edge_types:
+                continue
+            lw, lh = _legend_dims(node_types, edge_types)
+            gutter = lw + _LEGEND_GAP * 2
+            if ann.position in ("top-right", "bottom-right"):
+                right_extra = max(right_extra, gutter)
+            else:
+                left_extra = max(left_extra, gutter)
+
+    vw = bounds.w + MARGIN * 2 + right_extra + left_extra
+    vh = bounds.h + MARGIN * 2 + top_extra + bottom_extra
+    ox = MARGIN - bounds.x + left_extra
+    oy = MARGIN - bounds.y + top_extra
 
     bg = "#1E1E2E" if dark else "#FFFFFF"
     drawing = dw.Drawing(vw, vh, origin=(0, 0))
     drawing.append(dw.Rectangle(0, 0, vw, vh, fill=bg))
     _add_arrowhead_defs(drawing, dark, preset)
 
-    # Precompute where edges cross node borders.
     border_gaps = _compute_border_gaps(layout.nodes, routed.edges, ox, oy)
 
     nodes_g = dw.Group(id="ggarch-nodes")
@@ -226,8 +277,10 @@ def render(
         _render_edge(edges_g, edge, preset, dark, ox, oy)
 
     for ann in view.annotations:
+        if skip_legend and isinstance(ann, AnnotationLegend):
+            continue
         _render_annotation(ann_g, ann, layout, ox, oy, dark, preset, node_styles,
-                           routed.edges)
+                           routed.edges, vw=vw, vh=vh)
 
     drawing.append(nodes_g)
     drawing.append(edges_g)
@@ -915,6 +968,8 @@ def _render_annotation(
     preset: ResolvedStyle | None = None,
     node_styles: dict | None = None,
     edges: list | None = None,
+    vw: float = 0,
+    vh: float = 0,
 ) -> None:
     if isinstance(ann, AnnotationBox):
         _render_ann_box(g, ann, layout, ox, oy, dark, edges or [])
@@ -926,7 +981,8 @@ def _render_annotation(
         _render_ann_badge(g, ann, layout, ox, oy, dark)
     elif isinstance(ann, AnnotationLegend):
         if preset is not None and node_styles is not None:
-            _render_ann_legend(g, ann, layout, ox, oy, dark, preset, node_styles)
+            _render_ann_legend(g, ann, layout, ox, oy, dark, preset, node_styles,
+                               edges or [], vw=vw, vh=vh)
 
 
 def _nodes_bounding_rect(node_ids: list[str], layout: SolvedLayout) -> Rect | None:
@@ -1091,76 +1147,78 @@ def _render_ann_legend(
     dark: bool,
     preset: ResolvedStyle,
     node_styles: dict[str, NodeStyle],
+    edges: list,
+    vw: float = 0,
+    vh: float = 0,
 ) -> None:
-    """Render a visual key: node-type colour swatches + edge-type line samples."""
+    """Render a visual key in the gutter reserved by render()."""
     SWATCH_W = 24
     SWATCH_H = 14
-    ROW_H    = 20
-    PAD      = 8
-    TEXT_X   = PAD + SWATCH_W + 6
-    LEGEND_W = 180
+    TEXT_X   = _LEGEND_PAD + SWATCH_W + 8
     bg       = "#1E1E2E" if dark else "#FFFFFF"
     border   = "#555555" if dark else "#CCCCCC"
     text_col = "#CDD6F4" if dark else "#333333"
 
-    # Collect node types that appear in this layout.
-    seen_types: list[str] = []
-    def _collect(nodes):
-        for n in nodes:
-            if n.type not in seen_types and n.type not in ("default",):
-                seen_types.append(n.type)
-            _collect(n.children)
-    _collect(layout.nodes)
-
-    # Collect edge types declared in the preset (skip 'default').
-    edge_bank = preset.edge_dark if dark else preset.edge_light
-    edge_types = [k for k in edge_bank.keys() if k != "default"]
-
-    rows = len(seen_types) + len(edge_types)
+    seen_node_types, seen_edge_types = _legend_items(layout, edges)
+    rows = len(seen_node_types) + len(seen_edge_types)
     if rows == 0:
         return
-    legend_h = PAD * 2 + rows * ROW_H
+    lw, lh = _legend_dims(seen_node_types, seen_edge_types)
 
-    # Position the legend according to ann.position.
-    bounds = layout.bounds
-    if ann.position == "top-left":
-        lx, ly = bounds.x + ox + 4, bounds.y + oy + 4
-    elif ann.position == "top-right":
-        lx, ly = bounds.x2 + ox - LEGEND_W - 4, bounds.y + oy + 4
-    elif ann.position == "bottom-left":
-        lx, ly = bounds.x + ox + 4, bounds.y2 + oy - legend_h - 4
-    else:  # bottom-right
-        lx, ly = bounds.x2 + ox - LEGEND_W - 4, bounds.y2 + oy - legend_h - 4
+    # Position in the gutter that render() reserved.
+    # Right-side gutters: lx = vw - _LEGEND_GAP - lw
+    # Left-side gutters:  lx = _LEGEND_GAP
+    # Vertical: top aligns near top margin; bottom aligns near bottom.
+    if ann.position in ("top-right", "bottom-right"):
+        lx = vw - _LEGEND_GAP - lw
+    else:
+        lx = _LEGEND_GAP
+    if ann.position in ("top-left", "top-right"):
+        ly = _LEGEND_GAP
+    else:
+        ly = vh - _LEGEND_GAP - lh
 
     # Background box.
-    g.append(dw.Rectangle(lx, ly, LEGEND_W, legend_h,
+    g.append(dw.Rectangle(lx, ly, lw, lh,
                           fill=bg, stroke=border, stroke_width=1, rx=4, ry=4))
 
-    y = ly + PAD
+    y = ly + _LEGEND_PAD
     # Node type swatches.
-    for ntype in seen_types:
+    for ntype in seen_node_types:
         style = node_styles.get(ntype, node_styles.get("default", NodeStyle()))
         fill   = style.fill if style.fill != "none" else bg
         stroke = style.stroke
-        g.append(dw.Rectangle(lx + PAD, y, SWATCH_W, SWATCH_H,
+        display = ann.labels.get(ntype, ntype)
+        g.append(dw.Rectangle(lx + _LEGEND_PAD, y, SWATCH_W, SWATCH_H,
                               fill=fill, stroke=stroke, stroke_width=1, rx=2, ry=2))
-        g.append(dw.Text(ntype, 10, lx + TEXT_X, y + SWATCH_H / 2,
+        g.append(dw.Text(display, 10, lx + TEXT_X, y + SWATCH_H / 2,
                          font_family=LABEL_FONT, fill=text_col,
                          dominant_baseline="central"))
-        y += ROW_H
+        y += _LEGEND_ROW
 
     # Edge type line samples.
-    for etype in edge_types:
+    for etype in seen_edge_types:
         es = preset.edge(etype, dark=dark)
         line_kwargs: dict = dict(stroke=es.stroke, stroke_width=es.stroke_width)
         if es.stroke_dash:
             line_kwargs["stroke_dasharray"] = es.stroke_dash
-        g.append(dw.Line(lx + PAD, y + SWATCH_H / 2,
-                         lx + PAD + SWATCH_W, y + SWATCH_H / 2, **line_kwargs))
-        g.append(dw.Text(etype, 10, lx + TEXT_X, y + SWATCH_H / 2,
+        display = ann.labels.get(etype, etype)
+        mid_y = y + SWATCH_H / 2
+        g.append(dw.Line(lx + _LEGEND_PAD, mid_y,
+                         lx + _LEGEND_PAD + SWATCH_W, mid_y, **line_kwargs))
+        # Arrowhead nub.
+        ah = 5
+        g.append(dw.Lines(
+            lx + _LEGEND_PAD + SWATCH_W - ah, mid_y - ah / 2,
+            lx + _LEGEND_PAD + SWATCH_W,      mid_y,
+            lx + _LEGEND_PAD + SWATCH_W - ah, mid_y + ah / 2,
+            fill=es.stroke, close=False,
+            stroke=es.stroke, stroke_width=es.stroke_width,
+        ))
+        g.append(dw.Text(display, 10, lx + TEXT_X, mid_y,
                          font_family=LABEL_FONT, fill=text_col,
                          dominant_baseline="central"))
-        y += ROW_H
+        y += _LEGEND_ROW
 
 
 # ---------------------------------------------------------------------------

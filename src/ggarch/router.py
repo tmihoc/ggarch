@@ -162,16 +162,13 @@ def _route_orthogonal(
         else:
             return [_face_point(src_rect, "top"), _face_point(tgt_rect, "bottom")]
 
-    # Small horizontal deviation — diagonal is cleaner than a jog.
-    if dx < dy * 0.5:
-        going_right = tgt_cx >= src_cx
+    # Very small horizontal deviation — snap to a clean vertical through the midpoints.
+    if dx < dy * 0.2:
+        mid_x = (src_rect.cx + tgt_rect.cx) / 2
         if tgt_cy < src_cy:  # target above source
-            src_pt = _face_point(src_rect, "top")
-            tgt_pt = _face_point(tgt_rect, "bottom")
+            return [Point(mid_x, src_rect.y), Point(mid_x, tgt_rect.y2)]
         else:
-            src_pt = _face_point(src_rect, "bottom")
-            tgt_pt = _face_point(tgt_rect, "top")
-        return [src_pt, tgt_pt]
+            return [Point(mid_x, src_rect.y2), Point(mid_x, tgt_rect.y)]
 
     if tgt_cy >= src_cy:
         src_pt = _face_point(src_rect, "bottom")
@@ -352,8 +349,9 @@ def _simplify_spread_paths(edges: list[RoutedEdge]) -> None:
         src, tgt = e.points[0], e.points[-1]
         dx = abs(tgt.x - src.x)
         dy = abs(tgt.y - src.y)
-        if dy > 0 and dx <= dy * 0.5:
-            e.points[:] = [src, tgt]
+        if dy > 0 and dx <= dy * 0.2:
+            mid_x = (src.x + tgt.x) / 2
+            e.points[:] = [Point(mid_x, src.y), Point(mid_x, tgt.y)]
 
 
 # ---------------------------------------------------------------------------

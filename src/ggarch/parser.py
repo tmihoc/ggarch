@@ -560,7 +560,9 @@ class _GgarchTransformer(Transformer):
 
     def ann_legend(self, attrs) -> AnnotationLegend:
         attrs = dict(attrs)
-        return AnnotationLegend(position=attrs.pop("position", "bottom-right"))
+        position = attrs.pop("position", "bottom-right")
+        labels = {k: v for k, v in attrs.items()}
+        return AnnotationLegend(position=position, labels=labels)
 
     def ann_legend_bare(self) -> AnnotationLegend:
         return AnnotationLegend()

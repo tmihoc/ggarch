@@ -39,11 +39,11 @@ from ggarch.renderer import ANNOTATION_FONT, ARROWHEAD_SIZE, LABEL_FONT
 LIFELINE_WIDTH     = 120   # px — width of each lifeline column
 LIFELINE_HEADER_H  = 40    # px — single-line header height; extended per diagram
 LIFELINE_LINE_H    = 16    # px — line height inside a header label
-LIFELINE_SPACING   = 40    # px — horizontal gap between lifeline columns
+LIFELINE_SPACING   = 60    # px — horizontal gap between lifeline columns
 STEP_HEIGHT        = 36    # px — vertical space per step row
 BLOCK_PAD          = 8     # px — padding inside loop/alt/opt/par regions
 MARGIN_TOP         = 20    # px
-MARGIN_SIDE        = 20    # px
+MARGIN_SIDE        = 30    # px
 MARGIN_BOTTOM      = 30    # px
 SELF_LOOP_W        = 20    # px — width of self-call loop
 ACTIVATION_W       = 10    # px — width of activation bar on lifeline
@@ -231,7 +231,8 @@ def render_sequence(
         bars_group=bars_group,
         activation_stack=[],
     )
-    y_start = MARGIN_TOP + LIFELINE_HEADER_H + STEP_HEIGHT / 2
+    content.append(bars_group)  # append before steps so bars paint behind arrows
+    y_start = MARGIN_TOP + header_h + STEP_HEIGHT / 2
     _render_steps(content, behaviour.steps, y_start, ctx)
 
     # Closing boxes at the bottom of each lifeline — same style as headers.
@@ -271,7 +272,6 @@ def render_sequence(
                 text_anchor="middle",
                 dominant_baseline="central",
             ))
-    content.append(bars_group)
     drawing.append(content)
     return drawing.as_svg()
 
@@ -425,11 +425,27 @@ def _render_arrow(
 
     if label:
         mx = (x1 + x2) / 2
-        lines = label.split("\\n")
+        CHAR_W = 5.5  # px at 11px font
+        max_chars = max(int(abs(x2 - x1) * 0.85 / CHAR_W), 10)
+        raw_lines = label.split("\\n")
+        wrapped: list[str] = []
+        for raw in raw_lines:
+            words = raw.split()
+            if not words:
+                wrapped.append("")
+                continue
+            cur = words[0]
+            for w in words[1:]:
+                if len(cur) + 1 + len(w) <= max_chars:
+                    cur += " " + w
+                else:
+                    wrapped.append(cur)
+                    cur = w
+            wrapped.append(cur)
         lh = 13
-        total_h = lh * len(lines)
-        start_y = (y - 10) - total_h / 2 + lh * 0.5
-        for i, line in enumerate(lines):
+        total_h = lh * len(wrapped)
+        start_y = (y - 14) - total_h / 2 + lh * 0.5
+        for i, line in enumerate(wrapped):
             g.append(dw.Text(
                 line, 11, mx, start_y + i * lh,
                 font_family=LABEL_FONT,
