@@ -493,10 +493,31 @@ def _add_label_gap_constraints(
     for node in model.nodes:
         _walk(node, None)
 
-    def _top_ancestor(nid: str) -> str:
-        while parent.get(nid) in vars_by_id:
-            nid = parent[nid]
-        return nid
+    def _solver_ancestors(nid: str) -> list[str]:
+        """Return [nid, parent, grandparent, ...] stopping at nodes not in vars_by_id."""
+        chain = []
+        while nid in vars_by_id:
+            chain.append(nid)
+            nid = parent.get(nid, "")
+        return chain
+
+    def _effective_id(src: str, tgt: str) -> tuple[str, str]:
+        """Return the lowest solver-tracked ancestor of each node that is
+        distinct from the other's ancestry — i.e. the nodes that the solver
+        will actually push apart when we add a gap constraint.
+        Walks up from the node rather than straight to the top, so two nodes
+        inside sibling containers resolve to those containers, not the shared
+        grandparent container.
+        """
+        src_chain = _solver_ancestors(src)
+        tgt_chain = _solver_ancestors(tgt)
+        tgt_set   = set(tgt_chain)
+        src_set   = set(src_chain)
+        # Deepest src ancestor not in tgt's ancestry
+        eff_src = next((n for n in src_chain if n not in tgt_set), src_chain[-1] if src_chain else src)
+        # Deepest tgt ancestor not in src's ancestry
+        eff_tgt = next((n for n in tgt_chain if n not in src_set), tgt_chain[-1] if tgt_chain else tgt)
+        return eff_src, eff_tgt
 
     # Build axis relationship sets from expanded constraints.
     right_of: set[tuple[str,str]] = set()  # (right_node, left_node)
@@ -516,8 +537,7 @@ def _add_label_gap_constraints(
     for edge in model.edges:
         if not edge.label:
             continue
-        src_id = _top_ancestor(edge.source)
-        tgt_id = _top_ancestor(edge.target)
+        src_id, tgt_id = _effective_id(edge.source, edge.target)
         if src_id == tgt_id:
             continue
         src = vars_by_id.get(src_id)

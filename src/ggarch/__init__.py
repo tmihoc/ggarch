@@ -6,4 +6,4 @@ from ggarch.router import route
 from ggarch.renderer import render, render_both
 
 __all__ = ["parse", "validate", "solve", "route", "render", "render_both"]
-__version__ = "0.20.12"
+__version__ = "0.20.13"
