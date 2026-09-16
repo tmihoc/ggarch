@@ -48,13 +48,14 @@ themes and an optional expand modal.
 ## Sneak peek
 
 <div align="center">
-  <img src=".github/topology-light.svg" alt="K8s deployment topology -- light theme" width="80%">
+  <img src=".github/ggarch-demo.gif"
+       alt="Six-slide walkthrough: model source, overview diagram, zoomed-in pod detail, sequence diagram, embed directive, rendered result in Sphinx."
+       width="100%">
 </div>
 
-*K8s deployment topology: controller pod (left) and unit pod (right), showing
-nested containers, typed edges, and the unit agent → charm → Pebble → workload
-chain. Source: [`docs/juju.ggarch`](https://github.com/tmihoc/juju/blob/4.0-docs-rewrite-juju-architecture-juju-9632/docs/juju.ggarch)
-in the Juju architecture docs.*
+*From one `.ggarch` model file to three views -- topology overview,
+zoomed-in pod detail, and sequence diagram -- and into Sphinx docs.
+Source for this demo: [`.github/demo.ggarch`](.github/demo.ggarch).*
 
 ## Get started
 

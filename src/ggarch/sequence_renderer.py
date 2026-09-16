@@ -232,7 +232,7 @@ def render_sequence(
         activation_stack=[],
     )
     content.append(bars_group)  # append before steps so bars paint behind arrows
-    y_start = MARGIN_TOP + header_h + STEP_HEIGHT
+    y_start = MARGIN_TOP + header_h + int(STEP_HEIGHT * 1.5)
     _render_steps(content, behaviour.steps, y_start, ctx)
 
     # Closing boxes at the bottom of each lifeline — same style as headers.
