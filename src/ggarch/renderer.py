@@ -516,24 +516,28 @@ def _render_edge(
 
     g.append(dw.Path(d=d, **path_kwargs))
 
-    # Edge label: offset perpendicular to the edge direction.
+    # Edge label: sits on the arrow midpoint, interrupting the line.
+    # Always horizontal, smaller font, transparent background to break the line.
     if edge.label:
         mid = edge.mid
         mx, my = mid.x + ox, mid.y + oy
-        dx = edge.end.x - edge.start.x
-        dy = edge.end.y - edge.start.y
-        length = max(abs(dx) + abs(dy), 1)
-        # Perpendicular unit vector (rotate 90° CCW).
-        nx, ny = -dy / length, dx / length
-        lx = mx + nx * 14
-        ly = my + ny * 14
+        font_size = 9
         lines = edge.label.split("\\n")
-        lh = es.font_size * 1.4
+        lh = font_size * 1.5
         total_h = lh * len(lines)
-        start_y = ly - total_h / 2 + lh * 0.5
+        max_chars = max(len(l) for l in lines)
+        bg_w = max_chars * 5.5 + 6
+        bg_h = total_h + 4
+        bg_color = "#1E1E2E" if dark else "#FFFFFF"
+        g.append(dw.Rectangle(
+            mx - bg_w / 2, my - bg_h / 2,
+            bg_w, bg_h,
+            fill=bg_color, stroke="none",
+        ))
+        start_y = my - total_h / 2 + lh * 0.5
         for i, line in enumerate(lines):
             g.append(dw.Text(
-                line, es.font_size, lx, start_y + i * lh,
+                line, font_size, mx, start_y + i * lh,
                 font_family=LABEL_FONT,
                 fill=es.font_color,
                 text_anchor="middle",
