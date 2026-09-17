@@ -374,6 +374,7 @@ class AnnotationBox:
     label: str = ""
     style: str = "dashed"
     color: str = ""
+    label_position: str = "top"  # top | bottom | left | right
 
 
 @dataclass

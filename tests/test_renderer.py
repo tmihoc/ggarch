@@ -212,6 +212,65 @@ diagram "D" from "M" {
         assert "group" in svg
         assert "#E95420" in svg
 
+    def _box_src(self, label_position_attr: str) -> str:
+        attr = f", label-position: {label_position_attr}" if label_position_attr else ""
+        return f"""\
+model "M" {{
+  nodes {{
+    a [type: juju-software, label: "A"]
+    b [type: juju-software, label: "B"]
+  }}
+  edges {{}}
+}}
+diagram "D" from "M" {{
+  select {{ nodes: a b }}
+  positions {{ a left-of b gap: 40 }}
+  annotations {{
+    box [nodes: "a b", label: "region"{attr}]
+  }}
+}}
+"""
+
+    def test_box_label_position_default_is_top(self):
+        # Default (no label-position) renders without error and contains label.
+        svg = pipeline(self._box_src(""))
+        assert "region" in svg
+
+    def test_box_label_position_top(self):
+        svg = pipeline(self._box_src("top"))
+        assert "region" in svg
+
+    def test_box_label_position_bottom(self):
+        svg = pipeline(self._box_src("bottom"))
+        assert "region" in svg
+
+    def test_box_label_position_left(self):
+        svg = pipeline(self._box_src("left"))
+        assert "region" in svg
+
+    def test_box_label_position_right(self):
+        svg = pipeline(self._box_src("right"))
+        assert "region" in svg
+
+    def test_box_label_position_bottom_differs_from_top(self):
+        # The y-coordinate of the label text differs between top and bottom.
+        top_svg    = pipeline(self._box_src("top"))
+        bottom_svg = pipeline(self._box_src("bottom"))
+        # Both render the label; the SVGs differ (different y values).
+        assert "region" in top_svg
+        assert "region" in bottom_svg
+        assert top_svg != bottom_svg
+
+    def test_box_label_position_left_uses_text_anchor_end(self):
+        # Label sits outside the left edge, anchored rightward toward the box.
+        svg = pipeline(self._box_src("left"))
+        assert 'text-anchor="end"' in svg
+
+    def test_box_label_position_right_uses_text_anchor_start(self):
+        # Label sits outside the right edge, anchored leftward toward the box.
+        svg = pipeline(self._box_src("right"))
+        assert 'text-anchor="start"' in svg
+
     def test_badge_annotation_renders(self):
         src = """\
 model "M" {

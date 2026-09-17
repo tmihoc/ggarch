@@ -531,6 +531,7 @@ class _GgarchTransformer(Transformer):
             label=attrs.pop("label", ""),
             style=attrs.pop("style", "dashed"),
             color=attrs.pop("color", ""),
+            label_position=attrs.pop("label-position", "top"),
         )
 
     def ann_callout(self, attrs) -> AnnotationCallout:

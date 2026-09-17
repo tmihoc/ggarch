@@ -1049,13 +1049,20 @@ def _render_ann_box(
         g.append(dw.Rectangle(x, y, w, h, **rect_kwargs))
 
     if ann.label:
-        lx = x + w / 2
-        ly = y + 14
+        pos = ann.label_position if hasattr(ann, 'label_position') else 'top'
+        if pos == 'bottom':
+            lx, ly, anchor = x + w / 2,    y + h + 14, "middle"
+        elif pos == 'left':
+            lx, ly, anchor = x - 14,       y + h / 2,  "end"
+        elif pos == 'right':
+            lx, ly, anchor = x + w + 14,   y + h / 2,  "start"
+        else:  # top (default)
+            lx, ly, anchor = x + w / 2,    y - 14,     "middle"
         g.append(dw.Text(
             ann.label, 11, lx, ly,
             font_family=ANNOTATION_FONT,
             fill=color,
-            text_anchor="middle",
+            text_anchor=anchor,
             dominant_baseline="central",
         ))
 
