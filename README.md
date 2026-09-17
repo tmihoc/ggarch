@@ -41,9 +41,10 @@ and extend the type system without touching ggarch itself.
   render as one archetype or N labelled instances
 - Typed edges: `api`, `stream`, `event`, `control`, `ipc`, `data` -- each
   with a defined meaning and a consistent visual encoding
-- Declarative placement: `left-of`, `above`, `fan`, `gap:`, `align-middle`
-  -- constraints solved by Cassowary, not inferred from edge structure.
-  Spatial intent is guaranteed, not overridden by a layout engine.
+- Explicit placement: `left-of`, `above`, `fan`, `gap:`, `align-middle`
+  -- every node's position is declared; Cassowary solves the constraints.
+  Spatial intent is exact, not approximated by a layout engine. (Auto-layout
+  as a default, with declarative overrides, is a roadmap goal.)
 - Multiple view types from one model: topology, sequence, ER/schema, class,
   state machine
 - Cross-cutting annotations: `box` regions that span the containment
