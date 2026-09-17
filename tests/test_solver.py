@@ -539,3 +539,84 @@ diagram "D" from "M" {
         assert top.rect.w < 120, (
             f"anchored node ballooned: w={top.rect.w:.1f}"
         )
+
+
+AUTO_SRC = """\
+model "M" {{
+  nodes {{
+    user [type: person, label: "User"]
+    client [type: juju-software, label: "Client"]
+    controller [type: juju-software, label: "Controller"]
+    unit_a [type: juju-software, label: "Unit A"]
+    unit_b [type: juju-software, label: "Unit B"]
+  }}
+  edges {{
+    user -> client [type: control]
+    client -> controller [type: api]
+    controller -> unit_a [type: stream]
+    controller -> unit_b [type: stream]
+  }}
+}}
+diagram "{name}" from "M" {{
+  select {{ nodes: user client controller unit_a unit_b }}
+}}
+"""
+
+
+class TestViewAutoLayout:
+    """Auto-layout as the default (0.25.0; SPEC "Position is content").
+
+    When a view declares no positions at all, the solver synthesizes a
+    layered layout: columns follow topological depth along the visible
+    edges (main flow left-to-right), same-column nodes stack vertically.
+    Before, unpositioned nodes collapsed onto each other -- the only
+    spacing force was the label-gap machinery, which fires for labelled
+    edges only, so unlabelled-edge views rendered all nodes at (0, 0).
+    Views that declare positions are untouched: auto-layout is the
+    floor, not the ceiling.
+    """
+
+    def _layout(self):
+        f = parse(AUTO_SRC.format(name="auto"))
+        validate(f)
+        d = f.diagrams[0]
+        return solve(d, f.get_model("M"))
+
+    def test_chain_flows_left_to_right(self):
+        lay = self._layout()
+        xs = {n.id: n.rect.x for n in lay.nodes}
+        assert xs["user"] < xs["client"] < xs["controller"] < xs["unit_a"]
+
+    def test_branch_targets_stack_in_their_column(self):
+        lay = self._layout()
+        ua = lay.find("unit_a").rect
+        ub = lay.find("unit_b").rect
+        # Same column: centred on each other, vertically separated.
+        assert abs(ua.cx - ub.cx) < 1.0
+        assert ua.y != ub.y and abs(ua.cy - ub.cy) >= 60.0
+
+    def test_no_overlaps(self):
+        lay = self._layout()
+        rects = [n.rect for n in lay.nodes]
+        for i in range(len(rects)):
+            for j in range(i + 1, len(rects)):
+                a, b = rects[i], rects[j]
+                assert (a.x + a.w <= b.x + 0.5 or b.x + b.w <= a.x + 0.5
+                        or a.y + a.h <= b.y + 0.5 or b.y + b.h <= a.y + 0.5), \
+                    f"overlap: {a} <-> {b}"
+
+    def test_declared_positions_still_win(self):
+        # A view WITH positions is laid out by the declared constraints;
+        # auto-layout never runs (nothing must move).
+        src = AUTO_SRC.format(name="manual").replace(
+            'select { nodes: user client controller unit_a unit_b }',
+            'select { nodes: user client }\n'
+            '  positions { user above client gap: 50\n'
+            '              user align-centre client }',
+        )
+        f = parse(src); validate(f)
+        lay = solve(f.diagrams[0], f.get_model("M"))
+        u = lay.find("user").rect
+        c = lay.find("client").rect
+        assert abs(u.cx - c.cx) < 1.0
+        assert c.y - (u.y + u.h) >= 49.5

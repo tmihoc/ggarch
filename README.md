@@ -48,9 +48,10 @@ and extend the type system without touching ggarch itself.
   with a defined meaning and a consistent visual encoding, plus custom
   edge types styled in the model's `style` block (light and dark)
 - Explicit placement: `left-of`, `above`, `fan`, `gap:`, `align-middle`
-  -- every node's position is declared; Cassowary solves the constraints.
-  Spatial intent is exact, not approximated by a layout engine. (Auto-layout
-  as a default, with declarative overrides, is a roadmap goal.)
+  -- positions are declared and Cassowary honours them exactly; spatial
+  intent is never approximated by a layout engine. Omit the positions
+  block entirely and a layered flow layout is synthesized instead --
+  auto-layout is the floor, not the ceiling
 - Multiple view types from one model: topology, sequence, ER/schema, class,
   state machine
 - Cross-cutting annotations: `box` regions that span the containment

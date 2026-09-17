@@ -138,9 +138,13 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     # Without this the system is under-constrained (translatable).
     _add_origin_anchor(solver, selected, vars_by_id)
 
-    # Expand fan constraints into ordinary constraints before layout passes.
-    # Pass solver and vars_by_id so even-N fans can emit centroid constraints directly.
-    expanded_constraints = _expand_fan_constraints(diagram.constraints, solver, vars_by_id)
+    # View auto-layout: when the diagram declares no positions at all,
+    # synthesize a layered layout (SPEC, "Position is content" -- the
+    # floor, not the ceiling). Merged into the constraint set so the
+    # label-gap pass sees the declared pairs.
+    auto_cons = _synthesize_auto_layout(diagram, selected, mat_edges)
+    expanded_constraints = _expand_fan_constraints(
+        list(diagram.constraints) + auto_cons, solver, vars_by_id)
 
     # Auto-layout container children using direction constraints.
     # This runs before user constraints so user constraints can override.
@@ -164,6 +168,89 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
 
     # Read results back.
     return _build_layout(selected, vars_by_id, model, diagram.select)
+
+# ---------------------------------------------------------------------------
+# View auto-layout
+# ---------------------------------------------------------------------------
+
+def _synthesize_auto_layout(
+    diagram: DiagramView,
+    selected: list,
+    mat_edges: list,
+) -> list[Constraint]:
+    """Constraints for a view that declares no positions block.
+
+    Position is content: where the arrangement is load-bearing the author
+    declares it and this returns nothing. Where the arrangement is not
+    load-bearing the author omits positions entirely and gets a
+    coherent, flow-based layout:
+
+    - Columns follow topological depth along the visible edges (the main
+      flow runs left-to-right, honouring edge direction).
+    - Nodes that share a column stack vertically in declaration order.
+    - Every visible edge gets a directly declared relationship, so its
+      label gap resolves directionally (label-gap resolution is
+      pair-local).
+
+    Cycles are handled by processing nodes in declaration order and
+    ignoring not-yet-seen sources, which turns back edges into floors.
+    Container children are unaffected here -- the existing container
+    auto-layout pass lays them out inside their parents.
+    """
+    if diagram.constraints:
+        return []
+
+    top_ids = [n.id for n in selected]
+    top_set = set(top_ids)
+    vis_edges = [
+        e for e in mat_edges
+        if e.source in top_set and e.target in top_set
+        and e.source != e.target
+        and (not diagram.select.edge_types
+             or e.type in diagram.select.edge_types)
+    ]
+
+    # Depth by longest path along forward edges, declaration order.
+    depth: dict[str, int] = {}
+    for nid in top_ids:
+        incoming = [e for e in vis_edges
+                    if e.target == nid and e.source in depth]
+        depth[nid] = max((depth[e.source] for e in incoming), default=-1) + 1
+
+    # Compact depths to consecutive columns; slot by declaration order.
+    used = sorted(set(depth.values()))
+    col = {nid: used.index(d) for nid, d in depth.items()}
+    columns: dict[int, list[str]] = {}
+    for nid in top_ids:
+        columns.setdefault(col[nid], []).append(nid)
+
+    GAP = 60
+    cons: list[Constraint] = []
+    # Within a column: stack vertically, centred.
+    for members in columns.values():
+        for i in range(len(members) - 1):
+            u, v = members[i], members[i + 1]
+            cons.append(Constraint(kind="above", subject=u, object=v, gap=GAP))
+            cons.append(Constraint(kind="align-centre", subject=u, object=v))
+    # Between adjacent columns: every left-column member is left of
+    # every right-column member.
+    for c in range(len(used) - 1):
+        for u in columns.get(c, []):
+            for v in columns.get(c + 1, []):
+                cons.append(Constraint(kind="left-of", subject=u, object=v, gap=GAP))
+    # Every visible edge gets a directly declared pair.
+    for e in vis_edges:
+        cs, ct = col[e.source], col[e.target]
+        if cs < ct:
+            cons.append(Constraint(kind="left-of", subject=e.source, object=e.target, gap=GAP))
+        elif cs > ct:
+            cons.append(Constraint(kind="left-of", subject=e.target, object=e.source, gap=GAP))
+        else:
+            members = columns[cs]
+            i, j = members.index(e.source), members.index(e.target)
+            u, v = members[min(i, j)], members[max(i, j)]
+            cons.append(Constraint(kind="above", subject=u, object=v, gap=GAP))
+    return cons
 
 
 # ---------------------------------------------------------------------------

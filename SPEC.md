@@ -799,12 +799,17 @@ drift from the model because they have no independent existence;
 single-model multi-view consistency is a structural guarantee, not a
 discipline.
 
-**TODO: auto-layout as default.** ggarch currently requires explicit
-position constraints for every node. The goal: when the arrangement is not
-load-bearing, the author omits positions entirely and gets a coherent,
-readable layout (flow-based, honouring containment and edge direction);
-when it is load-bearing, declarative constraints override the default per
-node. Auto-layout is the floor, not the ceiling.
+**Auto-layout as default (0.25.0).** When the arrangement is not
+load-bearing, the author omits the positions block entirely and gets a
+coherent, readable layout: columns follow topological depth along the
+visible edges (the main flow runs left-to-right, honouring edge
+direction), nodes that share a column stack vertically in declaration
+order, container children follow the container auto-layout, and cycles
+are tolerated (back edges become floors). Every visible edge gets a
+directly declared pair so label gaps resolve directionally. Views that
+declare any positions at all are untouched -- auto-layout is the floor,
+not the ceiling. Staged: per-node override (auto nodes inside a
+partially-declared view) is future work, triggered by a real case.
 
 ---
 
