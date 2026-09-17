@@ -271,13 +271,16 @@ def render(
         pad = ann.padding if hasattr(ann, 'padding') else 10
         pos = ann.label_position if hasattr(ann, 'label_position') else 'top'
         LABEL_H = 26
-        pad_top    = pad + (LABEL_H if pos == 'inside-top'    else 0)
-        pad_bottom = pad + (LABEL_H if pos == 'inside-bottom' else 0)
-        # Box extents in diagram space (before ox/oy offset).
-        box_x1 = br.x - pad
-        box_y1 = br.y - pad_top
-        box_x2 = br.x + br.w + pad
-        box_y2 = br.y + br.h + pad_bottom
+        pt = (ann.padding_top    if hasattr(ann, 'padding_top')    and ann.padding_top    is not None else pad)
+        pr = (ann.padding_right  if hasattr(ann, 'padding_right')  and ann.padding_right  is not None else pad)
+        pb = (ann.padding_bottom if hasattr(ann, 'padding_bottom') and ann.padding_bottom is not None else pad)
+        pl = (ann.padding_left   if hasattr(ann, 'padding_left')   and ann.padding_left   is not None else pad)
+        if pos == 'inside-bottom': pb += LABEL_H
+        if pos == 'inside-top':    pt += LABEL_H
+        box_x1 = br.x - pl
+        box_y1 = br.y - pt
+        box_x2 = br.x + br.w + pr
+        box_y2 = br.y + br.h + pb
         # Convert to SVG space and check overflow.
         svg_x1 = box_x1 + ox
         svg_y1 = box_y1 + oy
@@ -1042,25 +1045,27 @@ def _render_ann_box(
     dark: bool,
     edges: list | None = None,
 ) -> None:
-    pad = ann.padding if hasattr(ann, 'padding') else 10
-    pos = ann.label_position if hasattr(ann, 'label_position') else 'top'
+    pad   = ann.padding if hasattr(ann, 'padding') else 10
+    pt    = (ann.padding_top    if hasattr(ann, 'padding_top')    and ann.padding_top    is not None else pad)
+    pr    = (ann.padding_right  if hasattr(ann, 'padding_right')  and ann.padding_right  is not None else pad)
+    pb    = (ann.padding_bottom if hasattr(ann, 'padding_bottom') and ann.padding_bottom is not None else pad)
+    pl    = (ann.padding_left   if hasattr(ann, 'padding_left')   and ann.padding_left   is not None else pad)
+    pos   = ann.label_position if hasattr(ann, 'label_position') else 'top'
 
-    # For inside-* positions, reserve extra bottom/top padding to hold the label.
-    LABEL_H = 26  # px reserved for the label line inside the box
-    pad_top    = pad
-    pad_bottom = pad
+    # For inside-* positions, reserve an extra strip for the label.
+    LABEL_H = 26
     if pos == 'inside-bottom':
-        pad_bottom = pad + LABEL_H
+        pb += LABEL_H
     elif pos == 'inside-top':
-        pad_top = pad + LABEL_H
+        pt += LABEL_H
 
     br = _nodes_bounding_rect(ann.nodes, layout)
     if br is None:
         return
-    x = br.x + ox - pad
-    y = br.y + oy - pad_top
-    w = br.w + pad * 2
-    h = br.h + pad_top + pad_bottom
+    x = br.x + ox - pl
+    y = br.y + oy - pt
+    w = br.w + pl + pr
+    h = br.h + pt + pb
     color = ann.color or ("#888888" if dark else "#666666")
     dash = "6,4" if ann.style == "dashed" else ""
 

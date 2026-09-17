@@ -526,13 +526,18 @@ class _GgarchTransformer(Transformer):
         attrs = dict(attrs)
         nodes_raw = attrs.pop("nodes", "")
         nodes = nodes_raw.split() if isinstance(nodes_raw, str) else []
+        pad = int(attrs.pop("padding", 10))
         return AnnotationBox(
             nodes=nodes,
             label=attrs.pop("label", ""),
             style=attrs.pop("style", "dashed"),
             color=attrs.pop("color", ""),
             label_position=attrs.pop("label-position", "top"),
-            padding=int(attrs.pop("padding", 10)),
+            padding=pad,
+            padding_top=int(attrs.pop("padding-top", pad)),
+            padding_right=int(attrs.pop("padding-right", pad)),
+            padding_bottom=int(attrs.pop("padding-bottom", pad)),
+            padding_left=int(attrs.pop("padding-left", pad)),
         )
 
     def ann_callout(self, attrs) -> AnnotationCallout:

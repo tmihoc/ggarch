@@ -374,8 +374,12 @@ class AnnotationBox:
     label: str = ""
     style: str = "dashed"
     color: str = ""
-    label_position: str = "top"   # top | bottom | left | right | inside-bottom | inside-top
-    padding: int = 10             # px of space around the bounding rect on all sides
+    label_position: str = "top"    # top | bottom | left | right | inside-bottom | inside-top
+    padding: int = 10              # uniform padding (px); per-side attrs override
+    padding_top: int | None = None
+    padding_right: int | None = None
+    padding_bottom: int | None = None
+    padding_left: int | None = None
 
 
 @dataclass
