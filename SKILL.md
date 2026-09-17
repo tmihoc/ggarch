@@ -310,10 +310,13 @@ annotations {
 The box is layout-transparent: it does not affect constraint solving.
 The canvas expands automatically to fit boxes that extend beyond node bounds.
 
-**Padding** -- `padding` sets the space (px) between the bounding rect of the
-annotated nodes and the box edge on all sides. Default is 10. Increase it to
-make the box extend visually beyond the nodes it encloses -- useful when the
-box needs to cross container walls or leave room for the label inside.
+**Padding** -- `padding` sets uniform space (px) between the annotated nodes'
+bounding rect and the box edge. Default is 10. Per-side overrides
+`padding-top`, `padding-right`, `padding-bottom`, `padding-left` take
+precedence over `padding` for their respective edges. Use per-side padding
+when the box needs to extend further in one direction -- for example, wider
+horizontally to cross container walls but tight vertically to avoid
+overlapping sibling nodes.
 
 **Label placement** -- `label-position` controls where the label appears.
 Outside positions place it 14px clear of the box edge. Inside positions
