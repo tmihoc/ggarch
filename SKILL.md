@@ -108,8 +108,25 @@ sequence "View name" from "Model Name" {
 | `record` | Amber table | Database record / ER row |
 | `class` | Amber compartment | Class or component |
 
-Any string not in this list falls back to the default style. Custom types can
-be defined in the `style` block.
+Any string not in this list falls back to the default style. Custom node and
+edge types are defined in the `style` block:
+
+```
+style {
+  extends: juju
+
+  my-node-type { fill: "#123456" stroke: "#456" }     // custom node type
+  edge my-edge-type { stroke: "#8E44AD" stroke-width: 2 }  // custom edge type
+
+  @dark {
+    edge my-edge-type { stroke: "#BB8FCE" }          // dark-mode override
+  }
+}
+```
+
+Edge rules accept `stroke`, `stroke-width`, `stroke-dash`, `font-color`,
+`font-size`. An edge whose type is neither built-in nor styled in the style
+block is a validation error (catches typos).
 
 ### Node attributes
 
@@ -158,6 +175,8 @@ unit_pod [type: container, label: "Unit pod"] {
 
 `stream` is the most load-bearing: dashed communicates "this is a watch, not
 a direct call" to readers who would otherwise read a solid arrow as synchronous.
+Any other type name is custom: declare it in the style block
+(`edge <name> { ... }`, see **Node types** above) or validation fails.
 
 ```
 a -> b [type: stream, label: "watches for changes on"]

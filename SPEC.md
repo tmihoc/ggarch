@@ -158,43 +158,58 @@ from the Juju architecture doc suggests the following hard cases:
   `control` (process lifecycle), `ipc` (Unix socket), and a cloud-level
   "StartInstance" call that has no equivalent in the current taxonomy. The
   typed-edge system handles the first four; the cloud call needs a custom type
-  or a new built-in. ✓ Supported; custom types exist. TODO: verify the legend
-  renders custom types correctly so the reader can distinguish them.
+  or a new built-in. ✓ Verified (0.24.0): custom edge types style end-to-end
+  (edge, arrowhead, SVG legend, HTML legend, light and dark) via the
+  `edge <name> { ... }` style rule. Verified by test; the earlier "custom
+  types exist" claim was false in practice — the type name collapsed to the
+  literal "custom" at parse time, so declared styles never matched.
 
 - **Sub-node labels / record-style nodes in topology.** The controller's
   "relation data bag" for app A and app B are conceptually inside the
   controller node, not separate nodes. Expressing "data lives here, not there"
   requires either record-style nodes (PK/FK table rows) or a way to annotate
-  a sub-region of a node. ✓ Record nodes exist; TODO: verify they compose
-  cleanly with the topology renderer and that edges can target individual
-  fields in a topology (not just an ER diagram).
+  a sub-region of a node. ✓ Verified: record nodes nest inside containers,
+  take data edges, and keep the amber record styling + `rec:` chip in
+  topology views (verified against a machine-agent/machine-record rendering).
+  Field-qualified edge endpoints (`node.field_id`) are supported by the
+  grammar and validator; no current Juju view needs them in a topology.
 
 - **Lifecycle on workers.** The compute provisioner runs as a persistent worker;
   hook execution is ephemeral (runs once per hook invocation, then exits).
   These are first-class lifecycle values (`persistent`, `ephemeral`). ✓
-  Supported. TODO: confirm the visual distinction (solid vs dotted border) is
-  legible at typical diagram sizes.
+  Verified: init renders 6,3 and ephemeral 2,2 border dashes at 1px stroke on
+  typical (~150px) node boxes — same dotted idiom as `ipc` edges, which the
+  grammar already uses at scale. Legible; the distinction is border pattern,
+  not colour, so it survives dark mode.
 
 - **State machine transitions with guards and triggers.** The uniter's
   operation executor has precise states (preparing → executing → committing)
   with labeled transitions (guard: "exit 0", trigger: "hook fails"). ✓ State
-  view exists with `guard:` and `on:` attributes. TODO: assess whether the
-  current state view layout (single-row) handles the uniter state machine
-  (6–8 states) without becoming unreadable. Multi-row or hierarchical layout
-  may be needed.
+  view exists with `guard:` and `on:` attributes. ✗ Layout verdict (measured
+  on the 5-state uniter machine): single-row layout collides transition
+  labels once guard text is present ("[hook fails] / fail" overlaps
+  "/ snapshot + run" at the same y). Multi-row or hierarchical layout is
+  REQUIRED, not "may be needed". Layout work scheduled; the view itself is
+  correct.
 
 - **Async vs sync edges in sequence diagrams.** Watcher notifications are
   async fire-and-forget; API calls are sync request/response. ggarch sequence
-  has `call` (sync) and `async` step kinds. ✓ Supported. TODO: verify the
-  visual distinction is clear when both appear on the same lifeline.
+  has `call` (sync) and `async` step kinds. ✓ Verified on the Hook execution
+  sequence, which mixes both on the same lifeline pair: call = solid shaft +
+  filled arrowhead, async = solid shaft + open arrowhead (11 filled, 1 open
+  rendered). Distinction is arrowhead fill only — standard convention, but
+  subtle at 10px; if async steps proliferate in authored sequences, consider
+  a dash or weight difference as well.
 
 - **In-process vs cross-process calls.** The unit agent runs inside the machine
   agent (nested engine); hook tools connect to an in-process Unix socket server.
   These are architecturally important distinctions. ggarch has `ipc` edge type
-  for local IPC and `control` for process lifecycle. TODO: assess whether
-  "nested process" containment (unit agent inside machine agent process) is
-  expressible without either creating a false node boundary or losing the
-  in-process nature.
+  for local IPC and `control` for process lifecycle. ✓ Resolved by idiom:
+  nesting is reserved for OS boundaries (containers, machines, pods);
+  nested processes render as siblings joined by a `control` edge
+  ("hosts (nested)" — the juju2 "Worker tree (machine cloud)" view is the
+  working example). No false node boundary, no loss of the in-process fact.
+
 
 ### Branding
 
@@ -249,9 +264,11 @@ ggarch must be easy to extend within the paradigm -- new node types, new edge
 types, new presets, new icon sets, new view renderers -- without forking or
 patching core.
 
-Current state: node `type` is already a free string with preset fallback; edge
-types support `CUSTOM` with a style block. The mechanism is right; the API is
-implicit.
+Current state (0.24.0): node and edge `type` are both free strings with preset
+fallback; custom edge types declare named rules in the style block
+(`edge <name> { ... }`, light and `@dark`), validated (unknown types are
+rejected with a hint) and rendered end-to-end including legends. The
+remaining gap is documented extension points, below.
 
 **TODO: documented extension points.** Explicit API surface for:
 - Custom node types and their styles (already works; make it intentional).
@@ -1695,11 +1712,23 @@ style {
     font-color: "#444"
   }
 
+  # Edge type rules use the `edge` keyword -- the name is otherwise
+  # ambiguous with a node type of the same name.
+  edge cloud-call {
+    stroke: "#8E44AD"
+    stroke-width: 2
+  }
+
+
   @dark {
     external {
       fill: "#2A2A2A"
       stroke: "#666"
       font-color: "#CCC"
+    }
+    # Dark overrides for edge types use the same form.
+    edge cloud-call {
+      stroke: "#BB8FCE"
     }
   }
 }
