@@ -230,6 +230,7 @@ def render_sequence(
         block_stroke=("#5555AA" if dark else "#8888CC"),
         bars_group=bars_group,
         activation_stack=[],
+        bg="#1E1E2E" if dark else "#FFFFFF",
     )
     content.append(bars_group)  # append before steps so bars paint behind arrows
     y_start = MARGIN_TOP + header_h + int(STEP_HEIGHT * 1.5)
@@ -323,6 +324,7 @@ class _RenderCtx:
     block_stroke: str
     bars_group: dw.Group         # group for activation bars (drawn behind arrows)
     activation_stack: list       # [(lifeline_id, open_y), ...]
+    bg: str                      # canvas background (masks self-call labels)
 
 
 # ---------------------------------------------------------------------------
@@ -462,7 +464,7 @@ def _render_self_step(
     y: float,
     ctx: _RenderCtx,
 ) -> None:
-    """Self-call: compact rounded loop on the right; label above, centred on cx."""
+    """Self-call: compact rounded loop on the right; label beside it."""
     r   = 5        # corner radius
     w   = SELF_LOOP_W
     h   = r * 2 + 4
@@ -486,12 +488,22 @@ def _render_self_step(
         marker_end="url(#seq-arrow)",
     ))
     if step.label:
-        label_y = y0 - 4
+        # Label to the right of the loop, vertically centred on it (the
+        # UML convention for self-messages). A centred label straddles
+        # the lifeline and its activation bar; a long label can still
+        # reach a neighbouring lifeline, so an opaque background masks
+        # any strike.
+        label_w = len(step.label) * 6
+        bg_x = x1b + 4
+        g.append(dw.Rectangle(
+            bg_x, y - 8, label_w + 6, 16,
+            fill=ctx.bg, stroke="none",
+        ))
         g.append(dw.Text(
-            step.label, 11, cx, label_y - 4,
+            step.label, 11, bg_x + 3, y,
             font_family=LABEL_FONT,
             fill=ctx.text_color,
-            text_anchor="middle",
+            text_anchor="start",
             dominant_baseline="central",
         ))
 

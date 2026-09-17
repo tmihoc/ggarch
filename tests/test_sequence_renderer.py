@@ -1,5 +1,6 @@
 """Sequence renderer tests."""
 import pytest
+import re
 from ggarch import parse, validate
 from ggarch.sequence_renderer import (
     render_sequence,
@@ -403,3 +404,54 @@ class TestJujuSequence:
         light, dark = render_sequence_both(seq, model)
         assert light != dark
         assert "#1E1E2E" in dark
+
+
+SELF_SEQ = """\
+model "M" {
+  nodes {
+    a [type: juju-software, label: "Client"]
+    b [type: juju-software, label: "Controller"]
+  }
+  edges { a -> b [type: api, label: "deploy"] }
+  behaviours {
+    behaviour "deploy" {
+      a -> a: self "validate credentials"
+      a -> b: call "deploy application"
+    }
+  }
+}
+sequence "Deploy" from "M" {
+  select { behaviour: "deploy" }
+}
+"""
+
+
+class TestSelfCallLabels:
+    """Self-call labels sit beside the loop, not straddling the lifeline.
+
+    Before 0.25.0 the label was centred on the lifeline (text-anchor
+    middle, above the row): a long label -- "Write application + unit
+    records" -- spanned half of each neighbouring column and struck the
+    activation bars. Now it follows the UML convention: start-anchored
+    to the right of the loop, vertically centred on it, with an opaque
+    background masking any neighbouring-lifeline strike.
+    """
+
+    def _svg(self):
+        f = parse(SELF_SEQ); validate(f)
+        sv = f.sequences[0]
+        return render_sequence(sv, f.get_model(sv.model_name), dark=False)
+
+    def test_self_label_anchored_right_of_loop(self):
+        svg = self._svg()
+        m2 = re.search(r'<text([^>]*)>validate credentials</text>', svg)
+        assert m2, "self-call label not rendered"
+        attrs = m2.group(1)
+        assert 'text-anchor="start"' in attrs
+        x = float(re.search(r'x="([\d.]+)"', attrs).group(1))
+        # The Client lifeline sits at column 0: cx = MARGIN_SIDE + 60 = 90.
+        assert x > 100.0, f"label at {x} not right of the loop"
+
+    def test_self_label_has_background_mask(self):
+        svg = self._svg()
+        assert 'stroke="none"' in svg

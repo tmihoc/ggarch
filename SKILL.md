@@ -543,8 +543,8 @@ kept as an alias. State views are not yet slideshow-capable.
 `:caption:` in slideshow mode is a static label rendered above the carousel --
 it frames the whole story and stays constant as the reader navigates.
 `:slide-captions:` supplies the per-slide text in the figcaption, updated on
-each nav step. Both are optional independently. Views and sequences can be
-mixed freely in `:slides:`.
+each nav step. Both are optional independently. Views, sequences, and state
+machines can be mixed freely in `:slides:`.
 
 Options:
 
@@ -553,7 +553,7 @@ Options:
 | `:file:` | Path to `.ggarch` file, relative to the document |
 | `:view:` | Name of any view to render (diagram, sequence, or state machine) |
 | `:sequence:` | Alias for `:view:`; backwards compatible |
-| `:slides:` | Pipe-separated view/sequence names for a slideshow |
+| `:slides:` | Pipe-separated view/sequence/state names for a slideshow |
 | `:caption:` | Single diagram: figure caption. Slideshow: static label above carousel. |
 | `:slide-captions:` | Pipe-separated per-slide captions; updated on navigation |
 | `:alt:` | Alt text |

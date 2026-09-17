@@ -37,7 +37,7 @@ Options
                   state machine. Searches diagrams first, then
                   sequences, then states.
 :sequence:        Alias for :view:; kept for backwards compatibility.
-:slides:          Pipe-separated list of view/sequence names for a slideshow.
+:slides:          Pipe-separated list of view/sequence/state names for a slideshow.
 :slide-captions:  Pipe-separated captions matching :slides:; updated on nav.
 :caption:         Single diagram: figure caption. Slideshow: static label
                   above the carousel, does not change on navigation.
@@ -815,8 +815,9 @@ def html_visit_ggarch(self: object, node: ggarch) -> None:
             self.body.append(f'<pre class="ggarch-source">{self.encode(code)}</pre>\n')
             raise nodes.SkipNode
 
-        seq_names  = {s.name for s in f.sequences}
-        diag_names = {d.name for d in f.diagrams}
+        seq_names   = {s.name for s in f.sequences}
+        diag_names  = {d.name for d in f.diagrams}
+        state_names = {st.name for st in f.states}
 
         self.body.append(f'<figure class="{figure_class}">\n')
         if caption:
@@ -825,15 +826,19 @@ def html_visit_ggarch(self: object, node: ggarch) -> None:
 
         any_ok = False
         for i, name in enumerate(names):
-            is_seq = name in seq_names
-            is_diag = name in diag_names
-            if not is_seq and not is_diag:
+            is_seq   = name in seq_names
+            is_diag  = name in diag_names
+            is_state = name in state_names
+            if not is_seq and not is_diag and not is_state:
                 logger.warning(f"ggarch slideshow: {name!r} not found")
                 continue
 
+            # _render_pair resolves :view: names against diagrams, then
+            # sequences, then states -- so diagrams and states both go
+            # through view_name.
             light, dark = _render_pair(
                 self, code,
-                view_name=(name if is_diag else ""),
+                view_name=(name if (is_diag or is_state) else ""),
                 sequence_name=(name if is_seq else ""),
                 file_path=file_path,
             )
