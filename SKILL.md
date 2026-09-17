@@ -304,6 +304,20 @@ a min-width: 160
 
 `gap:` is a floor -- the solver expands it if edge labels need more space.
 
+**Solver rules to know:**
+
+- The **first node in `select`** is anchored at (0, 0) — make it the
+  intended top-left node of the layout.
+- Leaf nodes hold their **natural (label-derived) size**; only
+  `min-width` / `same-width` floors can raise it.
+- Label-gap resolution is **pair-local**: declare a direct `left-of` /
+  `above` between the endpoints of every labelled edge — especially an
+  edge that skips a rung in a chain (e.g. `domain_services ->
+  db_accessor` in a spine agent → DB → change stream → domain services).
+  Without the direct constraint, the solver separates the pair in both
+  horizontal directions, which displaces the layout sideways.
+
+
 ### 6. Write sequence views
 
 A sequence view needs only one line:

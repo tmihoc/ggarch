@@ -45,7 +45,8 @@ and extend the type system without touching ggarch itself.
 - Runtime/persistence links: `records:` ties a running process to the
   database record that backs it — validated target, chip render
 - Typed edges: `api`, `stream`, `event`, `control`, `ipc`, `data` -- each
-  with a defined meaning and a consistent visual encoding
+  with a defined meaning and a consistent visual encoding, plus custom
+  edge types styled in the model's `style` block (light and dark)
 - Explicit placement: `left-of`, `above`, `fan`, `gap:`, `align-middle`
   -- every node's position is declared; Cassowary solves the constraints.
   Spatial intent is exact, not approximated by a layout engine. (Auto-layout

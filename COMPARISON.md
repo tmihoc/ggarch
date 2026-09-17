@@ -284,7 +284,9 @@ argument survives rendering.
 **Semantic edge types.** `type: stream` renders as a dashed arrow and means
 "long-lived watch connection". `type: ipc` renders dotted and means "Unix
 socket". The visual grammar is consistent across every diagram in the project;
-a reader who learns it once reads every diagram correctly.
+a reader who learns it once reads every diagram correctly. When the built-in
+vocabulary runs out, custom edge types carry their own name and styling
+declared in the model's `style` block -- end to end, including the legend.
 
 **Lifecycle.** `lifecycle: init` (dashed border) means "runs once at startup
 then exits". `lifecycle: ephemeral` (dotted border) means "runs on demand
