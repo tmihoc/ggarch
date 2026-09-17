@@ -186,36 +186,79 @@ def _synthesize_auto_layout(
     coherent, flow-based layout:
 
     - Columns follow topological depth along the visible edges (the main
-      flow runs left-to-right, honouring edge direction).
+      flow runs left-to-right, honouring edge direction). Edge endpoints
+      resolve to their top-level ancestors among the selected nodes, so
+      edges between containers' children drive the containers' placement
+      (a Raft mesh between Dqlite nodes lays out the controller nodes;
+      a charm-to-pebble link lays out the unit containers).
     - Nodes that share a column stack vertically in declaration order.
-    - Every visible edge gets a directly declared relationship, so its
-      label gap resolves directionally (label-gap resolution is
-      pair-local).
+    - Every visible edge gets a directly declared relationship at its
+      effective endpoints (the deepest distinct ancestors, matching the
+      label-gap pass's pair-local resolution), so its label gap resolves
+      directionally.
 
     Cycles are handled by processing nodes in declaration order and
     ignoring not-yet-seen sources, which turns back edges into floors.
-    Container children are unaffected here -- the existing container
-    auto-layout pass lays them out inside their parents.
+    Container children are otherwise unaffected -- the existing
+    container auto-layout pass lays them out inside their parents.
     """
     if diagram.constraints:
         return []
 
     top_ids = [n.id for n in selected]
     top_set = set(top_ids)
-    vis_edges = [
-        e for e in mat_edges
-        if e.source in top_set and e.target in top_set
-        and e.source != e.target
-        and (not diagram.select.edge_types
-             or e.type in diagram.select.edge_types)
-    ]
 
-    # Depth by longest path along forward edges, declaration order.
+    # Parent map over the selected subtree (materialized ids), and
+    # top-ancestor resolution for edge endpoints.
+    parent: dict[str, str] = {}
+    def _walk(node) -> None:
+        for child in node.children:
+            parent[child.id] = node.id
+            _walk(child)
+    for node in selected:
+        _walk(node)
+
+    def _chain(nid: str) -> list[str]:
+        out = [nid]
+        while nid in parent:
+            nid = parent[nid]
+            out.append(nid)
+        return out
+
+    def _top(nid: str) -> str | None:
+        c = _chain(nid)
+        return c[-1] if c[-1] in top_set else None
+
+    # Visible edges: both endpoints resolve into the selected subtree,
+    # honouring the view's edge-type filter.
+    vis_edges = []
+    for e in mat_edges:
+        if e.source == e.target:
+            continue
+        if diagram.select.edge_types and e.type not in diagram.select.edge_types:
+            continue
+        ts, tt = _top(e.source), _top(e.target)
+        if ts is None or tt is None or ts == tt:
+            continue
+        vis_edges.append((e, ts, tt))
+
+    # Effective endpoints for the label-gap pair check: the deepest
+    # node on each side that is not on the other's ancestry -- matching
+    # _add_label_gap_constraints._effective_id.
+    def _effective(src: str, tgt: str) -> tuple[str, str]:
+        sc, tc = _chain(src), _chain(tgt)
+        ts, tt = set(tc), set(sc)
+        es = next((n for n in sc if n not in tt), sc[-1])
+        et = next((n for n in tc if n not in ts), tc[-1])
+        return es, et
+
+    # Depth by longest path along forward edges between top-level
+    # ancestors, declaration order.
     depth: dict[str, int] = {}
     for nid in top_ids:
-        incoming = [e for e in vis_edges
-                    if e.target == nid and e.source in depth]
-        depth[nid] = max((depth[e.source] for e in incoming), default=-1) + 1
+        incoming = [s for (_, s, t) in vis_edges
+                     if t == nid and s in depth]
+        depth[nid] = max((depth[s] for s in incoming), default=-1) + 1
 
     # Compact depths to consecutive columns; slot by declaration order.
     used = sorted(set(depth.values()))
@@ -238,16 +281,19 @@ def _synthesize_auto_layout(
         for u in columns.get(c, []):
             for v in columns.get(c + 1, []):
                 cons.append(Constraint(kind="left-of", subject=u, object=v, gap=GAP))
-    # Every visible edge gets a directly declared pair.
-    for e in vis_edges:
-        cs, ct = col[e.source], col[e.target]
+    # Every visible edge gets a directly declared pair, at its effective
+    # endpoints (child-to-child edges declare their children, which the
+    # containment constraints then translate into container separation).
+    for e, ts, tt in vis_edges:
+        cs, ct = col[ts], col[tt]
+        es, et = _effective(e.source, e.target)
         if cs < ct:
-            cons.append(Constraint(kind="left-of", subject=e.source, object=e.target, gap=GAP))
+            cons.append(Constraint(kind="left-of", subject=es, object=et, gap=GAP))
         elif cs > ct:
-            cons.append(Constraint(kind="left-of", subject=e.target, object=e.source, gap=GAP))
+            cons.append(Constraint(kind="left-of", subject=et, object=es, gap=GAP))
         else:
             members = columns[cs]
-            i, j = members.index(e.source), members.index(e.target)
+            i, j = members.index(ts), members.index(tt)
             u, v = members[min(i, j)], members[max(i, j)]
             cons.append(Constraint(kind="above", subject=u, object=v, gap=GAP))
     return cons

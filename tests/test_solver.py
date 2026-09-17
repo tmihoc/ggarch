@@ -620,3 +620,38 @@ class TestViewAutoLayout:
         c = lay.find("client").rect
         assert abs(u.cx - c.cx) < 1.0
         assert c.y - (u.y + u.h) >= 49.5
+
+    def test_inter_container_edges_drive_container_placement(self):
+        # A mesh between containers' children lays out the containers:
+        # three controller instances with a Dqlite Raft mesh become
+        # three columns, not one (ancestor mapping, 0.25.0).
+        src = """\
+model "M" {
+  nodes {
+    ctrl [type: container, label: "Controller node"] {
+      agent [type: juju-software, label: "Controller agent"]
+      dqlite [type: database, label: "Dqlite"]
+    }
+  }
+  edges {
+    dqlite -> dqlite [type: stream, label: "Raft sync", pairing: mesh]
+  }
+}
+diagram "ha" from "M" {
+  select {
+    nodes: ctrl
+    edges: type stream
+    instances: ctrl [ { id: c1, label: "Controller 1" },
+                      { id: c2, label: "Controller 2" },
+                      { id: c3, label: "Controller 3" } ]
+  }
+}
+"""
+        f = parse(src); validate(f)
+        lay = solve(f.diagrams[0], f.get_model("M"))
+        xs = [lay.find(i).rect for i in ("c1", "c2", "c3")]
+        assert xs[0].x < xs[1].x < xs[2].x, "instances must be separate columns"
+        # Dqlite children separated far enough for the Raft-sync label.
+        d1 = lay.find("c1/dqlite").rect
+        d2 = lay.find("c2/dqlite").rect
+        assert d2.x - (d1.x + d1.w) >= 80

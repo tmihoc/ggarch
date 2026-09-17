@@ -805,8 +805,12 @@ coherent, readable layout: columns follow topological depth along the
 visible edges (the main flow runs left-to-right, honouring edge
 direction), nodes that share a column stack vertically in declaration
 order, container children follow the container auto-layout, and cycles
-are tolerated (back edges become floors). Every visible edge gets a
-directly declared pair so label gaps resolve directionally. Views that
+are tolerated (back edges become floors). Edge endpoints resolve to
+their top-level ancestors among the selected nodes, so edges between
+containers' children drive the containers' placement (a Raft mesh
+between Dqlite nodes lays out the controller nodes); the per-edge pair
+constraints are declared at the effective (deepest distinct) endpoints,
+matching the label-gap pass's pair-local resolution. Views that
 declare any positions at all are untouched -- auto-layout is the floor,
 not the ceiling. Staged: per-node override (auto nodes inside a
 partially-declared view) is future work, triggered by a real case.
@@ -1596,7 +1600,18 @@ directional, never multiplicity-bearing. Custom association types are
 declared in the style block like any other type; family membership is
 by convention, not grammar.
 
-Routing strategy: straight lines by default. Orthogonal routing as an opt-in
+Routing strategy: straight lines by default. Orthogonal routing as an opt-in.
+
+Measured routing limits (juju4 auto-layout spike, 0.25.1): straight-line
+routing cannot draw a full mesh between collinear nodes -- the HA Raft
+mesh puts six straight arrows between three same-row controllers and
+the two long arrows cross the middle controller's children; and four of
+the six "Raft sync" labels float beside their arrows instead of
+interrupting them (gap mode needs a segment longer than the label plus
+two 16px tails; adjacent-pair arrows are too short). These are ROUTER
+defects, not layout defects: auto-layout changed the arrangement and
+neither improved. Work items: curved/mesh-aware routing (arcs at
+distinct offsets), and label placement aware of parallel edges.
 per diagram or per edge, pending a production-ready Python binding for
 adaptagrams libavoid.
 

@@ -277,7 +277,8 @@ Without `edges:`, no edges are shown.
 
 Omit the positions block entirely and ggarch auto-lays-out the view:
 columns follow topological depth along the selected edges (main flow
-left-to-right), branch targets stack in their column. Auto-layout is for
+left-to-right), branch targets stack in their column, and edges between
+containers' children drive the containers' placement. Auto-layout is for
 views where any coherent arrangement would do; where the arrangement IS
 the argument, declare it -- constraints compose, and you cannot
 over-constrain (the solver will error). Common patterns:
