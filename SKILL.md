@@ -339,6 +339,11 @@ participants become states, directed steps become transitions, and
 `guard:` / `on:` label them. As with any behaviour, each step must
 traverse an edge declared in `edges {}`.
 
+Layout is automatic and layered: the main flow runs left-to-right by
+topological depth, branch states stack below their entry column, and
+back edges (returns to an earlier state) bow outside the machine. No
+positions are declared for state views.
+
 ```
 behaviour "executor" {
   idle    -> running: call "start"

@@ -103,3 +103,106 @@ class TestStateRendering:
         assert "<svg" in light
         assert "<svg" in dark
         assert light != dark
+
+
+UNITER_SRC = """\
+model "M" {
+  nodes {
+    uop_idle       [type: juju-software, label: "idle"]
+    uop_preparing  [type: juju-software, label: "preparing"]
+    uop_executing  [type: juju-software, label: "executing"]
+    uop_committing [type: juju-software, label: "committing"]
+    uop_error      [type: juju-software, label: "error"]
+  }
+  edges {
+    uop_idle       -> uop_preparing  [type: control]
+    uop_preparing  -> uop_executing  [type: control]
+    uop_executing  -> uop_committing [type: control]
+    uop_executing  -> uop_error      [type: control]
+    uop_error      -> uop_idle       [type: control]
+    uop_committing -> uop_idle       [type: control]
+  }
+  behaviours {
+    behaviour "Uniter operation" {
+      uop_idle       -> uop_preparing:  call "resolve hook"       [on: "hook queued"]
+      uop_preparing  -> uop_executing:  call "snapshot + run"
+      uop_executing  -> uop_committing: return "exit 0"           [guard: "hook exits 0"]
+      uop_executing  -> uop_error:     async "fail"               [guard: "hook fails"]
+      uop_error      -> uop_idle:      return "retry / escalate" [on: "retry"]
+      uop_committing -> uop_idle:      return "commit state"     [on: "write complete"]
+    }
+  }
+  style { extends: juju }
+}
+state "Uniter" from "M" {
+  select { behaviour: "Uniter operation" }
+}
+"""
+
+
+import re as _re
+
+
+def _texts(svg: str) -> list[tuple[str, float, float]]:
+    """(label, x, y) for every centred text in the SVG."""
+    out = []
+    for m in _re.finditer(r'<text([^>]*)>(.*?)</text>', svg):
+        a, t = m.group(1), m.group(2)
+        if 'text-anchor="middle"' not in a:
+            continue
+        out.append((t,
+                    float(_re.search(r'x="([-\d.]+)"', a).group(1)),
+                    float(_re.search(r'y="([-\d.]+)"', a).group(1))))
+    return out
+
+
+class TestLayeredLayout:
+    """Layered state layout (0.25.0).
+
+    Before: states wrapped into rows of 4 in appearance order, so a branch
+    target (error) landed in a second row under column 0 and its incoming
+    edge crossed the forward labels -- the measured collision in the juju
+    uniter machine ("[hook fails] / fail" overlapping "/ snapshot + run").
+    Now: columns follow topological depth, branch targets stack below
+    their entry column, and back edges bow outside the machine.
+    """
+
+    def _uniter_svg(self):
+        f = parse(UNITER_SRC); validate(f)
+        sv = f.states[0]; m = f.get_model(sv.model_name)
+        return render_state(sv, m)
+
+    def test_branch_state_stacks_below_entry_column(self):
+        svg = self._uniter_svg()
+        pos = {t: (x, y) for t, x, y in _texts(svg)}
+        # error shares committing's column (its entry state's column),
+        # stacked below the chain row -- not wrapped to the far left.
+        assert abs(pos["error"][0] - pos["committing"][0]) < 1.0
+        assert pos["error"][1] > pos["committing"][1]
+
+    def test_no_transition_label_collisions(self):
+        # The shipped defect: two transition labels overlapping. Every
+        # pair of rendered texts must be disjoint (state names excluded --
+        # they sit inside their own boxes by design).
+        svg = self._uniter_svg()
+        bb = []
+        for t, x, y in _texts(svg):
+            if len(t) <= 8:  # state names
+                continue
+            w = len(t) * 6.2
+            bb.append((x - w / 2, y - 5, x + w / 2, y + 5, t))
+        for i in range(len(bb)):
+            for j in range(i + 1, len(bb)):
+                a, b = bb[i], bb[j]
+                assert (a[2] < b[0] + 1 or b[2] < a[0] + 1
+                        or a[3] < b[1] + 1 or b[3] < a[1] + 1), \
+                    f"labels overlap: {a[4]!r} <-> {b[4]!r}"
+
+    def test_transition_labels_have_opaque_backgrounds(self):
+        # Cross-edge strikes are masked: every transition label is backed
+        # by a background rect so a return path never strikes the text.
+        svg = self._uniter_svg()
+        states = {"idle", "preparing", "executing", "committing", "error"}
+        labels = [t for t, *_ in _texts(svg) if t not in states]
+        bg_rects = _re.findall(r'<rect[^>]*stroke="none"[^>]*/>', svg)
+        assert len(bg_rects) == len(labels)

@@ -184,13 +184,17 @@ from the Juju architecture doc suggests the following hard cases:
 
 - **State machine transitions with guards and triggers.** The uniter's
   operation executor has precise states (preparing → executing → committing)
-  with labeled transitions (guard: "exit 0", trigger: "hook fails"). ✓ State
-  view exists with `guard:` and `on:` attributes. ✗ Layout verdict (measured
-  on the 5-state uniter machine): single-row layout collides transition
-  labels once guard text is present ("[hook fails] / fail" overlaps
-  "/ snapshot + run" at the same y). Multi-row or hierarchical layout is
-  REQUIRED, not "may be needed". Layout work scheduled; the view itself is
-  correct.
+  view exists with `guard:` and `on:` attributes. ✓ Layout verdict: the
+  single-row layout was measured colliding transition labels once guard
+  text was present ("[hook fails] / fail" overlapping "/ snapshot + run"
+  at the same y) -- fixed in 0.25.0 with a layered layout: columns
+  follow topological depth along forward edges (the main flow runs
+  left-to-right), branch targets stack below their entry column, and
+  back edges bow outside the machine (above the chain when they leave
+  the chain row, below when they leave a deeper row). Transition labels
+  are pushed clear of their curve's flank and carry opaque backgrounds,
+  so cross-edge strikes are masked. Verified by geometric audit on the
+  5-state uniter machine: zero label overlaps, zero unmasked strikes.
 
 - **Async vs sync edges in sequence diagrams.** Watcher notifications are
   async fire-and-forget; API calls are sync request/response. ggarch sequence
