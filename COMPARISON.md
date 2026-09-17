@@ -320,8 +320,13 @@ The validator catches drift immediately if a behaviour step references an
 abstract id with no concrete realisation. No other tool has this.
 
 **Types vs instances.** A node with `cardinality: one-per-unit` is a type,
-not a unique instance. A view renders it as a single archetype box or as N
-labelled instances -- same declaration, two rendering modes.
+not a unique instance. A view renders it as a single archetype box or
+stamps it as N labelled instances -- full subtree stamps: an instance of
+a container carries everything inside it, and model edges expand to the
+copies by an explicit pairing vocabulary (zip: internal wiring repeated
+verbatim in every copy; fan: outside-to-every-copy; mesh: every copy
+with every other). Same declaration, many rendering modes; the copies
+derive, they do not re-declare.
 
 **Slideshow presentation.** Architecture documentation is an argument, and
 arguments have pacing. When a concept spans multiple diagrams that build on
@@ -348,12 +353,14 @@ information content survives text-only rendering. The parsed diagram is a
 queryable data structure; JSON export lets an agent answer "which nodes have
 type juju-software?" without rendering.
 
-**Runtime/persistence duality (in progress).** Every significant entity in a
-stateful system has two faces: the process that runs and the database record
-that backs it. Topology diagrams show the runtime; ER diagrams show the
-persistence; the reader must mentally connect them. ggarch is introducing a
-`records:` relationship to make this connection formal and cross-referenceable
-across view types -- a capability no existing tool addresses.
+**Runtime/persistence duality.** Every significant entity in a stateful
+system has two faces: the process that runs and the database record
+that backs it. ggarch's `records:` attribute links a runtime node to
+the record node that backs it -- validated (the target must be a
+declared record), rendered as a chip on the node, queryable from the
+parsed model. One model holds both faces: topology views surface the
+persistence face on the runtime boxes; ER views show which processes
+each record backs. No existing tool addresses this at all.
 
 **Open source, embeddable.** Apache-2.0. Renders to SVG via a Python library,
 a CLI, and a Sphinx extension. Runs anywhere: CI pipelines, Sphinx builds,

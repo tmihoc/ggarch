@@ -65,6 +65,9 @@ diagram "View name" from "Model Name" {
     nodes: id1 id2 id3          // which nodes to show
     edges: type api type stream  // which edge types to include
     collapse: id4               // show id4 as an opaque box (hide children)
+    instances: id1 [            // stamp a type as N labelled copies (see Instances)
+      { id: copy1, label: "copy 1" }
+    ]
   }
   positions {
     a left-of b gap: 60
@@ -118,6 +121,7 @@ id [type: TYPE, label: "Label", lifecycle: persistent] // solid border (default)
 id [type: TYPE, label: "Label", cardinality: one-per-unit]
 id [type: TYPE, label: "Label", scope: "cloud1/model1"]  // scope chip
 id [type: TYPE, label: "Label", abstracts: "abstract_id"]
+id [type: TYPE, label: "Label", records: "unit_rec"]  // record backing this node
 ```
 
 Multi-line labels use `\n`:
@@ -158,6 +162,10 @@ a direct call" to readers who would otherwise read a solid arrow as synchronous.
 ```
 a -> b [type: stream, label: "watches for changes on"]
 ```
+
+Edges between children of an instanced type expand per copy according
+to their **pairing** -- zip by default, `pairing: mesh` for
+between-copies wiring. See **Instances** below.
 
 ---
 
@@ -291,6 +299,25 @@ Lifelines are generated from the participants of the selected behaviour. Their
 order in the rendered diagram follows the order of first appearance in the
 behaviour steps.
 
+### 7. Write state views
+
+A state view renders a behaviour as a state machine: unique step
+participants become states, directed steps become transitions, and
+`guard:` / `on:` label them. As with any behaviour, each step must
+traverse an edge declared in `edges {}`.
+
+```
+behaviour "executor" {
+  idle    -> running: call "start"
+  running -> idle:    return "stop" [guard: "clean", on: "stopped"]
+  running -> error:   async "fail" [guard: "dirty"]
+}
+
+state "Executor" from "Model Name" {
+  select { behaviour: "executor" }
+}
+```
+
 ---
 
 ## Annotations
@@ -387,6 +414,59 @@ at either level stay valid in both.
 
 ---
 
+## Instances
+
+A view can stamp a declared type as N labelled copies. The copies are
+full subtree stamps: an instance of a container renders with everything
+inside it, and internal edges redraw per copy.
+
+```
+// Model -- declared once
+unit_pod [type: container, label: "Unit pod", cardinality: one-per-unit] {
+  unit_agent [type: juju-software, label: "Unit agent"]
+  charm      [type: charm,         label: "Charm"]
+}
+
+// View -- stamped as two copies
+select {
+  nodes: controller unit_pod
+  instances: unit_pod [
+    { id: pg0,  label: "postgresql/0" },
+    { id: pgb0, label: "pgbouncer/0" }
+  ]
+}
+```
+
+Each instance carries the archetype's type, lifecycle, `records:`, and
+whole subtree; its label overrides the archetype label per copy. Stamped
+child ids are `<instance>/<child path>` (e.g. `pg0/unit_agent`) --
+positions and annotation boxes can reference them.
+
+Model edges expand to the copies by **pairing**:
+
+- **zip** (default): an edge between two archetype children is copied
+  per instance, instance i wired to instance i -- the internal wiring
+  that repeats verbatim in every copy.
+- **fan**: an edge from outside the instanced subtree connects to every
+  copy -- star wiring. `controller -> unit_pod` reaches both.
+- **mesh** (`pairing: mesh`): an edge between copies -- every distinct
+  pair, never a copy with itself:
+
+  ```
+  dqlite -> dqlite [type: stream, label: "Raft sync", pairing: mesh]
+  ```
+
+  Three instances render six arrows: every node talks to every other.
+  This is the truth for peer sync -- Raft replication is full-mesh.
+
+Multiple `instances:` clauses accumulate (one per instanced type).
+Instances are view-local: they exist only in the view that declares
+them; the model holds the type. Known gap: specific declared pairs
+("only copy 1 to copy 2") cannot be expressed; view-level edges are the
+answer if a real case appears.
+
+---
+
 ## Sphinx extension
 
 In `conf.py`:
@@ -406,8 +486,9 @@ In a Markdown (MyST) document:
 ```
 ````
 
-`:view:` works for both diagram and sequence views -- the directive searches
-diagrams first, then sequences. `:sequence:` is kept as an alias.
+`:view:` works for diagram, sequence, and state views -- the directive
+searches diagrams first, then sequences, then states. `:sequence:` is
+kept as an alias. State views are not yet slideshow-capable.
 
 **Slideshow** -- render multiple views as a carousel with prev/next navigation:
 
@@ -432,7 +513,7 @@ Options:
 | Option | Effect |
 |---|---|
 | `:file:` | Path to `.ggarch` file, relative to the document |
-| `:view:` | Name of any view to render (diagram or sequence) |
+| `:view:` | Name of any view to render (diagram, sequence, or state machine) |
 | `:sequence:` | Alias for `:view:`; backwards compatible |
 | `:slides:` | Pipe-separated view/sequence names for a slideshow |
 | `:caption:` | Single diagram: figure caption. Slideshow: static label above carousel. |
@@ -536,16 +617,21 @@ select { nodes: controller_pod unit_pod }
 
 ### Multiple units as instances
 
-Declare one type node with `cardinality: one-per-unit`. In a view, render
-it as multiple labelled instances:
+Declare one type node. In a view, stamp it as N labelled copies (see
+**Instances** above):
 
 ```
 // Model
 unit_pod [type: container, label: "Unit pod", cardinality: one-per-unit]
 
 // View
-select { nodes: controller unit_pod }
-instances { unit_pod: ["postgresql/0", "pgbouncer/0"] }
+select {
+  nodes: controller unit_pod
+  instances: unit_pod [
+    { id: pg0,  label: "postgresql/0" },
+    { id: pgb0, label: "pgbouncer/0" }
+  ]
+}
 ```
 
 ### Scope chips (provenance tags)

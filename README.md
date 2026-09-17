@@ -39,6 +39,11 @@ and extend the type system without touching ggarch itself.
   (dotted)
 - Cardinality: `one-per-unit`, `one-per-model`, etc. -- declare a type once,
   render as one archetype or N labelled instances
+- Full-subtree instances: `instances:` stamps a type as N labelled
+  copies, children included; model edges expand to the copies by an
+  explicit pairing vocabulary (zip / fan / mesh)
+- Runtime/persistence links: `records:` ties a running process to the
+  database record that backs it — validated target, chip render
 - Typed edges: `api`, `stream`, `event`, `control`, `ipc`, `data` -- each
   with a defined meaning and a consistent visual encoding
 - Explicit placement: `left-of`, `above`, `fan`, `gap:`, `align-middle`
