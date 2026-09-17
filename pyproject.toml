@@ -19,6 +19,7 @@ sphinx = ["sphinx>=7.0"]
 dev = [
     "pytest>=8.0",
     "pytest-cov",
+    "sphinx>=7.0",
 ]
 
 [project.scripts]

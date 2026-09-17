@@ -212,3 +212,20 @@ def resolve_style(model_style, dark: bool = False) -> dict[str, NodeStyle]:
         )
         bank[type_name] = merged
     return bank
+
+def resolve_edge_style(model_style, dark: bool = False) -> dict[str, EdgeStyle]:
+    """Merge a model's edge style rules onto the preset's edge styles."""
+    preset = get_preset(model_style.extends)
+    bank = dict(preset.edge_dark if dark else preset.edge_light)
+    rules = model_style.dark_edge_rules if dark else model_style.edge_rules
+    for type_name, rule in rules.items():
+        existing = bank.get(type_name, EdgeStyle())
+        # Override only fields that were explicitly set in the model.
+        bank[type_name] = EdgeStyle(
+            stroke=rule.stroke or existing.stroke,
+            stroke_width=rule.stroke_width or existing.stroke_width,
+            stroke_dash=rule.stroke_dash or existing.stroke_dash,
+            font_color=rule.font_color or existing.font_color,
+            font_size=rule.font_size or existing.font_size,
+        )
+    return bank

@@ -50,7 +50,7 @@ class RoutedEdge:
     source_id: str
     target_id: str
     label: str
-    edge_type: str     # from EdgeType.value
+    edge_type: str     # edge type name (built-in or custom)
     style: str         # solid | dashed | dotted
     arrow: str         # forward | back | both | none
     url: str = ""      # if set, edge label is clickable
@@ -302,12 +302,12 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
         else:
             points = _route_edge(_effective_rect(src_node), _effective_rect(tgt_node))
 
-        style = _default_style(edge.type.value)
+        style = _default_style(edge.type)
         routed_edges.append(RoutedEdge(
             source_id=sid,
             target_id=tid,
             label=edge.label,
-            edge_type=edge.type.value,
+            edge_type=edge.type,
             style=edge.style if edge.style else style,
             arrow=edge.arrow,
             url=edge.url,

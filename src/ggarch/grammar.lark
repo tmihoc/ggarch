@@ -73,13 +73,16 @@ par_block: "par" "{" behaviour_step* "}"
 
 opt_block: "opt" STRING "{" behaviour_step* "}"
 
-style_block: "style" "{" style_item* "}"
+EDGE_KW.2: "edge"
 
+style_block: "style" "{" style_item* "}"
 style_item: "extends" ":" ID                      -> style_extends
           | ID "{" style_rule* "}"                -> style_type_rule
+          | EDGE_KW ID "{" style_rule* "}"        -> style_edge_rule
           | "@dark" "{" style_dark_item* "}"      -> style_dark
 
-style_dark_item: ID "{" style_rule* "}"
+style_dark_item: ID "{" style_rule* "}"            -> style_dark_node_item
+               | EDGE_KW ID "{" style_rule* "}"   -> style_dark_edge_item
 
 style_rule: ID ":" attr_value
 

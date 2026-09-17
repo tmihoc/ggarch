@@ -38,7 +38,14 @@ from ggarch.model import (
     DiagramView,
     Model,
 )
-from ggarch.presets import NodeStyle, ResolvedStyle, get_preset, resolve_style
+from ggarch.presets import (
+    EdgeStyle,
+    NodeStyle,
+    ResolvedStyle,
+    get_preset,
+    resolve_edge_style,
+    resolve_style,
+)
 from ggarch.router import RoutedEdge, RoutedLayout
 
 
@@ -238,7 +245,7 @@ def render(
     """
     preset = get_preset(model.style.extends)
     node_styles = resolve_style(model.style, dark=dark)
-
+    edge_styles = resolve_edge_style(model.style, dark=dark)
     layout = routed.layout
     bounds = layout.bounds
 
@@ -311,13 +318,13 @@ def render(
     _render_nodes(nodes_g, layout.nodes, node_styles, ox, oy, view, dark, border_gaps)
 
     for edge in routed.edges:
-        _render_edge(edges_g, edge, preset, dark, ox, oy)
+        _render_edge(edges_g, edge, edge_styles, ox, oy)
 
     for ann in view.annotations:
         if skip_legend and isinstance(ann, AnnotationLegend):
             continue
-        _render_annotation(ann_g, ann, layout, ox, oy, dark, preset, node_styles,
-                           routed.edges, vw=vw, vh=vh)
+        _render_annotation(ann_g, ann, layout, ox, oy, dark, node_styles,
+                           edge_styles, routed.edges, vw=vw, vh=vh)
 
     drawing.append(nodes_g)
     drawing.append(edges_g)
@@ -871,12 +878,11 @@ def _path_d(pts: list[tuple[float,float]]) -> str:
 def _render_edge(
     g: dw.Group,
     edge: RoutedEdge,
-    preset: ResolvedStyle,
-    dark: bool,
+    edge_styles: dict[str, EdgeStyle],
     ox: float,
     oy: float,
 ) -> None:
-    es = preset.edge(edge.edge_type, dark=dark)
+    es = edge_styles.get(edge.edge_type, edge_styles.get("default", EdgeStyle()))
     pts = [(p.x + ox, p.y + oy) for p in edge.points]
 
     path_kwargs: dict = dict(
@@ -1026,8 +1032,8 @@ def _render_annotation(
     ox: float,
     oy: float,
     dark: bool,
-    preset: ResolvedStyle | None = None,
     node_styles: dict | None = None,
+    edge_styles: dict | None = None,
     edges: list | None = None,
     vw: float = 0,
     vh: float = 0,
@@ -1041,9 +1047,9 @@ def _render_annotation(
     elif isinstance(ann, AnnotationBadge):
         _render_ann_badge(g, ann, layout, ox, oy, dark)
     elif isinstance(ann, AnnotationLegend):
-        if preset is not None and node_styles is not None:
-            _render_ann_legend(g, ann, layout, ox, oy, dark, preset, node_styles,
-                               edges or [], vw=vw, vh=vh)
+        if node_styles is not None and edge_styles is not None:
+            _render_ann_legend(g, ann, layout, ox, oy, dark, node_styles,
+                               edge_styles, edges or [], vw=vw, vh=vh)
 
 
 def _nodes_bounding_rect(node_ids: list[str], layout: SolvedLayout) -> Rect | None:
@@ -1231,8 +1237,8 @@ def _render_ann_legend(
     ox: float,
     oy: float,
     dark: bool,
-    preset: ResolvedStyle,
-    node_styles: dict[str, NodeStyle],
+    node_styles: dict,
+    edge_styles: dict,
     edges: list,
     vw: float = 0,
     vh: float = 0,
@@ -1284,7 +1290,7 @@ def _render_ann_legend(
 
     # Edge type line samples.
     for etype in seen_edge_types:
-        es = preset.edge(etype, dark=dark)
+        es = edge_styles.get(etype, edge_styles.get("default", EdgeStyle()))
         line_kwargs: dict = dict(stroke=es.stroke, stroke_width=es.stroke_width)
         if es.stroke_dash:
             line_kwargs["stroke_dasharray"] = es.stroke_dash

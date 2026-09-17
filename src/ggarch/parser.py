@@ -24,7 +24,7 @@ from ggarch.model import (
     FanConstraint,
     DiagramView,
     Edge,
-    EdgeType,
+
     Environment,
     GgarchFile,
     InstanceSpec,
@@ -61,16 +61,24 @@ def _str(token) -> str:
         return s[1:-1]
     return s
 
+def _style_rule(rules) -> StyleRule:
+    rule = StyleRule()
+    for k, v in rules:
+        setattr(rule, k.replace("-", "_"), v)
+    return rule
+
 
 def _int(token) -> int:
     return int(token)
 
 
-def _edge_type(s: str) -> EdgeType:
-    try:
-        return EdgeType(s)
-    except ValueError:
-        return EdgeType.CUSTOM
+def _edge_type(s: str) -> str:
+    """Edge type names pass through; built-ins and custom names alike.
+
+    Validation that a non-built-in name is styled happens in the
+    validator (which can see the style block), not here.
+    """
+    return s
 
 
 def _lifecycle(s: str) -> Lifecycle:
@@ -362,7 +370,11 @@ class _GgarchTransformer(Transformer):
             if key == "extends":
                 s.extends = value
             elif key == "dark":
-                s.dark_node_rules.update(value)
+                s.dark_node_rules.update(value[0])
+                s.dark_edge_rules.update(value[1])
+            elif key == "edge":
+                name, rule = value
+                s.edge_rules[name] = rule
             else:
                 s.node_rules[key] = value
         return s
@@ -371,25 +383,31 @@ class _GgarchTransformer(Transformer):
         return ("extends", _str(id_token))
 
     def style_type_rule(self, id_token, *rules) -> tuple:
-        rule = StyleRule()
-        for k, v in rules:
-            setattr(rule, k.replace("-", "_"), v)
-        return (_str(id_token), rule)
+        return (_str(id_token), _style_rule(rules))
+
+    def style_edge_rule(self, _kw, id_token, *rules) -> tuple:
+        return ("edge", (_str(id_token), _style_rule(rules)))
 
     def style_rule(self, key, value) -> tuple:
         return (_str(key), value)
 
     def style_dark(self, *items) -> tuple:
-        rules = {}
-        for k, v in items:
-            rules[k] = v
-        return ("dark", rules)
+        nodes: dict = {}
+        edges: dict = {}
+        for payload in items:
+            if isinstance(payload, tuple) and payload[0] == "edge":
+                _, (name, rule) = payload
+                edges[name] = rule
+            else:
+                name, rule = payload
+                nodes[name] = rule
+        return ("dark", (nodes, edges))
 
-    def style_dark_item(self, id_token, *rules) -> tuple:
-        rule = StyleRule()
-        for k, v in rules:
-            setattr(rule, k.replace("-", "_"), v)
-        return (_str(id_token), rule)
+    def style_dark_node_item(self, id_token, *rules) -> tuple:
+        return (_str(id_token), _style_rule(rules))
+
+    def style_dark_edge_item(self, _kw, id_token, *rules) -> tuple:
+        return ("edge", (_str(id_token), _style_rule(rules)))
 
     # ------------------------------------------------------------------
     # Diagram view
@@ -460,7 +478,7 @@ class _GgarchTransformer(Transformer):
     def edge_filter_list(self, *filters) -> list:
         return list(filters)
 
-    def edge_filter(self, id_token) -> EdgeType:
+    def edge_filter(self, id_token) -> str:
         return _edge_type(_str(id_token))
 
     def id_list(self, *ids) -> list[str]:

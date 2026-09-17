@@ -29,14 +29,13 @@ class Cardinality(Enum):
     ONE_PER_HOST         = "one-per-host"
 
 
-class EdgeType(Enum):
-    API      = "api"      # RPC or REST over a network protocol
-    STREAM   = "stream"   # long-lived connection (websocket, gRPC stream)
-    EVENT    = "event"    # one-way notification
-    DATA     = "data"     # data read/write (database, object store)
-    CONTROL  = "control"  # process control (exec, signal, lifecycle)
-    IPC      = "ipc"      # local inter-process (unix socket, pipe)
-    CUSTOM   = "custom"   # declared in the style block
+# Edge types are plain strings: built-ins (api, stream, event, data,
+# control, ipc) resolve from the preset; anything else is a custom type
+# that must be styled in the model's style block
+# (edge <name> { stroke: ... }). Strings, not an enum, so custom types
+# keep their name end-to-end (selection, legend, styling).
+BUILTIN_EDGE_TYPES = ("api", "stream", "event", "data", "control", "ipc")
+
 
 
 class StepKind(Enum):
@@ -115,7 +114,7 @@ class Edge:
     """A directed relationship between two model nodes."""
     source: str          # node id (or "node.field_id" for field-qualified)
     target: str          # node id (or "node.field_id" for field-qualified)
-    type: EdgeType = EdgeType.API
+    type: str = "api"     # built-in or custom (style-block) edge type name
     label: str = ""
     protocol: str = ""
     style: str = ""
@@ -190,7 +189,8 @@ class StyleRule:
     font_color: str = ""
     font_size: int = 0
     shape: str = ""        # rectangle (default) | person | cylinder | diamond
-    style: str = ""        # dashed | dotted | solid
+    stroke_width: int = 0
+    stroke_dash: str = ""    # "" | "6,3" | "2,2"
 
 
 @dataclass
@@ -331,7 +331,7 @@ class InstanceSpec:
 class SelectClause:
     """Which model entities to include in a view, and how."""
     node_ids: list[str] = field(default_factory=list)
-    edge_types: list[EdgeType] = field(default_factory=list)  # empty = all
+    edge_types: list[str] = field(default_factory=list)  # empty = all
     environment: str = ""
     collapse: list[str] = field(default_factory=list)   # node ids to close
     expand: list[str] = field(default_factory=list)     # node ids to open

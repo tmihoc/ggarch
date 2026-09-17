@@ -15,6 +15,7 @@ from __future__ import annotations
 from ggarch.errors import ValidationError
 from ggarch.model import (
     Block,
+    BUILTIN_EDGE_TYPES,
     Constraint,
     FanConstraint,
     DiagramView,
@@ -115,9 +116,22 @@ def _validate_model(model: Model) -> None:
     for node in model.nodes:
         _collect_field_ids(node, field_ids)
 
+    # Non-built-in edge types are custom types: they must be styled in the
+    # model's style block (edge <name> { ... }) or they would silently
+    # fall back to default styling -- and a typo would go unnoticed.
+    styled_edge_types = set(model.style.edge_rules) | set(model.style.dark_edge_rules)
+    for edge in model.edges:
+        if (edge.type not in BUILTIN_EDGE_TYPES
+                and edge.type not in styled_edge_types):
+            raise ValidationError(
+                f"model {model.name!r}: edge {edge.source}->{edge.target} "
+                f"has unknown type {edge.type!r}",
+                hint="use a built-in type (api, stream, event, data, control, "
+                     "ipc) or declare edge " + edge.type + " { ... } in the "
+                     "style block",
+            )
+
     # Check pairing values -- the only supported expansion semantic
-    # beyond the default (zip inside, fan outside) is mesh (between
-    # copies). Anything else silently does nothing; reject it.
     for edge in model.edges:
         pairing = edge.properties.get("pairing", "")
         if pairing not in ("", "mesh"):

@@ -69,7 +69,7 @@ from ggarch.solver import solve
 from ggarch.validator import validate
 from ggarch.sequence_renderer import render_sequence
 from ggarch.state_renderer import render_state
-from ggarch.presets import get_preset, resolve_style
+from ggarch.presets import get_preset, resolve_edge_style, resolve_style
 from ggarch import __version__
 
 logger = logging.getLogger(__name__)
@@ -139,6 +139,53 @@ class GgarchDirective(SphinxDirective):
 # ---------------------------------------------------------------------------
 # SVG rendering helpers
 # ---------------------------------------------------------------------------
+_SOURCE_TOKEN: str | None = None
+
+
+def _source_cache_token(pkg_dir: str | None = None) -> str:
+    """Content hash of ggarch's own source files.
+
+    The SVG cache key covers the .ggarch code, view name, mtime and
+    __version__, but none of those change when ggarch's Python source is
+    edited -- the known "stale SVGs after renderer changes without a
+    version bump" issue. This token closes that gap: any edit to a module
+    in the package changes the token, hence the cache key.
+
+    Computed once per process for the real package dir (editable installs
+    point at the source tree). An explicit pkg_dir bypasses the cache,
+    which keeps the function testable.
+    """
+    global _SOURCE_TOKEN
+    if pkg_dir is None:
+        if _SOURCE_TOKEN is not None:
+            return _SOURCE_TOKEN
+        pkg_dir = os.path.dirname(os.path.abspath(__file__))
+    h = hashlib.sha1()
+    for fn in sorted(os.listdir(pkg_dir)):
+        if fn.endswith(".py"):
+            with open(os.path.join(pkg_dir, fn), "rb") as fh:
+                h.update(fn.encode())
+                h.update(fh.read())
+    token = h.hexdigest()
+    if _SOURCE_TOKEN is None and pkg_dir == os.path.dirname(os.path.abspath(__file__)):
+        _SOURCE_TOKEN = token
+    return token
+
+
+def _cache_basename(
+    code: str, name_key: str, suffix: str, mtime: str, extra: str = ""
+) -> str:
+    """Cache-file basename for one rendered SVG.
+
+    Key inputs: .ggarch code, view/sequence name, light/dark suffix,
+    source mtime, per-site extras (e.g. skip_legend) -- plus the ggarch
+    source token, so renderer edits invalidate the cache even without a
+    __version__ bump.
+    """
+    hashkey = (code + name_key + suffix + __version__ + mtime + extra
+               + _source_cache_token()).encode()
+    return f"ggarch-{hashlib.sha1(hashkey).hexdigest()}"  # noqa: S324
+
 
 def _render_pair(
     self: object,
@@ -211,8 +258,7 @@ def _render_pair(
         model = f.get_model(st.model_name)
         results = []
         for suffix, dark in (("light", False), ("dark", True)):
-            hashkey = (code + name_key + suffix + __version__ + mtime).encode()
-            basename = f"ggarch-{hashlib.sha1(hashkey).hexdigest()}"  # noqa: S324
+            basename = _cache_basename(code, name_key, suffix, mtime)
             fname = f"{basename}.svg"
             relfn = posixpath.join(self.builder.imgpath, fname)
             outfn = os.path.join(outdir, fname)
@@ -234,8 +280,7 @@ def _render_pair(
         model = f.get_model(seq.model_name)
         results = []
         for suffix, dark in (("light", False), ("dark", True)):
-            hashkey = (code + name_key + suffix + __version__ + mtime).encode()
-            basename = f"ggarch-{hashlib.sha1(hashkey).hexdigest()}"  # noqa: S324
+            basename = _cache_basename(code, name_key, suffix, mtime)
             fname = f"{basename}.svg"
             relfn = posixpath.join(self.builder.imgpath, fname)
             outfn = os.path.join(outdir, fname)
@@ -263,9 +308,8 @@ def _render_pair(
 
     results = []
     for suffix, dark in (("light", False), ("dark", True)):
-        hashkey = (code + (view_name or "") + suffix + __version__ + mtime
-                   + ("L" if skip_legend else "")).encode()
-        basename = f"ggarch-{hashlib.sha1(hashkey).hexdigest()}"  # noqa: S324
+        basename = _cache_basename(code, (view_name or ""), suffix, mtime,
+                                   ("L" if skip_legend else ""))
         fname = f"{basename}.svg"
         relfn = posixpath.join(self.builder.imgpath, fname)
         outfn = os.path.join(outdir, fname)
@@ -650,37 +694,16 @@ def _ensure_ggarch_assets(self: object) -> None:
 # Legend HTML extraction
 # ---------------------------------------------------------------------------
 
-# Node fill/stroke colours used for swatches — inline styles, no SVG overhead.
-_SWATCH_LIGHT: dict[str, tuple[str, str]] = {
-    "juju-software": ("#E95420", "#C74210"),
-    "charm":         ("#FFFFFF", "#E95420"),
-    "container":     ("#FFF3EE", "#E0956A"),
-    "external":      ("#F5F5F5", "#AAAAAA"),
-    "workload":      ("#F5F5F5", "#AAAAAA"),
-    "pebble":        ("#74AADC", "#4A90D9"),
-    "database":      ("#FFF8E1", "#F9A825"),
-    "record":        ("#FFFDE7", "#F9A825"),
-    "person":        ("#F0F0F0", "#777777"),
-    "infrastructure":("#E8F5E9", "#66BB6A"),
-    "unit":          ("#EEF2FF", "#9999AA"),
-}
+# Legend swatches resolve from the model's style block (merged onto the
+# preset) so custom node and edge types style correctly. Light mode only:
+# the HTML legend strip renders once, on the light page background.
 
-_EDGE_DASH_STYLE: dict[str, str] = {
-    "stream":  "6,3",
-    "event":   "6,3",
-    "ipc":     "2,2",
-    "default": "",
-}
+def _swatch(style) -> tuple[str, str]:
+    """(fill, stroke) for a resolved NodeStyle, with sensible defaults."""
+    if style is None:
+        return "#FFFFFF", "#AAAAAA"
+    return style.fill, style.stroke
 
-_EDGE_STROKE_LIGHT: dict[str, str] = {
-    "api":     "#555555",
-    "control": "#555555",
-    "stream":  "#555555",
-    "event":   "#888888",
-    "data":    "#F9A825",
-    "ipc":     "#888888",
-    "default": "#888888",
-}
 
 
 def _extract_legend_html(
@@ -711,14 +734,15 @@ def _extract_legend_html(
         rl = route(layout, model, diagram.select)
     except GgarchError:
         return ""
-
+    node_styles = resolve_style(model.style)
+    edge_styles = resolve_edge_style(model.style)
     node_types, edge_types = _legend_items(layout, rl.edges)
 
     items_html: list[str] = []
 
     for ntype in node_types:
         label = leg.labels.get(ntype, ntype)
-        fill, stroke = _SWATCH_LIGHT.get(ntype, ("#FFFFFF", "#AAAAAA"))
+        fill, stroke = _swatch(node_styles.get(ntype))
         swatch = (
             f'<span class="ggarch-legend-swatch" '
             f'style="background:{fill}; border:1.5px solid {stroke};"></span>'
@@ -729,15 +753,15 @@ def _extract_legend_html(
 
     for etype in edge_types:
         label  = leg.labels.get(etype, etype)
-        stroke = _EDGE_STROKE_LIGHT.get(etype, "#888888")
-        dash   = _EDGE_DASH_STYLE.get(etype, "")
+        es = edge_styles.get(etype, edge_styles.get("default"))
+        stroke, dash, width = es.stroke, es.stroke_dash, es.stroke_width
         # SVG line sample — inline, 28×12px viewBox.
         ah = 4  # arrowhead half-height
         arrow = (
             f'<svg xmlns="http://www.w3.org/2000/svg" width="28" height="12" '
             f'viewBox="0 0 28 12" class="ggarch-legend-line" style="overflow:visible">'
             f'<line x1="0" y1="6" x2="24" y2="6" '
-            f'stroke="{stroke}" stroke-width="1.5"'
+            f'stroke="{stroke}" stroke-width="{width or 1.5}"'
             + (f' stroke-dasharray="{dash}"' if dash else "")
             + f'/>'
             f'<polyline points="24 {6-ah} 28 6 24 {6+ah}" '

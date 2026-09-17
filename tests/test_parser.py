@@ -4,7 +4,6 @@ from ggarch import parse, validate
 from ggarch.errors import ParseError, ValidationError
 from ggarch.model import (
     Cardinality,
-    EdgeType,
     GgarchFile,
     Lifecycle,
     StepKind,
@@ -88,7 +87,7 @@ model "M" {
         src = MINIMAL_MODEL
         f = parse_valid(src)
         edge = f.models[0].edges[0]
-        assert edge.type == EdgeType.API
+        assert edge.type == "api"
         assert edge.source == "a"
         assert edge.target == "b"
 
@@ -106,7 +105,7 @@ model "M" {{
 }}
 """
             f = parse_valid(src)
-            assert f.models[0].edges[0].type == EdgeType(etype)
+            assert f.models[0].edges[0].type == etype
 
     def test_all_lifecycles_parse(self):
         for lc in ("persistent", "init", "ephemeral"):
@@ -612,3 +611,37 @@ diagram "D" from "M" {
         m = f.get_model(d.model_name)
         svg = render(route(solve(d, m), m, d.select), m, d)
         assert "rec: unit_rec" in svg
+
+
+class TestCustomEdgeTypeValidation:
+    """Unknown edge type names must be rejected, not silently styled default."""
+
+    def test_unstyled_custom_edge_type_rejected(self):
+        src = """\
+model "M" {
+  nodes { a [type: juju-software] b [type: external] }
+  edges { a -> b [type: aip] }
+}
+diagram "D" from "M" {
+  select { nodes: a b }
+  positions { a left-of b gap: 80 }
+}
+"""
+        f = parse(src)
+        with pytest.raises(ValidationError, match="aip"):
+            validate(f)
+
+    def test_styled_custom_edge_type_accepted(self):
+        src = """\
+model "M" {
+  style { edge cloud-call { stroke: "#8E44AD" } }
+  nodes { a [type: juju-software] b [type: external] }
+  edges { a -> b [type: cloud-call] }
+}
+diagram "D" from "M" {
+  select { nodes: a b edges: type cloud-call }
+  positions { a left-of b gap: 80 }
+}
+"""
+        f = parse(src)
+        validate(f)  # must not raise

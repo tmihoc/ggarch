@@ -312,3 +312,72 @@ class TestJujuRender:
         svg = pipeline(src, "Unit focus", dark=False)
         assert "Unit agent" in svg
         assert "Charm" in svg
+
+
+CUSTOM_EDGE = """\
+model "M" {
+  style {
+    extends: juju
+    edge cloud-call { stroke: "#8E44AD" stroke-width: 2 }
+    @dark { edge cloud-call { stroke: "#BB8FCE" } }
+  }
+  nodes {
+    a [type: juju-software, label: "Client"]
+    b [type: external, label: "Cloud"]
+  }
+  edges {
+    a -> b [type: cloud-call, label: "provision host"]
+  }
+}
+diagram "D" from "M" {
+  select { nodes: a b edges: type cloud-call }
+  positions { a left-of b gap: 120 }
+  annotations { legend [position: "bottom-right"] }
+}
+"""
+
+
+class TestCustomEdgeTypes:
+    """Regression: declared edge styles must reach the rendered edge.
+
+    Before the fix, custom edge types collapsed to the literal name
+    "custom" at parse time, so the style bank never matched and custom
+    edges silently rendered with default styling (SPEC open question 4
+    closed on a mechanism that did not exist for edges).
+    """
+
+    def test_custom_edge_type_keeps_name_end_to_end(self):
+        from ggarch.router import route
+        f = parse(CUSTOM_EDGE)
+        validate(f)
+        d = f.diagrams[0]
+        m = f.get_model("M")
+        rl = route(solve(d, m), m, d.select)
+        assert {e.edge_type for e in rl.edges} == {"cloud-call"}
+
+    def test_custom_edge_style_renders_light(self):
+        svg = pipeline(CUSTOM_EDGE)
+        assert "#8E44AD" in svg
+
+    def test_custom_edge_style_renders_dark(self):
+        svg = pipeline(CUSTOM_EDGE, dark=True)
+        assert "#BB8FCE" in svg
+
+    def test_custom_edge_style_renders_in_legend(self):
+        svg = pipeline(CUSTOM_EDGE)
+        # Legend line sample for the custom type uses the declared stroke.
+        assert "#8E44AD" in svg.split('id="ggarch-annotations"')[1]
+
+    def test_edge_type_filter_is_exact_for_custom_names(self):
+        from ggarch.router import route
+        src = CUSTOM_EDGE.replace(
+            "edges {\n    a -> b [type: cloud-call, label: \"provision host\"]\n  }",
+            "edges {\n    a -> b [type: cloud-call, label: \"provision host\"]\n"
+            "    a -> b [type: api, label: \"rpc\"]\n  }",
+        )
+        f = parse(src)
+        validate(f)
+        d = f.diagrams[0]
+        m = f.get_model("M")
+        rl = route(solve(d, m), m, d.select)
+        assert {e.edge_type for e in rl.edges} == {"cloud-call"}
