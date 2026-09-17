@@ -374,7 +374,8 @@ class AnnotationBox:
     label: str = ""
     style: str = "dashed"
     color: str = ""
-    label_position: str = "top"  # top | bottom | left | right
+    label_position: str = "top"   # top | bottom | left | right | inside-bottom | inside-top
+    padding: int = 10             # px of space around the bounding rect on all sides
 
 
 @dataclass

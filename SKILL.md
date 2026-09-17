@@ -308,30 +308,39 @@ annotations {
 ```
 
 The box is layout-transparent: it does not affect constraint solving.
+The canvas expands automatically to fit boxes that extend beyond node bounds.
 
-**Label placement** -- `label-position` controls where the label appears
-relative to the box. The label is always placed *outside* the box edge,
-14px clear of it:
+**Padding** -- `padding` sets the space (px) between the bounding rect of the
+annotated nodes and the box edge on all sides. Default is 10. Increase it to
+make the box extend visually beyond the nodes it encloses -- useful when the
+box needs to cross container walls or leave room for the label inside.
+
+**Label placement** -- `label-position` controls where the label appears.
+Outside positions place it 14px clear of the box edge. Inside positions
+reserve space within the box and place the label in that reserved strip.
 
 | Value | Position |
 |---|---|
-| `top` | above the box (default) |
-| `bottom` | below the box |
-| `left` | left of the box, right-aligned toward it |
-| `right` | right of the box, left-aligned toward it |
+| `top` | outside, above the box (default) |
+| `bottom` | outside, below the box |
+| `left` | outside, left of the box |
+| `right` | outside, right of the box |
+| `inside-top` | inside, strip at the top |
+| `inside-bottom` | inside, strip at the bottom |
 
 ```
 annotations {
   box [nodes: "dqlite1 dqlite2 dqlite3",
-       label: "Raft replicaset",
+       label: "Raft replicaset (strongly consistent)",
        style: "dashed", color: "#888",
-       label-position: bottom]
+       padding: 30, label-position: inside-bottom]
 }
 ```
 
-Choose the position that avoids overlapping diagram content. `bottom` is
-safest when the annotated nodes sit in a row and content above them is
-dense. `top` (the default) works when there is clear space above the box.
+`inside-bottom` is the right choice when the annotated nodes sit in a row
+and the label should read as a caption for the whole region. `top` (the
+default) works when there is clear space above the box. `bottom` works when
+the label can live outside below the diagram content.
 
 ### Legend annotation
 

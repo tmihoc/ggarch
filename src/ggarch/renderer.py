@@ -261,6 +261,39 @@ def render(
     ox = MARGIN - bounds.x + left_extra
     oy = MARGIN - bounds.y + top_extra
 
+    # Expand canvas so annotation boxes that extend beyond node bounds are not clipped.
+    for ann in view.annotations:
+        if not isinstance(ann, AnnotationBox):
+            continue
+        br = _nodes_bounding_rect(ann.nodes, layout)
+        if br is None:
+            continue
+        pad = ann.padding if hasattr(ann, 'padding') else 10
+        pos = ann.label_position if hasattr(ann, 'label_position') else 'top'
+        LABEL_H = 26
+        pad_top    = pad + (LABEL_H if pos == 'inside-top'    else 0)
+        pad_bottom = pad + (LABEL_H if pos == 'inside-bottom' else 0)
+        # Box extents in diagram space (before ox/oy offset).
+        box_x1 = br.x - pad
+        box_y1 = br.y - pad_top
+        box_x2 = br.x + br.w + pad
+        box_y2 = br.y + br.h + pad_bottom
+        # Convert to SVG space and check overflow.
+        svg_x1 = box_x1 + ox
+        svg_y1 = box_y1 + oy
+        svg_x2 = box_x2 + ox
+        svg_y2 = box_y2 + oy
+        if svg_x1 < 0:
+            expand = -svg_x1
+            ox += expand; vw += expand
+        if svg_y1 < 0:
+            expand = -svg_y1
+            oy += expand; vh += expand
+        if svg_x2 > vw:
+            vw = svg_x2 + MARGIN
+        if svg_y2 > vh:
+            vh = svg_y2 + MARGIN
+
     bg = "#1E1E2E" if dark else "#FFFFFF"
     drawing = dw.Drawing(vw, vh, origin=(0, 0))
     drawing.append(dw.Rectangle(0, 0, vw, vh, fill=bg))
@@ -1009,12 +1042,25 @@ def _render_ann_box(
     dark: bool,
     edges: list | None = None,
 ) -> None:
-    pad = 10
+    pad = ann.padding if hasattr(ann, 'padding') else 10
+    pos = ann.label_position if hasattr(ann, 'label_position') else 'top'
+
+    # For inside-* positions, reserve extra bottom/top padding to hold the label.
+    LABEL_H = 26  # px reserved for the label line inside the box
+    pad_top    = pad
+    pad_bottom = pad
+    if pos == 'inside-bottom':
+        pad_bottom = pad + LABEL_H
+    elif pos == 'inside-top':
+        pad_top = pad + LABEL_H
+
     br = _nodes_bounding_rect(ann.nodes, layout)
     if br is None:
         return
-    x, y = br.x + ox - pad, br.y + oy - pad
-    w, h = br.w + pad * 2, br.h + pad * 2
+    x = br.x + ox - pad
+    y = br.y + oy - pad_top
+    w = br.w + pad * 2
+    h = br.h + pad_top + pad_bottom
     color = ann.color or ("#888888" if dark else "#666666")
     dash = "6,4" if ann.style == "dashed" else ""
 
@@ -1049,15 +1095,18 @@ def _render_ann_box(
         g.append(dw.Rectangle(x, y, w, h, **rect_kwargs))
 
     if ann.label:
-        pos = ann.label_position if hasattr(ann, 'label_position') else 'top'
-        if pos == 'bottom':
-            lx, ly, anchor = x + w / 2,    y + h + 14, "middle"
+        if pos == 'inside-bottom':
+            lx, ly, anchor = x + w / 2, y + h - LABEL_H / 2, "middle"
+        elif pos == 'inside-top':
+            lx, ly, anchor = x + w / 2, y + LABEL_H / 2,     "middle"
+        elif pos == 'bottom':
+            lx, ly, anchor = x + w / 2, y + h + 14,           "middle"
         elif pos == 'left':
-            lx, ly, anchor = x - 14,       y + h / 2,  "end"
+            lx, ly, anchor = x - 14,    y + h / 2,             "end"
         elif pos == 'right':
-            lx, ly, anchor = x + w + 14,   y + h / 2,  "start"
+            lx, ly, anchor = x + w + 14, y + h / 2,            "start"
         else:  # top (default)
-            lx, ly, anchor = x + w / 2,    y - 14,     "middle"
+            lx, ly, anchor = x + w / 2, y - 14,                "middle"
         g.append(dw.Text(
             ann.label, 11, lx, ly,
             font_family=ANNOTATION_FONT,
