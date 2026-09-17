@@ -865,6 +865,27 @@ Mermaid, PlantUML, and D2's ELK backend all run global optimisers that
 trade spatial intent for crossing minimisation. The author can nudge but not
 guarantee. D2's `near` keyword is a hint, not a constraint.
 
+**Solver invariants (0.24.1, found while authoring the controller worker
+tree).** Three behaviours an author must know, one fixed from friction
+evidence:
+
+- The first node in a view's `select` is anchored at (0, 0) with WEAK
+  priority — the layout's origin. Make it the intended top-left node.
+- Leaf node width and height are pinned at their natural (label-derived)
+  size with STRONG priority. Before 0.24.1 width was unpinned: when the
+  anchored first node also carried a required `align-centre`, the free
+  width variable silently absorbed the conflict and the node ballooned to
+  twice its centre offset. Three committed juju2 views had silently
+  ballooned boxes (e.g. "Worker tree (machine cloud)"'s controller node
+  at 197.6px for a 104px label) before this was found.
+- Label-gap resolution is pair-local, not transitive: a labelled edge
+  whose endpoints have no *directly declared* spatial constraint (even if
+  they are linked through a chain) gets both-direction horizontal STRONG
+  separation, which can displace the layout sideways. Authoring rule:
+  declare a direct `left-of`/`above` between the endpoints of every
+  labelled edge that skips a rung (e.g. domain-services -> db-accessor
+  in a spine chain).
+
 ---
 
 ### 3. Typed edges (semantic)

@@ -498,3 +498,44 @@ diagram "D" from "M" {
         validate(f)
         d = f.diagrams[0]
         assert any(hasattr(c, "members") for c in d.constraints)
+
+
+class TestLeafWidthPin:
+    """Regression (0.24.1): anchored first node + align-centre must not
+    balloon the node's width.
+
+    The origin anchor pins the first selected node's x at 0 (weak). If that
+    node is also align-centre'd to a partner, the conflict was silently
+    absorbed by the free width variable — the node rendered at twice its
+    centre offset (e.g. 321.6px for a 147.2px label). Leaf width is now
+    pinned at natural size with STRONG priority, mirroring the existing
+    height pin.
+    """
+
+    def test_anchored_first_node_keeps_natural_width(self):
+        src = """\
+model "M" {
+  nodes {
+    top [type: juju-software, label: "Short"]
+    wide [type: juju-software, label: "A considerably wider label"]
+  }
+  edges { top -> wide [type: control, label: "depends on"] }
+}
+diagram "D" from "M" {
+  select { nodes: top wide }
+  positions {
+    top above wide gap: 60
+    top align-centre wide
+  }
+}
+"""
+        f = parse(src)
+        validate(f)
+        layout = solve(f.diagrams[0], f.get_model("M"))
+        top = layout.find("top")
+        assert top is not None
+        # Natural width for a 5-char label is far below the ballooned
+        # 2x-centre value; assert it stays under a generous bound.
+        assert top.rect.w < 120, (
+            f"anchored node ballooned: w={top.rect.w:.1f}"
+        )

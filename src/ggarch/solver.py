@@ -261,6 +261,10 @@ def _add_min_size_for_node(
     # doesn't cause unbounded height growth.
     if not is_container and not collapsed:
         solver.addConstraint((v.h == min_h) | "strong")
+        # Same for width: without it, the origin anchor's weak x==0 can
+        # conflict with a required align-centre and the free width variable
+        # silently absorbs the error (nodes balloon to 2x their centre).
+        solver.addConstraint((v.w == min_w) | "strong")
 
     if not collapsed:
         for child in node.children:
