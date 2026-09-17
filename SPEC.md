@@ -106,8 +106,8 @@ inline (Mermaid-style, with all nodes declared locally in the view) or
 fully abstracted into a shared model with all views derived from it, or
 anything in between. Inline diagrams trade the correctness guarantees for
 zero coupling; that is the author's explicit choice. The tool should make
-both ends of the spectrum, and the middle, equally first-class -- not
-penalise the inline path, and not obscure the model path.
+both ends of the spectrum, and the middle, equally first-class, with the
+inline path and the model path treated alike.
 
 ---
 
@@ -243,8 +243,8 @@ minimal plugin protocol (e.g. entry_points `ggarch.presets`, `ggarch.icons`,
 
 ggarch's visual grammar follows the Grammar of Graphics principle: each visual
 channel (shape, colour, size) encodes one orthogonal dimension of meaning.
-Nothing is decorated for its own sake; every visual element is semantically
-load-bearing.
+Every visual element is semantically load-bearing; nothing decorates for its
+own sake.
 
 **Current state:** colour already encodes ownership/provenance cleanly (Juju
 orange, workload blue, external gray, charm white+orange border). Shape encodes
@@ -254,9 +254,9 @@ same margin so the constraint solver's geometry is honest for every type.
 
 **Decisions made:**
 
-- Workload nodes use `external` styling (gray), not a distinct blue. Blue added
-  no semantic information orthogonal to what colour was already encoding and
-  created visual noise.
+- Workload nodes use `external` styling (gray), not a distinct blue. The
+  rejected blue duplicated what colour already encoded and added only visual
+  noise.
 - Person nodes are a rounded rect with a small head+shoulders badge in the
   top-right corner. The badge is the type indicator; the label is centred
   inside the box. Same bounding-box convention as every other shape.

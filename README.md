@@ -1,49 +1,73 @@
 # ggarch
 
-**Architecture diagrams as code, expressive and on-brand.**
+**Architecture diagrams as code -- branding, expressive power, and maintainability
+together. Inspired by the Grammar of Graphics (ggplot2), Mermaid's sequence
+diagrams, and Structurizr's model-driven approach.**
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![Version: 0.20.8](https://img.shields.io/badge/version-0.20.8-orange.svg)](SPEC.md)
 
-> **The problem:** Diagrams-as-code tools are maintainable but limited --
-> layout overrides your spatial intent, edges carry no semantic meaning,
-> every diagram is a separate file that drifts from the rest, and branding
-> is an afterthought. Tools with genuine expressive power (Excalidraw,
-> hand-tuned SVG) require manual drawing: slow, error-prone, and resistant
-> to AI assistance.
->
-> **The fix:** A grammar that hits all three. Looks right: Juju/Canonical
-> branding out of the box (Ubuntu font, Juju orange, light and dark themes),
-> with a style grammar designed for customisation. Says what you mean:
-> constraint layout, typed edges, lifecycle, one model shared by every view.
-> Stays current: plain text, AI-writable, rename a node once and it
-> propagates everywhere.
+Existing architecture diagram tools make you choose between branding, expressive
+power, and maintainability. You can have one or two, but rarely all three.
+ggarch aims to support all three.
 
 See [COMPARISON.md](COMPARISON.md) for a detailed comparison with Mermaid,
 D2, Graphviz, PlantUML, Structurizr, and Ilograph.
 
 ## What you get
 
-1. **Branding** -- ships with Juju/Canonical branding: Ubuntu font, Juju
-   orange, light and dark themes. A coherent visual grammar where colour
-   encodes ownership and dash pattern encodes edge semantics. The `style`
-   block lets any project override colours and shapes without touching
-   ggarch itself; a clean API for registering named presets and swapping
-   fonts is on the roadmap.
-2. **Expressive power** -- nodes with types, lifecycle (`init`, `persistent`,
-   `ephemeral`), cardinality, and scope; typed edges (`api`, `stream`,
-   `event`, `control`, `ipc`, `data`); constraint-based layout (`left-of`,
-   `above`, `fan`, `gap:`) solved by Cassowary; topology, sequence, ER,
-   class, and state machine views; annotations that cut across the
-   containment hierarchy, layout-transparent.
-3. **Maintainability** -- declare your system once in a model; derive every
-   diagram from it. Rename a node once; it updates in every view. Plain text:
-   diffs cleanly, reviews in a PR, and an AI coding assistant can write and
-   revise it fluently.
+In its first phase, ggarch is developed to serve [Juju](https://juju.is)
+architecture documentation. The branding defaults and diagram vocabulary
+reflect that. The design is general; other projects can override the preset
+and extend the type system without touching ggarch itself.
 
-A **Sphinx extension** ships with the package: drop `{ggarch}` directives
-into your docs and diagrams rebuild on source changes, with light and dark
-themes and an optional expand modal.
+### Branding
+
+- Ubuntu font
+- Juju orange and Canonical palette, light and dark themes
+- Semantic visual grammar: colour encodes ownership, dash pattern encodes
+  edge semantics (solid = sync, dashed = async/watch, dotted = IPC)
+- `style` block for per-project colour and shape overrides
+- Preset API on the roadmap: `ggarch.register_preset("myco", ...)` without
+  patching the package
+
+### Expressive power
+
+- Typed nodes: `juju-software`, `charm`, `workload`, `container`, `database`,
+  `record`, `class`, `person`, `external` -- plus any custom type
+- Lifecycle: `persistent` (solid border), `init` (dashed), `ephemeral`
+  (dotted)
+- Cardinality: `one-per-unit`, `one-per-model`, etc. -- declare a type once,
+  render as one archetype or N labelled instances
+- Typed edges: `api`, `stream`, `event`, `control`, `ipc`, `data` -- each
+  with a defined meaning and a consistent visual encoding
+- Declarative placement: `left-of`, `above`, `fan`, `gap:`, `align-middle`
+  -- constraints solved by Cassowary, not inferred from edge structure.
+  Spatial intent is guaranteed, not overridden by a layout engine.
+- Multiple view types from one model: topology, sequence, ER/schema, class,
+  state machine
+- Cross-cutting annotations: `box` regions that span the containment
+  hierarchy without distorting layout
+- Selective zoom: `collapse` and `expand` per node in each view -- mix
+  levels of detail in one diagram
+- Abstraction relationships: `abstracts:` declares that a concrete node
+  realises an abstract one; edges stay valid across zoom levels
+- Scope chips: `scope: "cloud/model"` renders a coloured provenance tag on
+  each node
+
+### Maintainability
+
+- One model, many views: declare every node and edge once; all views draw
+  from it. Rename a node once and it updates everywhere.
+- Plain text: diffs cleanly, reviews in a PR, AI coding assistants can write
+  and revise it fluently
+- Validator: catches unknown ids, duplicate ids, constraint conflicts, and
+  behaviour steps referencing abstract ids with no concrete realisation
+- **Sphinx extension**: drop `{ggarch}` directives into any `.md` or `.rst`
+  file; diagrams rebuild on source changes, with light and dark themes,
+  slideshow carousels, and an expand modal
+- SVG output: sanitised, no network calls at build time, no Node.js, runs
+  in CI without special tooling
 
 ## Sneak peek
 

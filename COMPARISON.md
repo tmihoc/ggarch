@@ -5,8 +5,8 @@ diagrams-as-code tools. Freehand tools are a different trade-off: they can look
 exactly as you want and draw anything, but they are manual by design — no text
 source, no diffs, no rename propagation, no AI assistance. If your use case is
 a one-off whiteboard sketch or a polished marketing diagram that will never
-need updating, a freehand tool is the right answer and ggarch is not competing
-for it. If your use case is architecture documentation that lives in a
+need updating, a freehand tool is the right answer and ggarch competes for the other
+case. If your use case is architecture documentation that lives in a
 repository and must stay current as the system evolves, you need DaC, and the
 comparison below is the one that matters.
 
@@ -17,29 +17,27 @@ comparison below is the one that matters.
 Three properties determine whether a DaC tool is adequate for serious
 architecture documentation:
 
-- **Branding** -- does the output look intentional? Is there a coherent
-  visual grammar where colour, shape, and line style encode meaning rather
-  than just decorate? Can you match your project's identity without fighting
-  the tool?
+- **Branding** -- does the output look intentional? Can you match your
+  project's identity -- colour palette, font, light/dark theme -- without
+  fighting the tool?
 
 - **Expressive power** -- can the tool communicate what actually needs
   communicating? This is broader than "which node types are supported." It
-  includes layout (where you place things says something -- putting Charmhub
-  below the controller and apps to the right is an argument about
-  architectural role, not an aesthetic choice), semantic edge types (a dashed
-  arrow that means "watch" communicates differently from a solid arrow that
-  means "call"), conceptual vocabulary (lifecycle, cardinality, abstraction
-  relationships, intent vs execution, runtime vs persistence), and
-  presentation (slideshows, pacing, what you show when). How you embed
+  includes a coherent visual grammar where colour, shape, and line style
+  encode meaning; layout (where you place things says something -- putting
+  Charmhub below the controller and apps to the right is an argument about
+  architectural role, not an aesthetic choice); semantic edge types (a
+  dashed arrow that means "watch" communicates differently from a solid
+  arrow that means "call"); conceptual vocabulary (lifecycle, cardinality,
+  abstraction relationships, intent vs execution, runtime vs persistence);
+  and presentation (slideshows, pacing, what you show when). How you embed
   meaning matters as much as what you declare.
 
 - **Maintainability** -- all DaC tools are text-based; that is the baseline
   and is assumed. The meaningful bar is higher: does a rename propagate to
   every diagram automatically? Is there a single source of truth that the
-  validator enforces? Can diagrams not silently drift out of sync with each
-  other and with the system they describe? Tools that require re-declaring
-  every entity in every diagram are maintainable in the trivial sense but
-  not in the sense that matters at scale.
+  validator enforces? Can diagrams stay in sync with each other and with the
+  system they describe?
 
 | Tool | Branding | Expressive power | Maintainability |
 |---|:---:|:---:|:---:|
@@ -68,11 +66,11 @@ and expressive power, no existing tool comes close to combining both.
 Mermaid is GitHub-native and AI-fluent. It is the right default for simple
 diagrams that don't need to grow. The problems appear when you push it:
 
-**Branding:** Mermaid has light and dark themes; the visual grammar ends
-there. Every edge is a line; colour and dash are purely decorative. A reader
+**Branding:** Mermaid has light and dark themes and nothing else; every edge
+is a line, and colour and dash are decorative. A reader
 looking at the diagram sees arrows and boxes -- the semantic distinction
 between a synchronous API call, an async notification, and a process
-lifecycle event lives only in labels. Labels carry all the weight, and labels
+lifecycle event falls to the labels. Labels carry all the weight, and labels
 clutter small diagrams.
 
 **Expressive power:** Layout is graph-based; Mermaid decides where nodes go,
@@ -209,12 +207,12 @@ produce different output).
 - The C4 hierarchy is rigid: Person → Software System → Container →
   Component. Every element must fit one of these four levels. A Kubernetes
   pod, a machine agent, a database record, and a charm process resist the
-  mapping -- you either force them into a level where they don't belong or
-  leave important distinctions unmodelled.
+  mapping -- you either force them into the wrong
+  level or leave important distinctions unmodelled.
 - Layout is auto-generated; Structurizr gives very limited positional control.
 - Dynamic views (the sequence equivalent) cannot include infrastructure nodes
   (deployment nodes) as participants. A bootstrap sequence that involves the
-  K8s API is not expressible.
+  K8s API falls outside the model's vocabulary.
 - No lifecycle or cardinality on elements.
 - No abstraction relationships (the C4 hierarchy encodes abstraction
   structurally, but cannot express that two elements at different levels
@@ -226,7 +224,7 @@ catches uses of undeclared elements. This is what maintainability actually
 means for architecture documentation.
 
 **The gap:** Structurizr is the right architecture -- shared model, views --
-but the C4 type hierarchy is too prescriptive for systems that don't fit the
+but the C4 type hierarchy is too prescriptive for systems outside the
 Person/System/Container/Component ladder. When the model is the right shape,
 Structurizr is good. Outside that shape, you either distort the system to fit
 C4 or reach for something else.
@@ -276,7 +274,7 @@ only tool that combines both.
 The specific capabilities ggarch has that no existing tool has:
 
 **Constraint-based layout.** `a left-of b gap: 60` is a constraint, not a
-hint. Cassowary solves it. Adding a new node does not move the existing ones.
+hint. Cassowary solves it. Adding a new node leaves the existing ones in place.
 The spatial story you intend to tell is the spatial story the reader sees.
 Where you place things says something -- Charmhub below the controller and
 apps fanned to the right is an argument about architectural role, not an
