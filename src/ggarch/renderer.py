@@ -23,6 +23,7 @@ drawsvg's own XML escaping before being written into text elements.
 from __future__ import annotations
 
 import math
+import zlib
 from typing import Sequence
 
 import drawsvg as dw
@@ -432,6 +433,8 @@ def _render_node_content(
     scope = node.properties.get("scope", "")
     if scope:
         _render_scope_chip(g, x, y, w, h, scope, dark)
+    if node.records:
+        _render_records_chip(g, x, y, w, h, node.records, dark)
 
 
 def _lifecycle_stroke_dash(lifecycle: str) -> str:
@@ -760,9 +763,9 @@ _SCOPE_PALETTE_DARK = [
 
 
 def _scope_color(scope: str, dark: bool = False) -> str:
-    """Derive a stable color for a scope string from the palette."""
+    """Derive a stable, deterministic color for a scope string."""
     palette = _SCOPE_PALETTE_DARK if dark else _SCOPE_PALETTE_LIGHT
-    idx = hash(scope) % len(palette)
+    idx = zlib.crc32(scope.encode()) % len(palette)
     return palette[idx]
 
 
@@ -781,6 +784,27 @@ def _render_scope_chip(
     g.append(dw.Rectangle(px, py, pw, ph,
                            fill=color, stroke="none", rx=3, ry=3))
     g.append(dw.Text(scope, 6, px + pw / 2, py + ph / 2,
+                     font_family=LABEL_FONT,
+                     fill="#FFFFFF",
+                     text_anchor="middle",
+                     dominant_baseline="central"))
+
+def _render_records_chip(
+    g: dw.Group,
+    x: float, y: float, w: float, h: float,
+    records: str,
+    dark: bool = False,
+) -> None:
+    """Render a small amber records pill at the bottom-left of a node."""
+    # Amber ties the chip to the record type grammar (amber tables).
+    fill = "#D89B3A" if dark else "#C4820F"
+    text = f"rec: {records}"
+    ph, pw = 7, min(len(text) * 4.5 + 6, w * 0.8)
+    px = x + 3
+    py = y + h - ph - 3
+    g.append(dw.Rectangle(px, py, pw, ph,
+                          fill=fill, stroke="none", rx=3, ry=3))
+    g.append(dw.Text(text, 6, px + pw / 2, py + ph / 2,
                      font_family=LABEL_FONT,
                      fill="#FFFFFF",
                      text_anchor="middle",

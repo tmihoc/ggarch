@@ -52,6 +52,7 @@ class SolvedNode:
     fields: list = field(default_factory=list)  # list[NodeField]
     url: str = ""
     properties: dict = field(default_factory=dict)
+    records: str = ""   # backing record id, for the renderer's records chip
 
     def find(self, node_id: str) -> SolvedNode | None:
         if self.id == node_id:

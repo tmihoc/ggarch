@@ -64,6 +64,24 @@ def _collect_field_ids(node, out: dict[str, set[str]]) -> None:
     for child in node.children:
         _collect_field_ids(child, out)
 
+def _validate_records(node, model: Model) -> None:
+    """A records: target must be a declared record-type node."""
+    if node.records:
+        target = model.find_node(node.records)
+        if target is None:
+            raise ValidationError(
+                f"model {model.name!r}: records target {node.records!r} "
+                f"of node {node.id!r} is not declared",
+            )
+        if target.type != "record":
+            raise ValidationError(
+                f"model {model.name!r}: records target {node.records!r} "
+                f"of node {node.id!r} is not a record-type node "
+                f"(type {target.type!r})",
+            )
+    for child in node.children:
+        _validate_records(child, model)
+
 def _validate_model(model: Model) -> None:
     node_ids  = model.all_node_ids()
     valid_ids = model.all_valid_ids()
@@ -88,13 +106,25 @@ def _validate_model(model: Model) -> None:
                     f"concrete node {concrete_id!r} for abstract {abstract_id!r} is not declared",
                 )
 
+    # Check records: targets — must be declared record-type nodes.
+    for node in model.nodes:
+        _validate_records(node, model)
+
     # Build field index: node_id -> set of field ids (for qualified endpoint checks).
     field_ids: dict[str, set[str]] = {}
     for node in model.nodes:
         _collect_field_ids(node, field_ids)
 
-    # Check edge endpoints.
+    # Check pairing values -- the only supported expansion semantic
+    # beyond the default (zip inside, fan outside) is mesh (between
+    # copies). Anything else silently does nothing; reject it.
     for edge in model.edges:
+        pairing = edge.properties.get("pairing", "")
+        if pairing not in ("", "mesh"):
+            raise ValidationError(
+                f"model {model.name!r}: edge {edge.source}->{edge.target}: "
+                f"unknown pairing {pairing!r}; expected mesh",
+            )
         for ep_node, ep_field, role in (
             (edge.source, edge.source_field, "source"),
             (edge.target, edge.target_field, "target"),

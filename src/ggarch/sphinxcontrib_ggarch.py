@@ -33,8 +33,9 @@ as the reader navigates. Both are optional independently.
 
 Options
 -------
-:view:            Name of any view to render -- diagram or sequence.
-                  Searches diagrams first, then sequences.
+:view:            Name of any view to render -- diagram, sequence, or
+                  state machine. Searches diagrams first, then
+                  sequences, then states.
 :sequence:        Alias for :view:; kept for backwards compatibility.
 :slides:          Pipe-separated list of view/sequence names for a slideshow.
 :slide-captions:  Pipe-separated captions matching :slides:; updated on nav.
@@ -67,6 +68,7 @@ from ggarch.router import route
 from ggarch.solver import solve
 from ggarch.validator import validate
 from ggarch.sequence_renderer import render_sequence
+from ggarch.state_renderer import render_state
 from ggarch.presets import get_preset, resolve_style
 from ggarch import __version__
 
@@ -148,8 +150,8 @@ def _render_pair(
 ) -> tuple[tuple[str, str] | None, tuple[str, str] | None]:
     """Compile one view/sequence to a light+dark SVG pair.
 
-    view_name is tried against diagrams first, then sequences.
-    sequence_name is kept for backwards compatibility and slideshow internals.
+    view_name is tried against diagrams first, then sequences, then
+    states. sequence_name is kept for backwards compatibility.
 
     Returns ((relfn, outfn), (relfn, outfn)) or (None, None) on error.
     """
@@ -168,9 +170,10 @@ def _render_pair(
         return None, None
 
     # Resolve the name: explicit sequence_name wins; otherwise try view_name
-    # against diagrams first, then sequences.
+    # against diagrams first, then sequences, then states.
     resolved_sequence = None
     resolved_diagram  = None
+    resolved_state    = None
 
     if sequence_name:
         resolved_sequence = next((s for s in f.sequences if s.name == sequence_name), None)
@@ -182,18 +185,48 @@ def _render_pair(
         if resolved_diagram is None:
             resolved_sequence = next((s for s in f.sequences if s.name == view_name), None)
         if resolved_diagram is None and resolved_sequence is None:
-            avail = [d.name for d in f.diagrams] + [s.name for s in f.sequences]
+            resolved_state = next((st for st in f.states if st.name == view_name), None)
+        if resolved_diagram is None and resolved_sequence is None and resolved_state is None:
+            avail = ([d.name for d in f.diagrams]
+                     + [s.name for s in f.sequences]
+                     + [st.name for st in f.states])
             logger.warning(f"ggarch: view {view_name!r} not found; available: {avail}")
             return None, None
     else:
-        # No name given: fall back to first diagram, then first sequence.
+        # No name given: fall back to first diagram, then first sequence,
+        # then first state view.
         if f.diagrams:
             resolved_diagram = f.diagrams[0]
         elif f.sequences:
             resolved_sequence = f.sequences[0]
+        elif f.states:
+            resolved_state = f.states[0]
         else:
             logger.warning("ggarch: no views in source")
             return None, None
+
+    if resolved_state is not None:
+        st = resolved_state
+        name_key = view_name or st.name
+        model = f.get_model(st.model_name)
+        results = []
+        for suffix, dark in (("light", False), ("dark", True)):
+            hashkey = (code + name_key + suffix + __version__ + mtime).encode()
+            basename = f"ggarch-{hashlib.sha1(hashkey).hexdigest()}"  # noqa: S324
+            fname = f"{basename}.svg"
+            relfn = posixpath.join(self.builder.imgpath, fname)
+            outfn = os.path.join(outdir, fname)
+            if not os.path.isfile(outfn):
+                try:
+                    svg = render_state(st, model, dark=dark)
+                    with open(outfn, "w", encoding="utf-8") as fh:
+                        fh.write(svg)
+                except Exception as exc:
+                    logger.warning(f"ggarch state render error ({suffix}): {exc}")
+                    results.append(None)
+                    continue
+            results.append((relfn, outfn))
+        return tuple(results)  # type: ignore[return-value]
 
     if resolved_sequence is not None:
         seq = resolved_sequence

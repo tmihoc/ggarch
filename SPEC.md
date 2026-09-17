@@ -3,9 +3,24 @@
 A Grammar of Architecture Diagrams.
 
 A text-based, constraint-layout diagram tool for architecture documentation,
-inspired by the Grammar of Graphics (Wilkinson 2005) and its R implementation
-ggplot2. Like ggplot2, ggarch separates a diagram into independent, composable
-layers that are declared separately and rendered in a defined order.
+inspired by the Grammar of Graphics (Wilkinson 2005) and its R
+implementation ggplot2. ggarch adopts two of the Grammar of Graphics'
+commitments and inverts the third:
+
+- **Separation into composable layers** -- independent concerns declared
+  separately and rendered in a defined order (select, positions, routing,
+  annotations, style).
+- **One channel, one meaning** -- each visual channel encodes exactly one
+  semantic dimension of the model; nothing decorates for its own sake
+  (see "Visual grammar and shape ontology").
+- **Inverted: position derived from data.** In the Grammar of Graphics,
+  position is an aesthetic -- x and y are mappings from data, and the
+  interesting design question is the scale. In ggarch, position is
+  *authored content*: the spatial arrangement of a diagram is part of what
+  it says, not a rendering decision delegated to a layout engine. Layout is
+  declarative (Cassowary-solved constraints); auto-layout is a default for
+  the cases where any coherent arrangement would do, not a claim of
+  authority over arrangement. See Motivation, "Position is content".
 
 **Licence: Apache-2.0.** ggarch is an open source project. Apache-2.0 is
 Canonical's standard licence for infrastructure and developer tooling (Juju,
@@ -53,15 +68,25 @@ text edits. This makes maintainability newly achievable *without* sacrificing
 expressive power, provided the tool itself is expressive enough. ggarch exists
 because no existing tool meets both constraints simultaneously.
 
-The current state of ggarch: it has reached full expressive parity with the
-best existing docs-as-code tools, and exceeds them on several dimensions
-(Cassowary constraint layout, first-class lifecycle and cardinality, typed
-edges, single-model multi-view consistency, deployment environment resolution,
-state machine views). The next design challenge is **expressive power for
-distributed systems specifically** -- identifying the diagram patterns that
-genuinely communicate system architecture to readers who need to understand a
-complex, distributed, event-driven system, and ensuring those patterns are
-first-class ggarch citizens.
+The current state of ggarch: it has reached full expressive parity with
+the best existing docs-as-code tools, and exceeds them on several
+dimensions (Cassowary constraint layout, first-class lifecycle and
+cardinality, typed edges, single-model multi-view consistency,
+deployment environment resolution, state machine views). This parity is
+a floor, not a measure of adequacy: there is no golden standard for
+diagramming a distributed stateful system -- the field has never
+produced one, and every existing tool has failed the domain in a
+different way. What ggarch's flagship use case (Juju's architecture
+documentation) actually needs is therefore unknown, and can only be
+discovered by authoring the real documents; the comparison table below
+measures parity with existing tools, not sufficiency for the domain.
+The Juju architecture doc work is the requirements-discovery instrument
+-- which is why the two projects are developed together. The next design
+challenge is **expressive power for distributed systems specifically**
+-- identifying the diagram patterns that genuinely communicate system
+architecture to readers who need to understand a complex, distributed,
+event-driven system, and ensuring those patterns are first-class ggarch
+citizens.
 
 The third design challenge is **branding**. ggarch already has a foundation
 here -- Ubuntu font and Juju orange are wired into the preset colour grammar,
@@ -246,6 +271,10 @@ channel (shape, colour, size) encodes one orthogonal dimension of meaning.
 Every visual element is semantically load-bearing; nothing decorates for its
 own sake.
 
+Position is deliberately excluded from this list of channels: position is
+content (an authored spatial argument), not a channel encoding a model
+dimension. See Motivation, "Position is content".
+
 **Current state:** colour already encodes ownership/provenance cleanly (Juju
 orange, workload blue, external gray, charm white+orange border). Shape encodes
 categorical entity type with a small honest vocabulary: rect (process/software),
@@ -281,9 +310,149 @@ vocabulary is useful: compute (machine, pod, VM), network (space, subnet,
 ingress, load balancer), storage (volume, bucket). These are orthogonal to
 the process/actor/storage categories above -- they describe the infrastructure
 a process runs on, not the process itself. The current `container` type
-conflates compute boundary with software container. A future `compute` type
-would separate them. The complete list of recurring infrastructure components
-worth standardising is an open design question.
+conflates compute boundary with software container; the rendering split
+(see "Relationships and renderings" below) removes the pressure by
+turning the compute boundary into a `deployed-on` edge and leaving
+`container` as pure style. The complete list of recurring infrastructure
+components worth standardising remains an open design question.
+
+### Relationships and renderings: one fact, many drawings
+
+*(Design direction -- nothing in this section is implemented yet. It
+generalises containment and scope, and restructures the two sections
+that follow.)*
+
+**The problem in one sentence.** Today, the only way to say "the unit
+agent runs on this machine" is to nest the agent inside the machine node
+in the `nodes` block. The relationship (a fact about the system) and one
+particular way of drawing it (a box inside a box) are welded together,
+once, in the model, for every view.
+
+**The idea in one sentence.** Facts live in the model as typed edges;
+each view decides how to draw them.
+
+**A worked example.** "This unit agent runs on that machine" is one
+fact. Three views may draw it three ways:
+
+- **Nesting** -- the agent box inside the machine box, in a deployment
+  view. Says: "these things form one locality; zoom in here."
+- **Arrow** -- a `deployed-on` edge in a control-flow view, drawn like
+  every other arrow, in a story where software reaching infrastructure
+  is causally load-bearing.
+- **Tag** -- a small chip on the unit node ("on: m3") in an overview
+  with thirty units. Says: "true, but don't stop the eye here."
+
+The fact never changed. What changed is the rhetoric -- the same
+authorial choice as bar order in a bar chart (see Motivation, "Position
+is content"):
+
+| Notation | Draws as | Says | Use when |
+|---|---|---|---|
+| long | containment | "one locality" | the grouping is the point |
+| medium | arrow | "load-bearing link" | the flow is the point |
+| short | tag | "true, but don't stop" | too many to draw |
+
+**Design rules.**
+
+1. **Nesting in the `nodes` block becomes sugar for an edge.**
+   `machine { unit_agent }` desugars to a `contains` edge at parse time.
+   The edge list stays the single source of truth; there is no second
+   way to say "runs on."
+2. **The nesting rendering requires N:1.** A box can be inside only
+   one box. A relationship may therefore be drawn as nesting only if,
+   in that view, each node has at most one container; the validator
+   checks this per view. `controller -> cloud` ("knows") is
+   many-to-many -- a cloud can be registered on several controllers --
+   so it can never nest; arrow or tag only. This rule is what C4 never
+   had, and it is why C4 needed a separate kingdom of deployment nodes
+   governed by different rules.
+3. **Each rendering declares its layout consequences.** Nesting
+   participates in the constraint solve (children are placed inside the
+   parent); arrows are routed around nodes; tags leave layout alone.
+   Like `group-by:` regions, renderings are drawn, never distorting.
+
+**What this does to node types.** Once containment is a rendering, the
+`container` type loses its last hidden meaning (see the infrastructure
+substrate TODO above). Types become pure style vocabulary -- which is
+what the free-form string into the style grammar already wanted to be.
+A node is a node: any node can contain, connect, and participate in
+behaviours; what varies is how a view draws it.
+
+**Edge labels obey the same principle.** "The unit agent runs the
+charm" is what the edge is called at the topology level; "exec
+dispatch" is what the same edge is called inside the hook execution
+sequence. The edge is the fact; the label, like the rendering, is a
+projection. See Open questions item 8.
+
+### Truth kinds and edge families
+
+A diagram tool for architecture documentation describes truths about a
+product. Those truths come in three kinds, and ggarch's artifact kinds
+line up with them:
+
+| Truth kind | Question it answers | Canonical home | Juju example |
+|---|---|---|---|
+| structural | what exists, what is part of what | records + associations | application has units; model on cloud |
+| interactional | what talks to what, over what wire | interaction edges | websocket, watcher, unix socket |
+| operational | what happens over time | behaviours | bootstrap, deploy, integrate, remove |
+
+This is the intent/persistence/execution triad at the tooling layer:
+structure is the persistence face; interaction and operation are the two
+halves of the execution face. It also gives "one model, many views" a
+semantic footing: each view kind is the canonical home of one truth
+kind. A data-model view is not a rival drawing of the system; it is the
+projection of the structural kind.
+
+**Two edge families, three truth kinds.** Associations (structural) and
+interactions (behavioral) obey different rules, so they are two
+families. The operational kind is not an edge family at all: it is a
+temporal ordering *over* edges -- behaviours traverse interaction
+edges, and record operations appear as steps. The family rule-sets:
+
+- **Associations**: multiplicity-bearing, direction-by-convention,
+  derivable from the schema's foreign keys. Eligible for the nesting
+  rendering, subject to the N:1 rule. Never carry a protocol.
+- **Interactions**: protocol-bearing (api, http, socket), sync/async
+  semantics, genuinely directional -- "client calls controller" is not
+  reversible typography. Never eligible for nesting. Never
+  multiplicity-bearing.
+
+The current grammar has one edge syntax with `type:` doing double duty;
+whether the split becomes syntactic is a spike question. Spike verdict
+(juju2): no -- the conceptual split plus `data` edges with multiplicity
+labels carried the full record spine; the families stay one syntax.
+
+**Association direction: FK vs semantic.** A foreign key is a column on
+the many side pointing at the one side -- the FK arrow always points
+child -> parent ("is part of"). Speech goes the other way: "an
+application *has* units" (parent -> child). Both are true; they answer
+different questions. A directed, labelled arrow forces a choice the
+underlying fact does not make, so association edges should be read from
+*multiplicity ends*, not arrowheads: the planned crow's-foot arrowheads
+(Phase 9) are what dissolves the direction problem -- the glyph sits on
+the many end, and either reading ("application has * units"
+left-to-right, "unit belongs to one application" right-to-left) is
+valid. Until the glyphs land, the convention is: draw in semantic
+direction, carry multiplicity in the label ("has 1..N").
+
+**The bridge must cover operations, not just entities.** Inspecting
+juju.ggarch's edges against the schema found a middle class:
+interactions whose *content* is structural. A watcher edge is a record
+*read* (a standing subscription to record changes); a flush edge is a
+*write*; a removal event triggers a life *transition*; Raft sync is
+*replication*. `records:` as a node-to-node edge does not cover these.
+Whether operations need grammar (edge attributes such as `watching:`)
+or annotation is open -- spike evidence.
+
+**Do not record-ify the wire.** The inverse failure mode: a websocket is
+not a record and never will be. The three-kind table is the guard:
+structure -> records, interaction -> edges, operation -> behaviours, and
+nothing crosses except through a declared bridge.
+
+Evidence caveat: this taxonomy generalises from one file (juju.ggarch).
+The classes are clean there, and any stateful distributed system should
+have schema, wires, and procedures -- but the juju2 spike is the test
+of whether the three kinds and their bridges survive real authoring.
 
 ### Runtime/persistence duality
 
@@ -311,17 +480,83 @@ formalised: **the record is the declared intent; the process is the
 realisation**. This is the intent/execution separation showing up at the data
 layer.
 
-**TODO: `records:` relationship.** Introduce a `records:` attribute on nodes,
-symmetric with `abstracts:` but on the persistence axis rather than the
-abstraction axis. Example: `unit_agent [records: "unit_rec"]` declares that the
-`unit_agent` node's runtime state is persisted as the `unit_rec` data model
-node. This relationship would:
-- Be declared in the model, not in views.
-- Allow topology views to optionally surface data-model links as annotations
-  or cross-references ("show me the persistence face of everything in this view").
-- Allow data-model views to optionally show which runtime entities write to each
-  record.
-- Be validated: a `records:` target must be a declared `record`-type node.
+**Why surface the persistence face at all?** Three reasons, each
+independent.
+
+*Records are part of the software, not an external thing.* In Juju the
+databases are not a neighbouring system the software talks to -- Dqlite
+is embedded in the controller process, and the workers are record-driven:
+a watcher is a standing request to be told when a record changes. A
+topology that shows only processes shows the actors but not what they
+know. It is half a picture of the software.
+
+*`juju status` is (mostly) the records, projected.* The one command every
+Juju user knows is largely a read-only projection of the model database
+-- but not entirely: `lost` units and `executing` agents are live
+connection state inferred by the controller, not stored rows, and
+machine/model status is derived, not declared. "Status = the persistence
+face" is a good teaching simplification, but a diagram built on it must
+not claim the identity -- it fails precisely where reconciliation is
+failing, which is when users look hardest. The bridge is real as an
+overlap, not an equality: if diagrams show software and records as two
+faces of one thing, the diagram and the command become two views of
+overlapping facts.
+
+*Multi-cloud and cross-model topology is record-shaped.* There is no
+unit-to-unit wire between two integrated models: the two controllers
+mediate -- the `external_controller` record exists precisely so the
+local controller can authenticate and connect to the remote one -- and
+each side's view of the other is maintained as records (`offer`,
+`offer_connection`, the model record's cloud foreign key). The runtime
+picture cannot draw the relationship itself; the record graph is the
+only view where it is first-class. A data-model view is therefore not
+schema documentation that happens to sit next to the architecture --
+for cross-model, cross-cloud, and multi-controller concerns, it *is* the
+architecture.
+
+**A visual consequence worth naming.** Because every record lives in a
+database inside the controller, a topology view that draws persistence
+faces gets the star topology for free -- every `records:` edge converges
+on the controller. "The database is the only place goal state lives"
+stops being a prose claim and becomes visible structure.
+
+**A design caveat.** Not every record is realised by a process.
+Deployment records (`unit`, `machine`) have runtime faces; charm
+declarations (`charm_relation`, `charm_action`) do not -- they are
+*read* by the machinery, not realised by it. The persistence axis has
+(at least) two edge semantics: realisation (`records:`) and read-access.
+Start with realisation; add read-access only when a diagram needs it --
+for example, the uniter reading charm declarations when dispatching.
+
+**Implemented (0.21.0): `records:` as a node attribute.** `records:
+"unit_rec"` on a runtime node links it to the record that backs it --
+declared in the model, never in views, on the persistence axis
+(`abstracts:` is its sibling on the abstraction axis). It delivers:
+- Let topology views optionally surface persistence links ("show me
+  the record behind everything in this view") as annotations or tags.
+- Let data-model views show which runtime entities write each record.
+- Be validated: the target must be a declared `record`-type node.
+
+Two questions remain open before `records:` is committed:
+- **Entity or edge?** The direction above assumes the record is a second
+  entity linked by an edge. The alternative -- one entity, two faces,
+  record-notation as a *rendering* of the same node rather than a
+  separate node -- is arguably the more consistent completion of the
+  renderings split, and has not been tested. The two views do have
+  different edge sets (`unit_agent -> charm` is ipc;
+  `unit_rec -> app_rec` is a foreign key), which is evidence in both
+  directions.
+- **Collective realisation.** A `relation` record is enacted by two
+  applications' agents. Node-to-node `records:` expresses 1:1 (unit)
+  and 1:N (application) realisation; N-party realisation has no
+  expression yet.
+
+The edges *between* record nodes -- the foreign keys -- are already
+ordinary ggarch edges (the ER diagram is drawn with them). Together,
+`records:` plus FK edges mean the model can *walk* from any running
+process to the database row that backs it, and on to that row's model,
+cloud, and controller. That walk is the key to provenance -- see the
+next section.
 
 ### Provenance and scope: faceted tags, not buckets
 
@@ -342,53 +577,103 @@ rendering decision made from the facets, not a classification decision made at
 authoring time. Buckets can be generated from tags; tags cannot be recovered
 from buckets.
 
-Applied to ggarch: **provenance is a set of facets on a node, not a spatial
-bucket the node is placed in**. A unit agent node might have facets:
-`model: "prod-k8s"`, `cloud: "k8s-eu"`, `az: "eu-west-1"`. A view can choose
-to render those facets as bounding regions (grouped by model), as column
-headers (grouped by cloud), as colored indicators on each node, or not at all.
-The facets are the ground truth in the model; the visual grouping is a
-view-level rendering decision.
+The Grammar of Graphics arrives at the same place from the other direction:
+**faceting** -- subset entities by the values of a variable and draw a
+boundary or a panel per value -- is a *rendering* decision in ggplot2
+(`facet_wrap`), not a modelling decision. The planned `group-by: scope.X`
+is a facet declaration; the scope chip is that value's scale/guide
+rendering on the node itself.
 
-This is consistent with how `environment:` already works in ggarch -- it is a
-view-level rendering decision that resolves which concrete nodes to show. The
-`properties` map on nodes is already a tag bag. The gaps are:
+Applied to ggarch, provenance is therefore not something you declare;
+it is something the model *derives*. The unit agent's record has a
+foreign key to its application's record, that record to its model's,
+and the model's to its cloud. A node's provenance is a walk over real,
+typed, cardinality-bearing relationships -- never a hand-written
+address string.
 
-1. No first-class provenance facets with known semantics (model, cloud, az, namespace).
-2. No visual encoding for provenance on individual nodes.
-3. No view-level `group-by:` that generates bounding regions or column
-   separators from a node facet.
+This matters because the tempting notation for provenance -- an address
+like `C1/c1/m1/a1` (controller, cloud, model, application) -- pretends
+to be a tree, and the system is not one. Each `/` in that address is a
+different relationship: the controller *knows* the cloud
+(many-to-many), the model is *deployed on* the cloud (many-to-one), the
+model *contains* the application (one-to-many), the application
+*realises* the unit (one-to-many). The ground truth is the
+entity-relationship diagram with its crow's feet -- a graph, not a
+spine. Facets keep this honest: a facet is the value of one real
+relationship, and where that relationship is many-valued (two
+controllers know this cloud), the facet simply is a set, and the
+nesting rendering is correctly unavailable for it.
 
-**TODO: provenance facets on nodes.** Define a `scope` block or structured
-property keys with known semantics for common provenance dimensions (model,
-cloud, namespace). Distinguished from free-form `properties` by being
-queryable and renderable. For Juju: `scope { model: "prod-k8s", cloud: "gke-eu" }`.
-For Kubernetes: `scope { cluster: "prod", namespace: "monitoring" }`.
+This is consistent with how `environment:` already works -- a
+view-level decision that resolves which concrete nodes to show. The
+gaps:
 
-**TODO: visual provenance indicator.** A small colored indicator -- a pill,
-dot, or flag -- at a fixed position on each node (bottom-right corner),
-color-coded by scope membership, with a legend. Not a bounding region. Not
-inline text. A compact, tag-style mark that encodes provenance without
-restructuring the layout. The color mapping is declared in the view's
-annotations block as a `scope-legend`. Multiple scope dimensions can each
-have their own indicator position or combined into one multi-segment pill.
-This is the visual analog of a flag on a map: compact, learnable, governed
-by a legend, and -- unlike a bounding region -- composable across multiple
-orthogonal dimensions simultaneously.
+1. `records:` is not implemented -- the runtime face and the
+   persistence face are separate nodes with no link between them.
+2. There is no derivation mechanism -- the FK edges exist in data-model
+   views, but no query walks from a runtime node through its record to
+   the values of its provenance relationships.
+3. There is no tag rendering -- the current `scope: "c1/m1"` property
+   draws a chip from a free-form string with a hash-derived color: a
+   drawing with no fact behind it (and the hash is salted per process,
+   so colors are not even stable across builds).
 
-**TODO: `group-by:` in views.** A view-level option `group-by: scope.model`
-that generates bounding annotation regions automatically from a node facet.
-For clean, non-overlapping groupings, regions are the right visual; this
-makes them a rendering choice rather than a modelling choice. Authors who
-want clean bucket-style layouts get them; authors with overlapping provenance
-use the indicator approach instead.
+**TODO: derive facets from relationships.** Define a node's scope
+facets as query paths over `records:` + FK edges, each facet named for
+the relationship it walks (`scope.model`, `scope.cloud`). Free-form
+`properties` remain for anything that is not a real relationship.
 
-**TODO: investigate.** Whether `records:`, `abstracts:`, and scope facets are
-instances of a more general **relationship axis** concept -- where a node
-can declare its relationship to other entities along named axes (abstraction,
-persistence, scope-membership, lifecycle-phase) -- rather than accumulating
-ad hoc attributes. This may be the right generalisation but needs more
-evidence from real diagram authoring before committing to a grammar change.
+**Unblocked (juju2 spike):** the record nodes now exist across both
+databases and `records:` links runtime to persistence; the walk is
+traceable by hand. The query mechanism itself (scope.model as a
+derived facet) is still to be built.
+
+**TODO: tag rendering for edges.** The short notation from
+"Relationships and renderings": a chip on the node showing the value of
+a chosen relationship, colored by a declared scale with a generated
+guide. Replaces the current string chip. Multiple relationships can
+share a chip (multi-segment) or take one each.
+
+**TODO: `group-by:` as generated buckets.** A view-level option that
+renders every edge of a chosen type as a bounding region --
+`group-by: scope.model` draws one region per model, from the same
+relationship the tag rendering shows. Regions remain a rendering
+choice, not a modelling one: authors with overlapping provenance use
+tags instead.
+
+**Proposed, not settled: relationship axes.** The earlier open question
+-- whether `records:`, `abstracts:`, and scope facets are instances of a
+general "relationship axis" concept -- has a candidate resolution: they
+are typed edges, and what varies is the rendering. Closing it is
+premature: the renderings split is unimplemented, the entity-vs-edge
+question above is unresolved, and there is no golden standard to score
+the result against. Closing rule (discovery, not scoring): re-author one
+existing view under the new scheme -- the K8s deployment topology is
+the natural candidate -- then answer two questions. Did the current
+grammar force a misrepresentation (something nested that is not really
+N:1 containment; something drawn as an arrow that is really membership)?
+Does the new scheme express a fact the real documents need that the
+current one cannot (records, cross-model relations)? Keep the
+generalisation only if at least one answer is yes.
+
+**Spike verdict (juju2, 0.21.0).** Both closing questions were answered
+by building, not scoring. Misrepresentation: none found -- the
+triple-encoded "runs on" turned out to be three views of three related
+but distinct facts (locality = nesting, association = data edge,
+operation = behaviour), which is what one-model-many-views is for, and
+the direction-convention mixing was authoring, not grammar. Newly
+expressible facts: yes -- the full provenance walk (unit ->
+application -> model -> cloud) is traceable on one drawing, record
+chips surface the persistence face in topology views, and the endpoint
+indirection is un-flattened -- all in the CURRENT grammar. The
+renderings split (nesting-as-sugar, per-view renderings) was not
+needed for any of it: deferred, with an explicit trigger -- a view that
+needs the same association drawn as containment in one view and as
+arrow or tag in another. `records:` stays an attribute (it links
+entities without claiming identity, which sidesteps entity-vs-edge
+rather than settling it); the operations bridge stays deferred
+(behaviour labels carry it informally); the edge families stay
+conceptual, one syntax.
 
 ---
 
@@ -461,12 +746,55 @@ composable layers -- the same insight that made ggplot2 productive for
 statistical graphics -- and by making the system model a first-class,
 separately declared artefact that all views share.
 
+### Position is content
+
+The criticism above -- layout engines that override spatial intent -- rests
+on a claim worth making explicit: **in an architecture diagram, position is
+content, not presentation**. "Controller in the centre, clouds as wings,
+charmed apps to the right" is part of the diagram's argument; two diagrams
+with identical nodes and edges but different arrangements say different
+things.
+
+The Grammar of Graphics handles this differently, and the difference is
+instructive. In ggplot2, position is an aesthetic: x and y are derived from
+data via scales. But even there, the *ordering* of a discrete scale --
+which bar comes first -- is a narrative decision the author can and does
+make (`factor(x, levels = c("v1", "v2", "v3"))`). Any order would be
+"correct"; the chosen order is what makes the story land. ggarch extends
+this from one axis of a bar chart to the whole canvas: the arrangement is
+the pacing and chunking of the story, the difference between a list of
+facts and a told story. This is why auto-layout must be a default that
+produces a coherent, readable arrangement when the arrangement is not
+load-bearing -- not a system with authority over arrangement. Where the
+arrangement *is* load-bearing, the author declares it, and the solver's
+job is to honour it exactly.
+
+There is a second, deeper parallel. In ggplot2, the data frame is the
+single source of truth and the plot is a projection that can never diverge
+from it. In ggarch, the model is the goal state and the views are
+projections of it -- the same intent/execution separation the Juju
+architecture document describes for the controller database. Views cannot
+drift from the model because they have no independent existence;
+single-model multi-view consistency is a structural guarantee, not a
+discipline.
+
+**TODO: auto-layout as default.** ggarch currently requires explicit
+position constraints for every node. The goal: when the arrangement is not
+load-bearing, the author omits positions entirely and gets a coherent,
+readable layout (flow-based, honouring containment and edge direction);
+when it is load-bearing, declarative constraints override the default per
+node. Auto-layout is the floor, not the ceiling.
+
 ---
 
 ## Comparison
 
 The table below scores eight capabilities against the tools most commonly used
 for architecture documentation. Each capability is defined under the score.
+
+A high score means parity with existing tools -- a floor, not a
+ceiling: it says nothing about adequacy for a domain where no tool has
+ever been adequate (see Background).
 
 | Capability | Mermaid | D2 | Graphviz | PlantUML | Structurizr | Ilograph | **ggarch** |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -796,6 +1124,26 @@ The charm type is declared once. Its label, lifecycle, cardinality, and style
 are defined once. Individual instances inherit everything and can optionally
 override their label in the view. Renaming the type renames all instances.
 
+Since 0.22.0, instances are full subtree stamps with edge expansion;
+since 0.23.0 the expansion has an explicit pairing vocabulary:
+
+- **zip** (default): an edge between two archetype children is copied
+  per instance, instance i wired to instance i -- the internal wiring
+  that repeats verbatim in every copy.
+- **fan**: an edge from outside an instanced subtree connects to every
+  instance -- star wiring.
+- **mesh** (`pairing: mesh`): an edge between copies -- every distinct
+  pair, never a copy with itself. Full mesh is the truth for peer
+  sync (e.g. Raft replication: the leader replicates to all peers; a
+  drawn "ring" is a crowding convention).
+
+Multiple `instances:` clauses accumulate (one per instanced type).
+
+Known gap: specific declared pairs (a chain, an asymmetric topology) --
+"only copy 1 to copy 2" -- cannot be expressed. The honest answer when
+a real case appears is view-level edges; deferred (see the ggarch
+HANDOFF).
+
 ### 8. Cross-layer edges -- software to infrastructure
 
 Structurizr's C4 layers (Person / Software System / Container / Component)
@@ -1111,6 +1459,10 @@ Node attributes:
 - `abstracts: "id1 id2 ..."` -- space-separated list of abstract node ids this
   concrete node realises. Enables edges and behaviour steps to use the abstract
   id while the concrete node is declared. See capability 10.
+- `records: "unit_rec"` -- id of the record node that backs this runtime
+  node (its persistence face). Validated: the target must be a declared
+  `record`-type node. Rendered as an amber `rec: <id>` chip at the node's
+  bottom-left. Implemented in 0.21.0; see "Runtime/persistence duality".
 
 Nodes are pure model declarations -- no position, no edges. Containment is a
 visual grouping hint; it does not imply edges or constraint priority.
@@ -1187,6 +1539,15 @@ Edge attributes:
 - `arrow` -- none, forward (default), back, both
 
 Custom edge types are declared in the `style` block and map to a visual style.
+
+Family convention (conceptual, one syntax -- see "Truth kinds and edge
+families"): `data` edges are **associations** -- structural truths,
+multiplicity-bearing, drawn in semantic direction, never a protocol.
+The interaction types (`api`, `stream`, `event`, `control`, `ipc`) are
+**interactions** -- behavioral truths, protocol-bearing, genuinely
+directional, never multiplicity-bearing. Custom association types are
+declared in the style block like any other type; family membership is
+by convention, not grammar.
 
 Routing strategy: straight lines by default. Orthogonal routing as an opt-in
 per diagram or per edge, pending a production-ready Python binding for
@@ -1601,3 +1962,30 @@ Phases 8–12 add no new dependencies.
    left as a deliberate convention. Collect evidence from real diagram
    authoring (does the ambiguity cause errors or confusion in practice?)
    before committing to a grammar change.
+
+9. **Where the view declaration lives -- .ggarch vs .md.** The current
+   split: the whole view (select, positions, annotations) is declared in
+   the .ggarch file; the caption, legend toggle, alt text, and slide
+   captions are options on the `{ggarch}` directive in the .md. But the
+   view layer is *deliberately presentational* -- `select` is an editorial
+   choice about what to show, made in service of a specific passage of
+   prose. Two arguments pull in opposite directions:
+
+   - **Keep select in .ggarch:** selecting is easier when you can look at
+     what you are selecting -- the view is chosen against the model it
+     selects from, and the .ggarch file keeps that context. Rename
+     propagation and the validator also operate on the view where it lives
+     today.
+   - **Move the view to .md:** the view's presentational nature would be
+     explicit in its location. The caption is as much a property of the
+     diagram as the select is; the diagram must fit the surrounding text,
+     so the document context participates in the view definition either
+     way. An inline view block in the .md (see open question 1, inline
+     syntax) would make the view a property of the document that borrows
+     entities from the model, rather than a property of the model file.
+
+   Either way, authoring always involves considering both the document and
+   the model; the question is which artefact the view belongs to, and
+   therefore where the reader -- and an agent -- looks for editorial
+   intent. Currently open; the `:file:` + `:view:` indirection covers the
+   common case.

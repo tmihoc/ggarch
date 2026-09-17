@@ -81,6 +81,7 @@ class Node:
     lifecycle: Lifecycle = Lifecycle.PERSISTENT
     cardinality: Cardinality | int | None = None
     abstracts: list[str] = field(default_factory=list)
+    records: str = ""   # id of the record node that backs this runtime node
     children: list[Node] = field(default_factory=list)
     fields: list[NodeField] = field(default_factory=list)
     properties: dict[str, str] = field(default_factory=dict)  # arbitrary key-value metadata

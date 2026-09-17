@@ -107,6 +107,7 @@ def _make_node(
     raw_abs    = attrs.pop("abstracts", "")
     abstracts  = [a.strip() for a in raw_abs.split() if a.strip()] if raw_abs else []
     url        = attrs.pop("url", "")
+    records    = str(attrs.pop("records", "") or "")
     # Remaining attrs are user-defined properties.
     properties = {k: str(v) for k, v in attrs.items()}
     return Node(
@@ -120,6 +121,7 @@ def _make_node(
         fields=fields or [],
         properties=properties,
         url=url,
+        records=records,
         attrs={},
     )
 
@@ -431,7 +433,7 @@ class _GgarchTransformer(Transformer):
             elif key == "environment":s.environment = value
             elif key == "collapse":   s.collapse = value
             elif key == "expand":     s.expand = value
-            elif key == "instances":  s.instances = value
+            elif key == "instances":  s.instances.extend(value)
             elif key == "behaviour":  s.behaviour = value
             elif key == "participants":s.participants = value
         return s

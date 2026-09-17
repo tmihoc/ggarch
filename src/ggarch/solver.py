@@ -35,6 +35,7 @@ from ggarch.layout import (
     field_node_min_size,
     min_size,
 )
+from ggarch.instances import materialize_instances
 from ggarch.model import (
     Constraint,
     FanConstraint,
@@ -86,8 +87,10 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
 
     Raises ValidationError if user constraints are unsatisfiable.
     """
-    # Determine which nodes are included in this view.
-    selected = _selected_nodes(diagram.select, model)
+    # Materialize instances (stamped subtrees) before selection; the
+    # router performs the same expansion via ggarch.instances.
+    mat_nodes, mat_edges = materialize_instances(diagram.select, model)
+    selected = _selected_nodes(diagram.select, model, mat_nodes)
 
     # Build variable bundles for every node (including nested children).
     vars_by_id: dict[str, _NodeVars] = {}
@@ -147,7 +150,8 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     _add_user_constraints(solver, expanded_constraints, vars_by_id, diagram.name, model)
     # Ensure sufficient separation for every labelled edge (covers auto-layout children).
     if model is not None:
-        _add_label_gap_constraints(solver, model, vars_by_id, expanded_constraints)
+        _add_label_gap_constraints(
+            solver, mat_nodes, mat_edges, vars_by_id, expanded_constraints)
 
     # Solve.
     try:
@@ -166,25 +170,49 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
 # Node selection
 # ---------------------------------------------------------------------------
 
-def _selected_nodes(select: SelectClause, model: Model) -> list[Node]:
-    """Return the top-level model nodes included in this view.
+def _selected_nodes(
+    select: SelectClause, model: Model, mat_nodes: list[Node],
+) -> list[Node]:
+    """Return the top-level nodes included in this view, from the
+    materialized tree.
 
-    If select.environment is set, abstract node ids in select.node_ids are
-    resolved to their environment-specific concrete ids.
+    If select.environment is set, abstract node ids in select.node_ids
+    are resolved to their environment-specific concrete ids. Instanced
+    type ids resolve to their stamped instance roots.
     """
     abs_map = (model.environment_abstractions_map(select.environment)
                if select.environment else {})
+    inst_by_type: dict[str, list[str]] = {}
+    for spec in select.instances:
+        inst_by_type.setdefault(spec.type_id, []).append(spec.instance_id)
 
     if not select.node_ids:
-        return list(model.nodes)
+        return list(mat_nodes)
 
     result = []
     for nid in select.node_ids:
         concrete_id = abs_map.get(nid, nid)
-        node = model.find_node(concrete_id)
+        if concrete_id in inst_by_type:
+            for iid in inst_by_type[concrete_id]:
+                node = _find_in_tree(mat_nodes, iid)
+                if node is not None:
+                    result.append(node)
+            continue
+        node = _find_in_tree(mat_nodes, concrete_id)
         if node is not None:
             result.append(node)
     return result
+
+
+def _find_in_tree(nodes: list[Node], node_id: str) -> Node | None:
+    for n in nodes:
+        if n.id == node_id:
+            return n
+        if n.children:
+            found = _find_in_tree(n.children, node_id)
+            if found:
+                return found
+    return None
 
 
 def _register_vars(node: Node, vars_by_id: dict[str, _NodeVars]) -> None:
@@ -472,7 +500,8 @@ _GAP_DEFAULT = 20  # px — default gap when not specified
 
 def _add_label_gap_constraints(
     solver: Solver,
-    model: Model,
+    nodes: list[Node],
+    edges: list,
     vars_by_id: dict[str, _NodeVars],
     constraints: list,
 ) -> None:
@@ -490,7 +519,7 @@ def _add_label_gap_constraints(
             parent[node.id] = pid
         for child in node.children:
             _walk(child, node.id)
-    for node in model.nodes:
+    for node in nodes:
         _walk(node, None)
 
     def _solver_ancestors(nid: str) -> list[str]:
@@ -534,7 +563,7 @@ def _add_label_gap_constraints(
         elif c.kind == "below":
             above_of.add((c.object, c.subject))
 
-    for edge in model.edges:
+    for edge in edges:
         if not edge.label:
             continue
         src_id, tgt_id = _effective_id(edge.source, edge.target)
@@ -761,29 +790,10 @@ def _build_layout(
     model: Model,
     select: SelectClause,
 ) -> SolvedLayout:
-    # Exclude type nodes that have active instances — the instances replace them.
-    instanced_type_ids = {spec.type_id for spec in select.instances}
     solved_nodes = [
         _build_solved_node(node, vars_by_id, model, select)
         for node in nodes
-        if node.id not in instanced_type_ids
     ]
-
-    # Build SolvedNode entries for view-local instances.
-    for spec in select.instances:
-        if spec.instance_id in vars_by_id:
-            type_node = model.find_node(spec.type_id)
-            iv = vars_by_id[spec.instance_id]
-            rect = Rect(iv.x.value(), iv.y.value(), iv.w.value(), iv.h.value())
-            solved_nodes.append(SolvedNode(
-                id=spec.instance_id,
-                rect=rect,
-                label=spec.label or (type_node.label if type_node else spec.instance_id),
-                type=type_node.type if type_node else "default",
-                lifecycle=type_node.lifecycle.value if type_node else "persistent",
-                cardinality="",
-                fields=[],
-            ))
 
     # Compute overall bounding box.
     if solved_nodes:
@@ -831,4 +841,5 @@ def _build_solved_node(
         fields=node.fields,
         url=node.url,
         properties=node.properties,
+        records=node.records,
     )

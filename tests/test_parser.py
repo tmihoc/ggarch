@@ -542,3 +542,73 @@ class TestJujuExample:
         names = {s.name for s in f.sequences}
         assert "Hook execution" in names
         assert "Bootstrap K8s" in names
+
+
+class TestRecordsAttribute:
+    def test_records_parses_and_validates(self):
+        src = """\
+model "M" {
+  nodes {
+    ua [type: juju-software, label: "UA", records: "unit_rec"]
+    unit_rec [type: record, label: "unit"]
+  }
+  edges {}
+}
+"""
+        f = parse_valid(src)
+        ua = f.models[0].find_node("ua")
+        assert ua is not None
+        assert ua.records == "unit_rec"
+
+    def test_records_target_must_be_declared(self):
+        src = """\
+model "M" {
+  nodes {
+    ua [type: juju-software, label: "UA", records: "missing_rec"]
+  }
+  edges {}
+}
+"""
+        f = parse(src)
+        with pytest.raises(ValidationError):
+            validate(f)
+
+    def test_records_target_must_be_record_type(self):
+        src = """\
+model "M" {
+  nodes {
+    ua [type: juju-software, label: "UA", records: "other"]
+    other [type: juju-software, label: "Other"]
+  }
+  edges {}
+}
+"""
+        f = parse(src)
+        with pytest.raises(ValidationError):
+            validate(f)
+
+    def test_records_chip_renders(self):
+        from ggarch import solve, route, render
+        src = """\
+model "M" {
+  nodes {
+    ua [type: juju-software, label: "UA", records: "unit_rec"]
+    unit_rec [type: record, label: "unit"]
+  }
+  edges {
+    ua -> unit_rec [type: data, label: "backed by"]
+  }
+}
+diagram "D" from "M" {
+  select { nodes: ua unit_rec }
+  positions {
+    ua left-of unit_rec gap: 60
+    ua align-middle unit_rec
+  }
+}
+"""
+        f = parse_valid(src)
+        d = f.diagrams[0]
+        m = f.get_model(d.model_name)
+        svg = render(route(solve(d, m), m, d.select), m, d)
+        assert "rec: unit_rec" in svg
