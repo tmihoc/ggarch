@@ -309,6 +309,30 @@ annotations {
 
 The box is layout-transparent: it does not affect constraint solving.
 
+**Label placement** -- `label-position` controls where the label appears
+relative to the box. The label is always placed *outside* the box edge,
+14px clear of it:
+
+| Value | Position |
+|---|---|
+| `top` | above the box (default) |
+| `bottom` | below the box |
+| `left` | left of the box, right-aligned toward it |
+| `right` | right of the box, left-aligned toward it |
+
+```
+annotations {
+  box [nodes: "dqlite1 dqlite2 dqlite3",
+       label: "Raft replicaset",
+       style: "dashed", color: "#888",
+       label-position: bottom]
+}
+```
+
+Choose the position that avoids overlapping diagram content. `bottom` is
+safest when the annotated nodes sit in a row and content above them is
+dense. `top` (the default) works when there is clear space above the box.
+
 ### Legend annotation
 
 Documents the visual grammar used in this view:

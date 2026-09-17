@@ -5,7 +5,7 @@ together. Inspired by the Grammar of Graphics (ggplot2), Mermaid's sequence
 diagrams, and Structurizr's model-driven approach.**
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
-[![Version: 0.20.8](https://img.shields.io/badge/version-0.20.8-orange.svg)](SPEC.md)
+[![Version: 0.20.14](https://img.shields.io/badge/version-0.20.14-orange.svg)](SPEC.md)
 
 Existing architecture diagram tools make you choose between branding, expressive
 power, and maintainability. You can have one or two, but rarely all three.
