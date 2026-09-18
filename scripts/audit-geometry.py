@@ -13,9 +13,14 @@ For every diagram view in the given model files:
        runs more vertical than horizontal — the trigger metric for the
        staged auto-flip decision
      - label strikes: the label's one-sided strip (renderer
-       .label_geometry, pair anchors included) vs node rects the
-       stroke itself clears, vs other labels, and vs the shared
-       container's padded wall
+       .label_geometry) vs node rects the stroke itself clears, vs
+       other labels, and vs the shared container's padded wall
+     - strip crossings (ADR-003): an edge's swept strip vs earlier
+       edges' strips — the router's own collision currency
+     - residual crossings (ADR-003): the router-reported residuals of
+       cheapest-collision paths (edge, obstacle, blocker)
+     - turns per edge (ADR-003): bend counts, so the turn constant K
+       is tuned on measured data, not guessed
 
 Label metrics measure the IMPLEMENTED placement (renderer
 label_geometry is the single source — the audit imports it, never
@@ -37,6 +42,8 @@ import math
 from ggarch import parse, validate, solve, route
 from ggarch.layout import CONTAINER_PAD, CONTAINER_PAD_TOP
 from ggarch.renderer import label_geometry
+from ggarch.geometry import STRIP_PAD, clip_strip, strip_hits_clip
+from ggarch.router import ROUTE_STROKE_W
 
 EPS = 0.5
 WALL_EPS = 1.0
@@ -199,6 +206,40 @@ def audit_file(path):
                 if rects_overlap(labels[i][1], labels[j][1]):
                     label_clashes.append((labels[i][0], labels[j][0]))
 
+        # Strip crossings (ADR-003): edge i's strip vs earlier strips
+        # — the router's collision currency, measured independently of
+        # the router's own reporting. Earlier strips are clipped against
+        # the later edge's endpoint rects (ancestor-or-self, inflated):
+        # the hug near a shared endpoint is by design, not a collision.
+        strip_crossings = []
+        clear = ROUTE_STROKE_W / 2 + STRIP_PAD
+        for i, e in enumerate(routed.edges):
+            if e.strip is None:
+                continue
+            ex = (anc.get(e.source_id, set()) | {e.source_id}
+                  | anc.get(e.target_id, set()) | {e.target_id})
+            boxes = [(rmap[n].x - clear - 5, rmap[n].y - clear - 5,
+                      rmap[n].x2 + clear + 5, rmap[n].y2 + clear + 7)
+                     for n in ex if n in rmap]
+            for j in range(i):
+                other = routed.edges[j]
+                if other.strip is None:
+                    continue
+                if strip_hits_clip(e.strip, clip_strip(other.strip, boxes)):
+                    strip_crossings.append((e.source_id, e.target_id,
+                                            other.strip.owner))
+
+        # Router-reported residuals (cheapest-collision paths) and
+        # turns (the K tuning data).
+        residuals = []
+        turns = 0
+        for e in routed.edges:
+            turns += e.turns
+            for kind, target in (e.residuals or []):
+                residuals.append((f"{e.source_id} -> {e.target_id}"
+                                  + (f" [{e.label}]" if e.label else ""),
+                                  kind, target))
+
         report[d.name] = dict(
             n_edges=len(routed.edges),
             crossings=crossings,
@@ -208,6 +249,9 @@ def audit_file(path):
             node_strikes=node_strikes,
             wall_crossings=wall_crossings,
             label_clashes=label_clashes,
+            strip_crossings=strip_crossings,
+            residuals=residuals,
+            turns=turns,
         )
     return report
 
@@ -216,7 +260,7 @@ def main():
     for path in sys.argv[1:]:
         report = audit_file(path)
         print(f"\n{'=' * 70}\n{path}\n{'=' * 70}")
-        tc = td = tr = tns = twc = tl = 0
+        tc = td = tr = tns = twc = tl = tsc = tres = tt = 0
         te = tlab = 0
         for view, r in report.items():
             nc = len(set(c[0] for c in r["crossings"]))
@@ -225,20 +269,28 @@ def main():
             nns = len(r["node_strikes"])
             nwc = len(r["wall_crossings"])
             nl = len(r["label_clashes"])
+            nsc = len(set(s[0] + s[1] for s in r["strip_crossings"]))
+            nres = len(set(x[0] for x in r["residuals"]))
             te += r["n_edges"]
             tlab += r["labelled"]
             tc += nc; td += nd; tr += nr
             tns += nns; twc += nwc; tl += nl
-            flag = "  <-- DEFECTS" if (nc or nd or nns or nwc or nl) else ""
+            tsc += nsc; tres += nres; tt += r["turns"]
+            flag = "  <-- DEFECTS" if (nc or nsc or nres or nd or nns
+                                       or nwc or nl) else ""
             print(f"{view}: edges={r['n_edges']} "
-                  f"crossing-edges={nc} diagonals={nd} "
+                  f"crossing-edges={nc} strip-crossings={nsc} "
+                  f"residuals={nres} diagonals={nd} "
                   f"rotated-labels={nr}/{r['labelled']} "
                   f"node-strikes={nns} wall-crossings={nwc} "
-                  f"label-clashes={nl}{flag}")
+                  f"label-clashes={nl} turns/edge="
+                  f"{r['turns'] / max(r['n_edges'], 1):.2f}{flag}")
         print(f"\nTOTAL {path}: edges={te} crossing-edges={tc} "
+              f"strip-crossings={tsc} residuals={tres} "
               f"diagonals={td} rotated-labels={tr}/{tlab} "
               f"node-strikes={tns} wall-crossings={twc} "
-              f"label-clashes={tl}")
+              f"label-clashes={tl} turns/edge="
+              f"{tt / max(te, 1):.2f}")
 
         print("\n--- detail ---")
         for view, r in report.items():
@@ -252,6 +304,10 @@ def main():
                 print(f"  WALL   {view}: {desc}  strip crosses {cont} wall")
             for a, b in r["label_clashes"]:
                 print(f"  LCLASH {view}: {a}  <->  {b}")
+            for s0, s1, owner in r["strip_crossings"]:
+                print(f"  SCROSS {view}: {s0} -> {s1}  overlaps {owner}")
+            for edge, kind, target in r["residuals"]:
+                print(f"  RESID  {view}: {edge}  through {kind} {target}")
 
 
 if __name__ == "__main__":

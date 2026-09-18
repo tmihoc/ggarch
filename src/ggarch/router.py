@@ -36,6 +36,9 @@ from ggarch.model import Edge, GgarchFile, Model
 from ggarch.instances import materialize_instances
 from ggarch.geometry import (
     Box,
+    ClipStrip,
+    clip_strip,
+    strip_hits_clip,
     Strip,
     STRIP_PAD,
     label_geometry,
@@ -54,7 +57,7 @@ from ggarch.geometry import (
 # ---------------------------------------------------------------------------
 
 ROUTE_STROKE_W = 2.0   # px — planning assumption for the corridor width
-TURN_PENALTY   = 30.0  # px per bend — fixed, not scaled by edge length;
+TURN_PENALTY   = 40.0  # px per bend — fixed, not scaled by edge length;
                        # high enough that a path bends only to clear an
                        # obstacle (ADR-003 Resolved 1)
 GRID_TOL       = 0.5  # px — duplicate grid coordinates collapsed within
@@ -165,6 +168,14 @@ def _snap(v: float) -> float:
     return round(v, 6)
 
 
+def _snap_box(box: Box) -> Box:
+    return (_snap(box[0]), _snap(box[1]), _snap(box[2]), _snap(box[3]))
+
+
+def _snap_rect(r: Rect) -> Box:
+    return _snap_box((r.x, r.y, r.x + r.w, r.y + r.h))
+
+
 def _dedupe(vals: Sequence[float]) -> list[float]:
     """Sorted unique coordinates, duplicates collapsed within GRID_TOL."""
     out: list[float] = []
@@ -228,66 +239,8 @@ def _seed_ok(p: Point, obs_infl: Sequence[Box]) -> bool:
 # Strip clipping — shared-endpoint exemption
 # ---------------------------------------------------------------------------
 
-@dataclass
-class _ClipStrip:
-    """An earlier strip clipped against the current edge's exempt rects
-    (ancestor-or-self of its endpoints): near a shared endpoint node a
-    later edge may hug — separation is only required beyond it."""
-    segs: list[tuple[tuple[float, float], tuple[float, float]]]
-    half_w: float
-    label: Box | None
-    caps: list[tuple[tuple[float, float], float]]
-    owner: str
 
 
-def _cut_seg(q0, q1, box: Box):
-    """Cut the closed sub-interval of segment q0->q1 inside box out;
-    return the remaining pieces (0, 1 or 2)."""
-    iv = seg_box_interval(q0, q1, box)
-    if iv is None:
-        return [(q0, q1)]
-    t_lo, t_hi = iv
-    if t_lo <= 0.0 and t_hi >= 1.0:
-        return []
-    dx, dy = q1[0] - q0[0], q1[1] - q0[1]
-
-    def pt(t):
-        return (q0[0] + dx * t, q0[1] + dy * t)
-
-    out = []
-    if t_lo > 1e-6:
-        out.append((q0, pt(t_lo)))
-    if t_hi < 1.0 - 1e-6:
-        out.append((pt(t_hi), q1))
-    return out
-
-
-def _clip_strip(strip: Strip, exempt_infl: Sequence[Box]) -> _ClipStrip:
-    segs: list = []
-    pts = strip.points
-    for k in range(len(pts) - 1):
-        pieces = [(pts[k], pts[k + 1])]
-        for box in exempt_infl:
-            nxt = []
-            for q0, q1 in pieces:
-                nxt.extend(_cut_seg(q0, q1, box))
-            pieces = nxt
-        segs.extend(pieces)
-    label = strip.label
-    if label is not None and any(
-        rects_overlap(label, box, eps=0.0) for box in exempt_infl
-    ):
-        label = None
-    caps = [
-        (pt, r) for pt, r in (
-            [(pts[0], strip.arrow_start)] if strip.arrow_start else []
-            + ([(pts[-1], strip.arrow_end)] if strip.arrow_end else [])
-        )
-        if not any(b[0] < pt[0] < b[2] and b[1] < pt[1] < b[3]
-                   for b in exempt_infl)
-    ]
-    return _ClipStrip(segs=segs, half_w=strip.half_w, label=label,
-                       caps=caps, owner=strip.owner)
 
 
 # ---------------------------------------------------------------------------
@@ -678,10 +631,11 @@ def _route_edge(
     Returns waypoints as Points.
     """
     clear = ROUTE_STROKE_W / 2 + STRIP_PAD
-    own_boxes = [_rect_box(src_rect), _rect_box(tgt_rect)]
+    own_boxes = [_snap_rect(src_rect), _snap_rect(tgt_rect)]
     # Nudge boxes (label-strike retries) block like obstacles but are
     # never reported as residuals — they are guidance, not geometry.
-    obs = list(obstacles) + [(box, "") for box in extra_boxes]
+    obs = ([(_snap_box(b), oid) for b, oid in obstacles]
+           + [(_snap_box(box), "") for box in extra_boxes])
     # Grid pruning: only obstacles within the endpoints' corridor
     # (bbox + RELEVANT_MARGIN) can matter — a route never wanders
     # beyond it, and the Hanan grid stays small.
@@ -731,9 +685,9 @@ def _route_edge(
     starts = [p for p in starts if p.x in xs and p.y in ys]
     goals = [p for p in goals if p.x in xs and p.y in ys]
 
-    exempt_infl = [_inflate(_rect_box(r), clear + 1.0)
+    exempt_infl = [_inflate(_snap_rect(r), clear + 4.0)
                   for r in exempt_rects]
-    clips = [_clip_strip(s, exempt_infl) for s in strips]
+    clips = [clip_strip(s, exempt_infl) for s in strips]
 
     pts, _hard = _search_route(
         starts, goals, obs, own_boxes, clips, clear,
@@ -773,9 +727,12 @@ def _edge_strip(points, edge) -> Strip:
                           0.5, owner=f"{edge.source}->{edge.target}")
 
 
-def _path_residuals(points, obstacles, strips, clear) -> list[tuple[str, str]]:
+def _path_residuals(points, obstacles, strips, clear,
+                    exempt_rects=()) -> list[tuple[str, str]]:
     """Residual collisions of a cheapest-collision path (edge, obstacle,
-    blocker) — audited, never hidden."""
+    blocker) — audited, never hidden. Strip residuals are measured
+    against clipped strips: near a shared endpoint the hug is by
+    design, not a collision."""
     out: list[tuple[str, str]] = []
     pts = [(p.x, p.y) for p in points]
     for box, oid in obstacles:
@@ -783,8 +740,10 @@ def _path_residuals(points, obstacles, strips, clear) -> list[tuple[str, str]]:
                for i in range(len(pts) - 1)):
             out.append(("node", oid))
     me = Strip(points=pts, half_w=clear)
+    exempt_infl = [_inflate(_rect_box(r), clear + 4.0)
+                   for r in exempt_rects]
     for s in strips:
-        if me.hits_strip(s):
+        if strip_hits_clip(me, clip_strip(s, exempt_infl)):
             out.append(("strip", s.owner))
     return out
 
@@ -987,7 +946,8 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
 
         style = _default_style(edge.type)
         strip = _edge_strip(pts, edge)
-        residuals = _path_residuals(pts, obstacles, strips_done, clear)
+        residuals = _path_residuals(pts, obstacles, strips_done, clear,
+                                   exempt_rects)
         routed_edges.append(RoutedEdge(
             source_id=edge.source,
             target_id=edge.target,

@@ -415,3 +415,104 @@ def segment_crosses_rect_interior(
     eps)? The audit's crossing semantics — borrowed, not replicated."""
     inner = (rect[0] + eps, rect[1] + eps, rect[2] - eps, rect[3] - eps)
     return _seg_box_t(a, b, inner) is not None
+
+
+# ---------------------------------------------------------------------------
+# Clipped strips — shared-endpoint exemption
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ClipStrip:
+    """A strip clipped against exemption boxes (the ancestor-or-self
+    rects of the other edge's endpoints): near a shared endpoint node
+    a later edge may hug — separation is only required beyond it.
+    Carries the surviving corridor pieces, label extent and caps."""
+    segs: list[tuple[tuple[float, float], tuple[float, float]]]
+    half_w: float
+    label: Box | None
+    caps: list[tuple[tuple[float, float], float]]
+    owner: str
+
+
+def cut_seg(q0, q1, box: Box):
+    """Cut the closed sub-interval of segment q0->q1 inside box out;
+    return the remaining pieces (0, 1 or 2)."""
+    iv = _seg_box_interval(q0, q1, box)
+    if iv is None:
+        return [(q0, q1)]
+    t_lo, t_hi = iv
+    if t_lo <= 0.0 and t_hi >= 1.0:
+        return []
+    dx, dy = q1[0] - q0[0], q1[1] - q0[1]
+
+    def pt(t):
+        return (q0[0] + dx * t, q0[1] + dy * t)
+
+    out = []
+    if t_lo > 1e-6:
+        out.append((q0, pt(t_lo)))
+    if t_hi < 1.0 - 1e-6:
+        out.append((pt(t_hi), q1))
+    return out
+
+
+def clip_strip(strip: "Strip", exempt_infl: list[Box]) -> ClipStrip:
+    """Clip a strip against inflated exemption boxes."""
+    segs: list = []
+    pts = strip.points
+    for k in range(len(pts) - 1):
+        pieces = [(pts[k], pts[k + 1])]
+        for box in exempt_infl:
+            nxt = []
+            for q0, q1 in pieces:
+                nxt.extend(cut_seg(q0, q1, box))
+            pieces = nxt
+        segs.extend(pieces)
+    label = strip.label
+    if label is not None and any(
+        rects_overlap(label, box, eps=0.0) for box in exempt_infl
+    ):
+        label = None
+    caps = []
+    for pt, r in (
+        [(pts[0], strip.arrow_start)] if strip.arrow_start else []
+    ) + ([(pts[-1], strip.arrow_end)] if strip.arrow_end else []):
+        if not any(b[0] < pt[0] < b[2] and b[1] < pt[1] < b[3]
+                   for b in exempt_infl):
+            caps.append((pt, r))
+    return ClipStrip(segs=segs, half_w=strip.half_w, label=label,
+                     caps=caps, owner=strip.owner)
+
+
+def strip_hits_clip(strip: "Strip", clip: ClipStrip) -> bool:
+    """Does a full strip collide with a clipped strip's surviving
+    pieces (corridor, label, caps)?"""
+    for i in range(len(strip.points) - 1):
+        a, b = strip.points[i], strip.points[i + 1]
+        for s0, s1 in clip.segs:
+            if seg_seg_dist(a, b, s0, s1) < strip.half_w + clip.half_w:
+                return True
+        if clip.label is not None and seg_box_dist(a, b, clip.label) < strip.half_w:
+            return True
+        for cpt, cr in clip.caps:
+            if point_seg_dist(cpt, a, b) < cr + strip.half_w:
+                return True
+    if strip.label is not None:
+        for s0, s1 in clip.segs:
+            if seg_box_dist(s0, s1, strip.label) < clip.half_w:
+                return True
+        if clip.label is not None and rects_overlap(strip.label, clip.label):
+            return True
+        for cpt, cr in clip.caps:
+            if point_box_dist(cpt, strip.label) < cr:
+                return True
+    for cap_r, pt in ((strip.arrow_start, strip.points[0]),
+                      (strip.arrow_end, strip.points[-1])):
+        if cap_r <= 0:
+            continue
+        for s0, s1 in clip.segs:
+            if point_seg_dist(pt, s0, s1) < cap_r + clip.half_w:
+                return True
+        if clip.label is not None and point_box_dist(pt, clip.label) < cap_r:
+            return True
+    return False
