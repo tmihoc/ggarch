@@ -315,15 +315,16 @@ a min-width: 160
   intended top-left node of the layout.
 - Leaf nodes hold their **natural (label-derived) size**; only
   `min-width` / `same-width` floors can raise it.
-- **Label contract (0.25.3)**: every labelled edge whose gap can't host
-  its label is measured after the declared constraints solve, and the
-  solver reserves the clearance it needs (strong priority — required
-  constraints still win). You no longer need to declare a direct
-  `left-of` / `above` between labelled endpoints to keep labels
-  interrupting their arrows; declaring one is still how you control
-  *where* the clearance is taken. Labels wrap to the width the gap can
-  clear, so short arrows get multi-line labels rather than floating
-  ones.
+- **Label contract (0.25.4, ADR-002)**: labels ride the arrow (along
+  the longest leg, above the line — the stroke is never cut). After
+  the declared constraints solve, every labelled edge is measured and
+  the solver reserves clearance only where the label would strike
+  content: a word too wide for the leg, a label strip that would hit
+  a node the stroke clears, or a strip crossing its container's wall.
+  Declaring `left-of` / `above` between labelled endpoints still
+  controls *where* clearance is taken. `gap:` is a floor for the
+  widest word plus side padding; labels wrap to the leg, so short
+  arrows get multi-line labels, never floating ones.
 
 
 ### 6. Write sequence views

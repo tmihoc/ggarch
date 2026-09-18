@@ -1,7 +1,7 @@
 # ADR-002: Edge labels follow the arrow
 
 **Date:** 2026-09-18  
-**Status:** Accepted — implementation pending (0.25.4)
+**Status:** Accepted — implemented in 0.25.4
 
 ## Context
 

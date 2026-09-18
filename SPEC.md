@@ -891,29 +891,31 @@ evidence:
   twice its centre offset. Three committed juju2 views had silently
   ballooned boxes (e.g. "Worker tree (machine cloud)"'s controller node
   at 197.6px for a 104px label) before this was found.
-- **Label contract (0.25.3).** Gap-mode label placement is enforced by
-  the solver, not left to authoring. solve() runs in two phases: the
-  declared constraints solve first; then every labelled visible edge
-  is measured (its renderer route, its longest segment, its wrap at
-  the gap budget) and each gap-mode shortfall reserves, at STRONG
-  priority, the axis clearance its label needs, re-solved against
-  WEAK stays pinning the phase-one solution — only measured
-  shortfalls move anything. Required constraints outrank the
-  reservations, so an authored arrangement that cannot spare the
-  clearance keeps offset-mode labels rather than erroring. The
-  renderer's wrap budget is the gap budget (segment minus tails) for
-  mostly-horizontal segments, so gap mode succeeds whenever the
-  widest word fits; mostly-vertical segments wrap generously (the
-  gap clears the label's height, not its width). The 0.24.1
+- **Label contract (0.25.4, ADR-002: strike avoidance).** Label
+  placement is enforced by the solver, not left to authoring. solve()
+  runs in two phases: the declared constraints solve first; then every
+  labelled visible edge is measured through the renderer's own
+  `label_geometry` (its longest leg, its wrap at the leg-minus-side-
+  padding budget, its one-sided strip) and each measured strike
+  reserves, at STRONG priority, clearance, re-solved against WEAK
+  stays pinning the phase-one solution — only measured shortfalls
+  move anything. Required constraints outrank the reservations, so an
+  authored arrangement that cannot spare the clearance keeps the
+  struck label rather than erroring. Reservations: a word wider than
+  the leg reserves the word's width on the leg's dominant axis; a
+  strip that would strike a node the stroke itself clears reserves
+  the strip's perpendicular clearance; a strip that would cross its
+  own container's padded wall grows the container. Labels no longer
+  need on-axis room (the stroke is never cut), so authored-gap floors
+  shrink to the widest word plus side padding and reservations are
+  narrower than the 0.25.3 gap-mode ones. Label-vs-label clashes are
+  measured by the audit (the step-3 router baseline; strips as the
+  collision currency) — classification at 0.25.4: 11 of 16 involve
+  diagonal legs (alignment step 2 / router step 3), 2 are the HA
+  anti-parallel rows under REQUIRED constraints, the rest sit in
+  crowded hub clusters where solver pushes cascade. The 0.24.1
   pair-local authoring rule below is superseded as a REQUIREMENT —
   it remains good practice for deliberate spacing.
-
-  **Superseded in policy by ADR-002** (adr/002-edge-labels-follow-the-
-  arrow.md, accepted 2026-09-18, implementation pending 0.25.4): labels
-  render along the path, above the line, never splitting the stroke —
-  gap mode is abolished. The two-phase machinery survives; its policy
-  becomes strike avoidance (reserve when a wrapped along-path label
-  would strike a node, wall, or other label).
 - Label-gap resolution is pair-local, not transitive: a labelled edge
   whose endpoints have no *directly declared* spatial constraint (even
   if linked through a chain) gets its clearance from the measured
@@ -1625,8 +1627,14 @@ declared in the style block like any other type; family membership is
 by convention, not grammar.
 
 Routing strategy: straight lines by default. Orthogonal routing as an opt-in.
-Label placement: see ADR-002 (along-path, above the line, stroke never
-split — supersedes the gap/offset duality once implemented).
+Label placement: ADR-002, implemented 0.25.4 — labels ride the longest
+  leg on an SVG textPath, above the line in the text's local frame,
+  one textPath per wrapped line stacked outward, mirrored on
+  right-to-left legs (never upside-down), no background mask, the
+  stroke never split. The gap/offset duality is abolished. Anti-
+  parallel pairs (which share one coincident stroke today) anchor
+  their labels at 1/3 and 2/3 of the span; separating the strokes
+  themselves is router work below.
 
 Measured routing limits (juju4 auto-layout spike, 0.25.1): straight-line
 routing cannot draw a full mesh between collinear nodes -- the HA Raft
@@ -1677,15 +1685,29 @@ defect rates by hand-compensating for the same root causes:
    container-internal axis awareness (the HA containers lay children
    side-by-side while the containers themselves are in a row, forcing
    every mesh arrow through its target's agent sibling).
-
    **Step 1 verdict (0.25.3, label contract):** root cause 3 is FIXED.
    Measured post-change (same audit): offset labels juju4 11 -> 0,
-   juju3 9 -> 0; every labelled edge in all five model files now
-   renders in gap mode. Crossings unchanged (31/15 — router work,
-   step 3); diagonals effectively unchanged (27/15 — alignment and
-   router work, steps 2-3). 36 of 43 views changed geometry, all by
+   juju3 9 -> 0; every labelled edge in all five model files renders
+   in gap mode. Crossings unchanged (31/15 — router work, step 3);
+   diagonals effectively unchanged (27/15 — alignment and router
+   work, steps 2-3). 36 of 43 views changed geometry, all by
    reservation-driven expansion; views without shortfalls were
    byte-identical.
+
+   **0.25.4 verdict (ADR-002):** the gap/offset defect class is
+   DISSOLVED — there is no label mode left to flip (one placement
+   mechanism; the audit's offset-label metric is retired with it).
+   Re-baselined audit: juju4 35 crossing-edges / 22 diagonals / 22
+   rotated labels / 4 node-strikes / 0 wall-crossings / 10
+   label-clashes; juju3 15 / 11 / 30 / 3 / 0 / 6. Crossings 31 -> 35
+   in the auto-layout twin: the abolished gap floors regressed the
+   space 0.25.3 spent widening gaps, and the floor twin tightened —
+   step 2 (edge-aware floor, column gaps sized to the labels routed
+   through them) owns the recovery; juju3 (authored) unchanged at 15.
+   Wall-crossings 0/0: the strike-avoidance contract reserves them.
+   Rotated labels (22/30) are the orientation metric for the staged
+   auto-flip decision. Label-clashes (10/6) are the step-3 router
+   baseline.
 
 ---
 
