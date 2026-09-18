@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import math
 import zlib
+from dataclasses import dataclass
 from typing import Sequence
 
 import drawsvg as dw
@@ -58,10 +59,178 @@ ARROWHEAD_SIZE  = 8     # px
 LABEL_FONT      = "'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif"
 ANNOTATION_FONT = "'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif"
 
-# Floor for the label wrap budget on mostly-vertical segments (px).
-# The gap clears the label's HEIGHT, not its width, so vertical arrows
-# wrap generously. Keep in sync with solver._VERT_BUDGET_MIN.
-_V_WRAP_BUDGET_MIN = 132  # px = 24 chars * 5.5
+# ---------------------------------------------------------------------------
+# Along-path edge labels (ADR-002) — shared geometry
+# ---------------------------------------------------------------------------
+# Single source of truth for how a label rides an edge. The solver's
+# strike-avoidance contract (solver.py) and the geometry audit
+# (scripts/audit-geometry.py) import these so all three measure the
+# same thing the renderer draws.
+
+LABEL_FONT_SIZE = 9
+LABEL_CHAR_W    = 5.5                    # px per character (width model)
+LABEL_LINE_H    = LABEL_FONT_SIZE * 1.5   # px per wrapped line
+LABEL_SIDE_PAD  = 8     # px — clearance from endpoint boxes / arrowheads
+LABEL_CLEARANCE = 3     # px — stroke-to-text clearance below the descent
+LABEL_DESCENT   = LABEL_FONT_SIZE * 0.25  # px — descent below the baseline
+
+# Anti-parallel pairs share one stroke today; anchor their labels at
+# 1/3 and 2/3 of the leg so the two labels do not collide. (Separating
+# the coincident strokes themselves is router work — SPEC, Routing
+# strategy.)
+PAIR_ANCHOR_FIRST  = 1 / 3
+PAIR_ANCHOR_SECOND = 2 / 3
+
+
+@dataclass
+class LabelGeometry:
+    """Everything the renderer, solver, or audit needs about a label."""
+    leg: tuple[float, float, float, float]  # x0, y0, x1, y1 — longest leg
+    leg_len: float
+    ux: float   # mirror-normalized unit direction of the label path
+    uy: float
+    up_x: float  # unit "above" in the text's local frame (screen coords)
+    up_y: float
+    mirror: bool
+    rotated: bool  # |uy| > |ux| — the label renders rotated
+    lines: list[str]
+    max_line_w: float
+    widest_word_w: float
+    anchor: tuple[float, float]  # anchor point at anchor_frac along the leg
+    strip: tuple[float, float, float, float]  # x, y, x2, y2 — text extent
+
+
+def wrap_label_lines(label: str, max_chars: int) -> list[str]:
+    """Greedy word wrap across manual lines. A word longer than
+    max_chars keeps its own line (words are never split) — callers
+    detect the overflow via LabelGeometry.widest_word_w."""
+    wrapped: list[str] = []
+    for raw in label.split("\\n"):
+        words = raw.split()
+        if not words:
+            wrapped.append("")
+            continue
+        cur = words[0]
+        for w in words[1:]:
+            if len(cur) + 1 + len(w) <= max_chars:
+                cur += " " + w
+            else:
+                wrapped.append(cur)
+                cur = w
+        wrapped.append(cur)
+    return wrapped
+
+
+def label_geometry(points, label: str, anchor_frac: float = 0.5) -> LabelGeometry:
+    """Measure the along-path label an edge with `points` would draw.
+
+    The label rides the longest leg; `anchor_frac` positions its
+    centre along that leg (0.5 for a lone edge, 1/3 and 2/3 for a
+    pair sharing a stroke). The strip is the one-sided text extent
+    above the stroke — the collision currency for strike checks.
+    """
+    pts = [(float(x), float(y)) for x, y in points]
+    seg_lens = [
+        math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1])
+        for i in range(len(pts) - 1)
+    ]
+    li = max(range(len(seg_lens)), key=lambda i: seg_lens[i])
+    x0, y0 = pts[li]
+    x1, y1 = pts[li + 1]
+    leg_len = seg_lens[li]
+    if leg_len < 1:
+        # Degenerate leg: a 1px eastward direction so the label still
+        # renders instead of dividing by zero.
+        x0, y0 = pts[0]
+        x1, y1 = x0 + 1.0, y0
+        leg_len = 1.0
+    ux, uy = (x1 - x0) / leg_len, (y1 - y0) / leg_len
+    # Never upside-down: a leg running right-to-left (or bottom-to-top
+    # when vertical) carries mirrored text along a reversed path.
+    mirror = ux < 0 or (abs(ux) < 1e-9 and uy < 0)
+    if mirror:
+        ux, uy = -ux, -uy
+    # Text-local "above" (SVG y grows downward): quarter turn
+    # counter-clockwise from the reading direction.
+    up_x, up_y = uy, -ux
+
+    budget = max(leg_len - LABEL_SIDE_PAD * 2, 1.0)
+    max_chars = max(int(budget / LABEL_CHAR_W), 1)
+    lines = wrap_label_lines(label, max_chars)
+    max_line_w = max(len(l) for l in lines) * LABEL_CHAR_W
+    widest_word_w = max(
+        (len(w) for raw in label.split("\\n") for w in raw.split()),
+        default=0,
+    ) * LABEL_CHAR_W
+
+    ax = x0 + (x1 - x0) * anchor_frac
+    ay = y0 + (y1 - y0) * anchor_frac
+    # Text extent: max_line_w centred on the anchor along the leg,
+    # stacked `up` from the stroke (clearance cancels the descent: the
+    # bottom line's descent sits `clearance` above the stroke, the top
+    # line's ascent tops out at clearance + n * line height).
+    depth = LABEL_CLEARANCE + LABEL_LINE_H * len(lines)
+    half_w = max_line_w / 2
+    corners = (
+        (ax - ux * half_w, ay - uy * half_w),
+        (ax + ux * half_w, ay + uy * half_w),
+        (ax + ux * half_w + up_x * depth, ay + uy * half_w + up_y * depth),
+        (ax - ux * half_w + up_x * depth, ay - uy * half_w + up_y * depth),
+    )
+    xs = [p[0] for p in corners]
+    ys = [p[1] for p in corners]
+    return LabelGeometry(
+        leg=(x0, y0, x1, y1), leg_len=leg_len, ux=ux, uy=uy,
+        up_x=up_x, up_y=up_y, mirror=mirror, rotated=abs(uy) > abs(ux),
+        lines=lines, max_line_w=max_line_w, widest_word_w=widest_word_w,
+        anchor=(ax, ay), strip=(min(xs), min(ys), max(xs), max(ys)),
+    )
+
+
+def _edge_endpoints(edge) -> tuple:
+    """(source_id, target_id) for a routed or materialized edge."""
+    src = getattr(edge, "source_id", None)
+    tgt = getattr(edge, "target_id", None)
+    if src is None:
+        src, tgt = edge.source, edge.target
+    return src, tgt
+
+
+def pair_anchor_fracs(edges) -> dict[int, float]:
+    """Anchor fractions for labelled edges sharing both endpoints.
+
+    Two edges between the same node pair share a stroke today (the HA
+    anti-parallel Raft pairs render coincident). Anti-parallel edges
+    each anchor at 1/3 along their own direction, which lands the two
+    labels on opposite thirds of the shared span; same-direction
+    duplicates take 1/3 and 2/3. Fractions are geometric — along each
+    edge's own leg, before mirroring. (Separating the coincident
+    strokes themselves is router work — SPEC, Routing strategy.)
+    """
+    groups: dict[frozenset, list[int]] = {}
+    for i, e in enumerate(edges):
+        if not e.label:
+            continue
+        src, tgt = _edge_endpoints(e)
+        groups.setdefault(frozenset((src, tgt)), []).append(i)
+    out: dict[int, float] = {}
+    for idxs in groups.values():
+        if len(idxs) == 2:
+            s0, t0 = _edge_endpoints(edges[idxs[0]])
+            s1, t1 = _edge_endpoints(edges[idxs[1]])
+            if (s0, t0) == (s1, t1):
+                out[idxs[0]] = PAIR_ANCHOR_FIRST
+                out[idxs[1]] = PAIR_ANCHOR_SECOND
+            else:
+                # Anti-parallel: the same own-direction fraction sits
+                # on opposite thirds of the span (1/3 from one end is
+                # 2/3 from the other) -- raw 1/3 + 2/3 would collide.
+                out[idxs[0]] = PAIR_ANCHOR_FIRST
+                out[idxs[1]] = PAIR_ANCHOR_FIRST
+        elif len(idxs) > 2:
+            for j, i in enumerate(idxs):
+                out[i] = (j + 1) / (len(idxs) + 1)
+    return out
 
 
 
@@ -321,9 +490,10 @@ def render(
     edges_g = dw.Group(id="ggarch-edges")
     ann_g   = dw.Group(id="ggarch-annotations")
     _render_nodes(nodes_g, layout.nodes, node_styles, ox, oy, view, dark, border_gaps)
-
-    for edge in routed.edges:
-        _render_edge(edges_g, edge, edge_styles, ox, oy)
+    anchor_fracs = pair_anchor_fracs(routed.edges)
+    for i, edge in enumerate(routed.edges):
+        _render_edge(edges_g, edge, edge_styles, ox, oy,
+                    anchor_fracs.get(i, 0.5))
 
     for ann in view.annotations:
         if skip_legend and isinstance(ann, AnnotationLegend):
@@ -822,58 +992,12 @@ def _render_records_chip(
                      text_anchor="middle",
                      dominant_baseline="central"))
 
-
 # ---------------------------------------------------------------------------
 # Edge rendering
 # ---------------------------------------------------------------------------
 
-def _point_along_path(pts: list[tuple[float,float]], dist: float) -> tuple[float,float]:
-    """Return the point at `dist` px along the polyline pts."""
-    remaining = dist
-    for i in range(len(pts) - 1):
-        x0, y0 = pts[i]
-        x1, y1 = pts[i+1]
-        seg = math.hypot(x1 - x0, y1 - y0)
-        if remaining <= seg or i == len(pts) - 2:
-            t = remaining / seg if seg > 0 else 0
-            return (x0 + t * (x1 - x0), y0 + t * (y1 - y0))
-        remaining -= seg
-    return pts[-1]
-
-
-def _pts_before_dist(pts: list[tuple[float,float]], dist: float) -> list[tuple[float,float]]:
-    """Return the sub-polyline from pts[0] up to the point at `dist` along the path."""
-    result = [pts[0]]
-    remaining = dist
-    for i in range(len(pts) - 1):
-        x0, y0 = pts[i]
-        x1, y1 = pts[i+1]
-        seg = math.hypot(x1 - x0, y1 - y0)
-        if remaining <= seg or i == len(pts) - 2:
-            t = remaining / seg if seg > 0 else 0
-            result.append((x0 + t * (x1 - x0), y0 + t * (y1 - y0)))
-            return result
-        result.append((x1, y1))
-        remaining -= seg
-    return result
-
-
-def _pts_after_dist(pts: list[tuple[float,float]], dist: float) -> list[tuple[float,float]]:
-    """Return the sub-polyline from the point at `dist` along the path to pts[-1]."""
-    remaining = dist
-    for i in range(len(pts) - 1):
-        x0, y0 = pts[i]
-        x1, y1 = pts[i+1]
-        seg = math.hypot(x1 - x0, y1 - y0)
-        if remaining <= seg or i == len(pts) - 2:
-            t = remaining / seg if seg > 0 else 0
-            start = (x0 + t * (x1 - x0), y0 + t * (y1 - y0))
-            return [start] + list(pts[i+1:])
-        remaining -= seg
-    return [pts[-1]]
-
-
-def _path_d(pts: list[tuple[float,float]]) -> str:
+def _path_d(pts: list[tuple[float, float]]) -> str:
+    """SVG path data for a polyline of (x, y) points."""
     d = f"M {pts[0][0]:.1f} {pts[0][1]:.1f}"
     for x, y in pts[1:]:
         d += f" L {x:.1f} {y:.1f}"
@@ -886,6 +1010,7 @@ def _render_edge(
     edge_styles: dict[str, EdgeStyle],
     ox: float,
     oy: float,
+    anchor_frac: float = 0.5,
 ) -> None:
     es = edge_styles.get(edge.edge_type, edge_styles.get("default", EdgeStyle()))
     pts = [(p.x + ox, p.y + oy) for p in edge.points]
@@ -900,144 +1025,38 @@ def _render_edge(
     elif edge.style == "dotted":
         path_kwargs["stroke_dasharray"] = "2,2"
 
+    # ADR-002: the stroke is content — one unbroken path, never split,
+    # never interrupted. Dash rhythm and every edge style stay legible
+    # under labelling by construction.
+    if edge.arrow in ("forward", "both"):
+        path_kwargs["marker_end"] = "url(#arrow)"
+    if edge.arrow in ("back", "both"):
+        path_kwargs["marker_start"] = "url(#arrow)"
+    g.append(dw.Path(d=_path_d(pts), **path_kwargs))
+
     if not edge.label:
-        # No label: single path with arrowhead.
-        if edge.arrow in ("forward", "both"):
-            path_kwargs["marker_end"] = "url(#arrow)"
-        if edge.arrow in ("back", "both"):
-            path_kwargs["marker_start"] = "url(#arrow)"
-        g.append(dw.Path(d=_path_d(pts), **path_kwargs))
         return
 
-    # ---- Labelled edge: gap interrupt or perpendicular offset ----
-    path_len = sum(
-        math.hypot(pts[i+1][0] - pts[i][0], pts[i+1][1] - pts[i][1])
-        for i in range(len(pts) - 1)
-    )
-    font_size  = 9
-    char_w     = 5.5   # px — must match solver _LABEL_CHAR_W to avoid gap/text mismatch
-    PADDING    = 0     # px each side of gap — char_w overestimate provides implicit clearance
-    MIN_TAIL   = 16    # px of visible arrow on each side of gap (shaft beyond arrowhead)
-    PERP_OFFSET = 9   # px perpendicular shift in offset mode
-
-    # Identify the longest segment — the label lives there.
-    seg_lens = [
-        math.hypot(pts[i+1][0] - pts[i][0], pts[i+1][1] - pts[i][1])
-        for i in range(len(pts) - 1)
-    ]
-    longest_i      = seg_lens.index(max(seg_lens))
-    seg_start_dist = sum(seg_lens[:longest_i])
-    seg_end_dist   = seg_start_dist + seg_lens[longest_i]
-    mid_dist       = (seg_start_dist + seg_end_dist) / 2
-
-    # Direction of the longest segment.
-    sx0, sy0 = pts[longest_i]
-    sx1, sy1 = pts[longest_i + 1]
-    seg_dx = sx1 - sx0; seg_dy = sy1 - sy0
-    seg_len = seg_lens[longest_i]
-    ux = abs(seg_dx / seg_len) if seg_len > 0 else 1.0
-    uy = abs(seg_dy / seg_len) if seg_len > 0 else 0.0
-    # Unit perpendicular — points "above" the arrow (CW rotation, used in offset mode).
-    # SVG y increases downward, so "above" = negative y for rightward arrows.
-    px =  seg_dy / seg_len if seg_len > 0 else 0.0
-    py = -seg_dx / seg_len if seg_len > 0 else -1.0
-
-    # Wrap budget (chars). Keep in sync with the solver's label-contract
-    # measurement (_measure_label_reservations in solver.py), which
-    # predicts this to reserve clearance.
-    # - Mostly horizontal: wrap to the width a gap can actually clear
-    #   (segment minus tails), so gap mode is reachable whenever the
-    #   longest word fits. The old full-segment budget could never fit
-    #   its own gap: a label wrapped to segment width needs the segment
-    #   PLUS two tails.
-    # - Mostly vertical: the gap clears the label's height, not its
-    #   width -- wrap generously; width is free across the arrow.
-    if ux >= uy:
-        budget_px = ux * (seg_len - PADDING * 2 - MIN_TAIL * 2)
-    else:
-        budget_px = max(seg_len, _V_WRAP_BUDGET_MIN)
-    max_chars = max(int(budget_px / char_w), 1)
-    raw_lines = edge.label.split("\\n")
-    wrapped: list[str] = []
-    for raw in raw_lines:
-        words = raw.split()
-        if not words:
-            wrapped.append("")
-            continue
-        cur = words[0]
-        for w in words[1:]:
-            if len(cur) + 1 + len(w) <= max_chars:
-                cur += " " + w
-            else:
-                wrapped.append(cur)
-                cur = w
-        wrapped.append(cur)
-
-    max_line_w = max(len(l) for l in wrapped) * char_w
-    lh = font_size * 1.5
-    text_h = lh * len(wrapped)
-
-    # Gap size = width of the label along the arrow direction.
-    # The label is always rendered horizontally (not rotated), so for an arrow
-    # at angle θ the gap along the arrow that clears the label is:
-    #   max_line_w / ux   (when the arrow is mostly horizontal)
-    #   text_h / uy       (when mostly vertical)
-    # We take the larger of the two non-degenerate projections so the label
-    # always clears the line, then add padding.
-    if ux >= uy:
-        # Mostly horizontal — gap driven by label width.
-        gap_needed = max_line_w / ux if ux > 0.1 else max_line_w
-    else:
-        # Mostly vertical — gap driven by label height.
-        gap_needed = text_h / uy if uy > 0.1 else text_h
-
-    min_seg_for_gap = gap_needed + PADDING * 2 + MIN_TAIL * 2
-    use_gap = seg_lens[longest_i] >= min_seg_for_gap
-
-    lm = _point_along_path(pts, mid_dist)
-    mx, my = lm[0], lm[1]
-
-    if use_gap:
-        max_gap = seg_lens[longest_i] - MIN_TAIL * 2
-        gap = min(gap_needed + PADDING * 2, max_gap)
-        half_gap = gap / 2
-        gap_start_dist = max(mid_dist - half_gap, seg_start_dist + MIN_TAIL)
-        gap_end_dist   = min(mid_dist + half_gap, seg_end_dist   - MIN_TAIL)
-
-        kw1 = dict(path_kwargs)
-        if edge.arrow in ("back", "both"):
-            kw1["marker_start"] = "url(#arrow)"
-        pre_pts = _pts_before_dist(pts, gap_start_dist)
-        if len(pre_pts) >= 2:
-            g.append(dw.Path(d=_path_d(pre_pts), **kw1))
-
-        kw2 = dict(path_kwargs)
-        if edge.arrow in ("forward", "both"):
-            kw2["marker_end"] = "url(#arrow)"
-        post_pts = _pts_after_dist(pts, gap_end_dist)
-        if len(post_pts) >= 2:
-            g.append(dw.Path(d=_path_d(post_pts), **kw2))
-    else:
-        # Offset mode: draw path whole, float label perpendicularly.
-        kw = dict(path_kwargs)
-        if edge.arrow in ("forward", "both"):
-            kw["marker_end"] = "url(#arrow)"
-        if edge.arrow in ("back", "both"):
-            kw["marker_start"] = "url(#arrow)"
-        g.append(dw.Path(d=_path_d(pts), **kw))
-        mx += px * PERP_OFFSET
-        my += py * PERP_OFFSET
-
-    # Render label text.
-    total_h = lh * len(wrapped)
-    start_y = my - total_h / 2 + lh * 0.5
-    for i, line in enumerate(wrapped):
+    # The label follows the arrow: one textPath per wrapped line on the
+    # longest leg, above the line in the text's local frame — no
+    # background mask, zero occlusion by construction.
+    lg = label_geometry(pts, edge.label, anchor_frac)
+    lx0, ly0, lx1, ly1 = lg.leg
+    if lg.mirror:
+        # Read left-to-right (or top-to-bottom) on a right-to-left leg.
+        lx0, ly0, lx1, ly1 = lx1, ly1, lx0, ly0
+    label_path = dw.Path(d=_path_d([(lx0, ly0), (lx1, ly1)]))
+    # The geometric anchor maps to the mirrored path's own arc length.
+    frac = 1 - anchor_frac if lg.mirror else anchor_frac
+    for i, line in enumerate(lg.lines):
+        depth = LABEL_DESCENT + LABEL_CLEARANCE + i * LABEL_LINE_H
         g.append(dw.Text(
-            line, font_size, mx, start_y + i * lh,
+            line, LABEL_FONT_SIZE, path=label_path,
+            text_anchor="middle",
+            start_offset=round(frac * lg.leg_len, 1),
             font_family=LABEL_FONT,
             fill=es.font_color,
-            text_anchor="middle",
-            dominant_baseline="central",
+            line_offset=-(depth / LABEL_FONT_SIZE),
         ))
 # ---------------------------------------------------------------------------
 # Annotation rendering

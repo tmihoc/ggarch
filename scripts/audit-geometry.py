@@ -6,29 +6,40 @@ Usage (from a docs dir with ggarch importable, or from the repo):
 For every diagram view in the given model files:
   1. solve + route (the exact data the SVG draws)
   2. measure, per routed edge:
-     - obstacle crossings: segments passing through the interior of a node
-       rect that is not an ancestor-or-self of either endpoint
+     - obstacle crossings: segments passing through the interior of a
+       node rect that is not an ancestor-or-self of either endpoint
      - diagonal-ness: mostly-horizontal 2-point paths whose |dy| > 8px
-     - label mode: replicate renderer._render_edge's gap-vs-offset test
-       (0.25.3 gap-budget wrap)
+     - rotated labels (ADR-002 orientation metric): labels whose leg
+       runs more vertical than horizontal — the trigger metric for the
+       staged auto-flip decision
+     - label strikes: the label's one-sided strip (renderer
+       .label_geometry, pair anchors included) vs node rects the
+       stroke itself clears, vs other labels, and vs the shared
+       container's padded wall
 
-The label-mode metric tracks the IMPLEMENTED label policy and must be
-updated when ADR-002 (along-path labels) lands in 0.25.4: replace it
-with rotated-label count (the orientation metric) and label-strike
-tests (label extent vs node rects / other labels). Baseline at 0.25.3:
-juju4 31 crossing-edges / 27 diagonals / 0 offset labels; juju3
-15 / 15 / 0.
+Label metrics measure the IMPLEMENTED placement (renderer
+label_geometry is the single source — the audit imports it, never
+replicates it). Baseline at 0.25.4 (ADR-002 along-path labels):
+juju3 15 crossing-edges / 11 diagonals / 30 rotated labels /
+3 node-strikes / 0 wall-crossings / 6 label-clashes;
+juju4 35 / 22 / 22 / 4 / 0 / 10. The 0.25.3 baseline
+(juju4 31 / 27 / 0 offset labels; juju3 15 / 15 / 0) applied to the
+superseded gap/offset policy; juju4's crossings grew 31 -> 35 because
+the abolished gap floors regressed the space 0.25.3 spent widening
+gaps (the auto-layout twin tightened; step 2's edge-aware floor sizes
+column gaps to the labels routed through them). Wall-crossings 0/0:
+the strike-avoidance contract reserves them. Label clashes are the
+step-3 router baseline (strips as collision currency).
 """
 import sys
 import math
-from ggarch import parse, validate, solve, route, render
 
-CHAR_W = 5.5
-FONT_SIZE = 9
-LH = FONT_SIZE * 1.5
-MIN_TAIL = 16
-PADDING = 0
+from ggarch import parse, validate, solve, route
+from ggarch.layout import CONTAINER_PAD, CONTAINER_PAD_TOP
+from ggarch.renderer import label_geometry, pair_anchor_fracs
+
 EPS = 0.5
+WALL_EPS = 1.0
 
 
 def ancestors_map(layout):
@@ -46,6 +57,17 @@ def all_rects(layout):
     out = []
     def walk(n):
         out.append(n)
+        for c in n.children:
+            walk(c)
+    for n in layout.nodes:
+        walk(n)
+    return out
+
+
+def rects_by_id(layout):
+    out = {}
+    def walk(n):
+        out[n.id] = n.rect
         for c in n.children:
             walk(c)
     for n in layout.nodes:
@@ -73,49 +95,21 @@ def seg_interior_hits(p1, p2, rect):
     return hits
 
 
-def wrap_label(label, max_chars):
-    wrapped = []
-    for raw in label.split("\\n"):
-        words = raw.split()
-        if not words:
-            wrapped.append("")
-            continue
-        cur = words[0]
-        for w in words[1:]:
-            if len(cur) + 1 + len(w) <= max_chars:
-                cur += " " + w
-            else:
-                wrapped.append(cur)
-                cur = w
-        wrapped.append(cur)
-    return wrapped
+def stroke_interior_hits(points, rect):
+    hits = 0
+    for i in range(len(points) - 1):
+        hits += seg_interior_hits(points[i], points[i + 1], rect)
+    return hits
 
 
-def label_mode(points, label):
-    """Replicate renderer._render_edge's use_gap decision (0.25.3 budget)."""
-    pts = [(p.x, p.y) for p in points]
-    seg_lens = [math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1])
-                for i in range(len(pts) - 1)]
-    li = seg_lens.index(max(seg_lens))
-    sx0, sy0 = pts[li]
-    sx1, sy1 = pts[li + 1]
-    seg_len = seg_lens[li]
-    ux = abs((sx1 - sx0) / seg_len) if seg_len > 0 else 1.0
-    uy = abs((sy1 - sy0) / seg_len) if seg_len > 0 else 0.0
-    if ux >= uy:
-        budget_px = ux * (seg_len - PADDING * 2 - MIN_TAIL * 2)
-    else:
-        budget_px = max(seg_len, 132)
-    max_chars = max(int(budget_px / CHAR_W), 1)
-    wrapped = wrap_label(label, max_chars)
-    max_line_w = max(len(l) for l in wrapped) * CHAR_W
-    text_h = LH * len(wrapped)
-    if ux >= uy:
-        gap_needed = max_line_w / ux if ux > 0.1 else max_line_w
-    else:
-        gap_needed = text_h / uy if uy > 0.1 else text_h
-    use_gap = seg_len >= gap_needed + PADDING * 2 + MIN_TAIL * 2
-    return use_gap, seg_len, gap_needed, len(wrapped)
+def rects_overlap(a, b, eps=WALL_EPS):
+    """Do two (x, y, x2, y2) boxes overlap by more than eps?"""
+    return not (a[2] <= b[0] + eps or b[2] <= a[0] + eps
+                or a[3] <= b[1] + eps or b[3] <= a[1] + eps)
+
+
+def strip_rect(lg):
+    return lg.strip
 
 
 def audit_file(path):
@@ -128,20 +122,26 @@ def audit_file(path):
         routed = route(solved, m, d.select)
         anc = ancestors_map(solved)
         rects = all_rects(solved)
+        rmap = rects_by_id(solved)
+        anchor_fracs = pair_anchor_fracs(routed.edges)
 
         crossings = []
         diagonals = []
-        labels = []
+        rotated = 0
+        node_strikes = []
+        wall_crossings = []
+        labelled = 0
 
-        for e in routed.edges:
+        labels = []   # (desc, strip) for label-label checks
+        for i, e in enumerate(routed.edges):
             desc = f"{e.source_id} -> {e.target_id}" + (
                 f" [{e.label}]" if e.label else "")
             src_anc = anc.get(e.source_id, set()) | {e.source_id}
             tgt_anc = anc.get(e.target_id, set()) | {e.target_id}
             exempt = src_anc | tgt_anc
 
-            for i in range(len(e.points) - 1):
-                p1, p2 = e.points[i], e.points[i + 1]
+            for j in range(len(e.points) - 1):
+                p1, p2 = e.points[j], e.points[j + 1]
                 for nd in rects:
                     if nd.id in exempt:
                         continue
@@ -155,16 +155,61 @@ def audit_file(path):
                 if dx > 40 and dy > 8 and dx >= dy:
                     diagonals.append((desc, round(dx), round(dy)))
 
-            if e.label:
-                use_gap, seg_len, gap_needed, nlines = label_mode(e.points, e.label)
-                mode = "gap" if use_gap else "OFFSET"
-                labels.append((desc, mode, round(seg_len), round(gap_needed), nlines))
+            if not e.label:
+                continue
+            labelled += 1
+            pts = [(p.x, p.y) for p in e.points]
+            lg = label_geometry(pts, e.label, anchor_fracs.get(i, 0.5))
+            if lg.rotated:
+                rotated += 1
+            labels.append((desc, lg.strip))
+
+            # Node strikes: strip vs non-exempt rects whose interior
+            # the stroke itself clears (a stroke that crosses the node
+            # is a crossing, counted above — router work either way).
+            for nd in rects:
+                if nd.id in exempt:
+                    continue
+                nr = (nd.rect.x, nd.rect.y, nd.rect.x2, nd.rect.y2)
+                if not rects_overlap(lg.strip, nr):
+                    continue
+                if stroke_interior_hits(e.points, nd.rect):
+                    continue
+                node_strikes.append((desc, nd.id))
+
+            # Wall crossings: for internal edges (both endpoints inside
+            # the same container), the strip must stay within the
+            # container's padded inner rect.
+            common = (src_anc & tgt_anc)
+            innermost = None
+            for cid in common:
+                if innermost is None or cid in anc.get(innermost, set()):
+                    innermost = cid
+            if innermost is not None:
+                cr = rmap[innermost]
+                inner = (cr.x + CONTAINER_PAD, cr.y + CONTAINER_PAD_TOP,
+                         cr.x2 - CONTAINER_PAD, cr.y2 - CONTAINER_PAD)
+                if not (lg.strip[0] >= inner[0] - WALL_EPS
+                        and lg.strip[1] >= inner[1] - WALL_EPS
+                        and lg.strip[2] <= inner[2] + WALL_EPS
+                        and lg.strip[3] <= inner[3] + WALL_EPS):
+                    wall_crossings.append((desc, innermost))
+
+        label_clashes = []
+        for i in range(len(labels)):
+            for j in range(i + 1, len(labels)):
+                if rects_overlap(labels[i][1], labels[j][1]):
+                    label_clashes.append((labels[i][0], labels[j][0]))
 
         report[d.name] = dict(
             n_edges=len(routed.edges),
             crossings=crossings,
             diagonals=diagonals,
-            labels=labels,
+            rotated=rotated,
+            labelled=labelled,
+            node_strikes=node_strikes,
+            wall_crossings=wall_crossings,
+            label_clashes=label_clashes,
         )
     return report
 
@@ -173,21 +218,29 @@ def main():
     for path in sys.argv[1:]:
         report = audit_file(path)
         print(f"\n{'=' * 70}\n{path}\n{'=' * 70}")
-        tc = td = to = te = 0
+        tc = td = tr = tns = twc = tl = 0
+        te = tlab = 0
         for view, r in report.items():
             nc = len(set(c[0] for c in r["crossings"]))
             nd = len(r["diagonals"])
-            no = sum(1 for l in r["labels"] if l[1] == "OFFSET")
+            nr = r["rotated"]
+            nns = len(r["node_strikes"])
+            nwc = len(r["wall_crossings"])
+            nl = len(r["label_clashes"])
             te += r["n_edges"]
-            tc += nc
-            td += nd
-            to += no
-            flag = "  <-- DEFECTS" if (nc or nd or no) else ""
+            tlab += r["labelled"]
+            tc += nc; td += nd; tr += nr
+            tns += nns; twc += nwc; tl += nl
+            flag = "  <-- DEFECTS" if (nc or nd or nns or nwc or nl) else ""
             print(f"{view}: edges={r['n_edges']} "
                   f"crossing-edges={nc} diagonals={nd} "
-                  f"offset-labels={no}/{len(r['labels'])}{flag}")
+                  f"rotated-labels={nr}/{r['labelled']} "
+                  f"node-strikes={nns} wall-crossings={nwc} "
+                  f"label-clashes={nl}{flag}")
         print(f"\nTOTAL {path}: edges={te} crossing-edges={tc} "
-              f"diagonals={td} offset-labels={to}")
+              f"diagonals={td} rotated-labels={tr}/{tlab} "
+              f"node-strikes={tns} wall-crossings={twc} "
+              f"label-clashes={tl}")
 
         print("\n--- detail ---")
         for view, r in report.items():
@@ -195,9 +248,12 @@ def main():
                 print(f"  CROSS  {view}: {desc}  through {obst} (x{hits})")
             for desc, dx, dy in r["diagonals"]:
                 print(f"  DIAG   {view}: {desc}  dx={dx} dy={dy}")
-            for desc, mode, sl, gn, nl in r["labels"]:
-                if mode == "OFFSET":
-                    print(f"  LABEL  {view}: {desc}  OFFSET seg={sl} need={gn} lines={nl}")
+            for desc, obst in r["node_strikes"]:
+                print(f"  NSTRIKE {view}: {desc}  strip strikes {obst}")
+            for desc, cont in r["wall_crossings"]:
+                print(f"  WALL   {view}: {desc}  strip crosses {cont} wall")
+            for a, b in r["label_clashes"]:
+                print(f"  LCLASH {view}: {a}  <->  {b}")
 
 
 if __name__ == "__main__":

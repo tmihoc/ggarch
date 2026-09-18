@@ -404,32 +404,137 @@ diagram "D" from "M" {
 }
 """
 
+ALONG_PATH_SRC = """\
+model "M" {
+  nodes {
+    a [type: juju-software, label: "A"]
+    b [type: juju-software, label: "B"]
+  }
+  edges { a -> b [type: control, label: "one two three"] }
+}
+diagram "D" from "M" {
+  select { nodes: a b }
+  positions { a left-of b gap: 60 }
+}
+"""
 
-class TestLabelGapBudget:
-    """Labels wrap to the width a gap can clear, not the full segment
-    (0.25.3).
 
-    Before, the wrap budget was the whole segment, so a label on a
-    short arrow could never interrupt it: gap mode needs the wrapped
-    label plus two 16px tails, and a label wrapped to segment width is
-    already too wide by exactly that. The budget is now the gap budget
-    (segment minus tails), so gap mode succeeds whenever the longest
-    word fits -- here on a stamped-subtree internal edge, the class the
-    solver's two-phase label contract widens to match.
+RTL_SRC = """\
+model "M" {
+  nodes {
+    a [type: juju-software, label: "A"]
+    b [type: juju-software, label: "B"]
+  }
+  edges { b -> a [type: control, label: "reverse"] }
+}
+diagram "D" from "M" {
+  select { nodes: a b }
+  positions { a left-of b gap: 100 }
+}
+"""
+
+
+PAIR_SRC = """\
+model "M" {
+  nodes {
+    a [type: juju-software, label: "A"]
+    b [type: juju-software, label: "B"]
+  }
+  edges {
+    a -> b [type: control, label: "sync"]
+    b -> a [type: control, label: "ack"]
+  }
+}
+diagram "D" from "M" {
+  select { nodes: a b }
+  positions { a left-of b gap: 120 }
+}
+"""
+
+
+DASHED_LABELED_SRC = """\
+model "M" {
+  nodes {
+    a [type: juju-software, label: "A"]
+    b [type: juju-software, label: "B"]
+  }
+  edges { a -> b [type: stream, label: "watch"] }
+}
+diagram "D" from "M" {
+  select { nodes: a b }
+  positions { a left-of b gap: 100 }
+}
+"""
+
+
+class TestAlongPathLabels:
+    """ADR-002 (0.25.4): edge labels follow the arrow.
+
+    The label rides the longest leg on an SVG textPath, above the line
+    in the text's local frame, one textPath per wrapped line stacked
+    outward. The stroke is never interrupted (gap/offset mode is
+    abolished) and right-to-left legs get a mirrored label path so
+    text always reads left-to-right or top-to-bottom.
     """
 
-    def test_label_wraps_to_gap_budget_and_interrupts_arrow(self):
+    def test_labelled_edge_renders_single_unbroken_stroke(self):
         svg = pipeline(GAP_BUDGET_SRC)
-        # The stamped children start at the 20px container-child gap;
-        # the contract widens it just enough for the wrapped label,
-        # which at the gap budget is three lines, widest "Pebble".
-        # Gap mode: the arrow renders in two segments with the label
-        # interrupting it, not floating beside an unbroken arrow.
-        for line in (">calls<", ">Pebble<", ">API<"):
-            assert line in svg, f"wrapped line {line!r} missing"
-        edge_paths = [p for p in re.findall(r"<path[^>]*>", svg)
-                      if 'fill="none"' in p]
-        assert len(edge_paths) == 2, (
-            f"expected gap-mode (two segments), got {len(edge_paths)}: "
-            "label floats beside an unbroken arrow"
+        edges = svg.split('id="ggarch-edges"')[1]
+        n_paths = len(re.findall(r"<path ", edges))
+        assert n_paths == 1, (
+            f"labelled edge rendered {n_paths} stroke paths -- "
+            "the stroke must never be split or interrupted"
         )
+
+    def test_label_rides_textpath_with_start_offset(self):
+        svg = pipeline(SIMPLE)
+        assert "<textPath" in svg, "label must ride the path via textPath"
+        assert "startOffset" in svg
+
+    def test_wrap_budget_is_leg_minus_side_padding(self):
+        # 60px leg minus 2x8px side padding = 44px = 8 chars:
+        # "one two" / "three" (two lines). The 0.25.3 gap budget
+        # (leg minus 2x16px tails) wrapped this to three lines.
+        svg = pipeline(ALONG_PATH_SRC)
+        assert svg.count("<textPath") == 2
+
+    def test_lines_stack_outward_above_the_stroke(self):
+        svg = pipeline(ALONG_PATH_SRC)
+        dys = [float(v) for v in re.findall(r'<tspan dy="(-?[\d.]+)em"', svg)]
+        assert len(dys) == 2
+        assert all(d < 0 for d in dys), dys
+        assert dys[1] < dys[0], "second line must stack further above"
+
+    def test_right_to_left_leg_gets_mirrored_label_path(self):
+        # The stroke runs right-to-left; the textPath must run
+        # left-to-right so the label never reads upside-down.
+        svg = pipeline(RTL_SRC)
+        head = svg.split('<g id="ggarch-edges"')[0]
+        href = re.search(r'xlink:href="#([\w-]+)"', svg)
+        assert href, "no textPath reference found"
+        m = re.search(
+            rf'<path d="M ([\d.]+) [\d.]+ L ([\d.]+)[^"]*" id="{href.group(1)}"',
+            head,
+        )
+        assert m, "label path not in defs"
+        assert float(m.group(1)) < float(m.group(2)), (
+            "label path must run left-to-right (mirrored)"
+        )
+
+    def test_antiparallel_pair_labels_anchor_at_thirds(self):
+        # Anti-parallel edges share a leg; both labels at the midpoint
+        # would collide (coincident strokes). Anchor at 1/3 and 2/3.
+        svg = pipeline(PAIR_SRC)
+        offsets = re.findall(r'startOffset="([^"]+)"', svg)
+        assert len(offsets) == 2
+        vals = sorted(float(o) for o in offsets)
+        leg = 120.0
+        assert vals[0] == pytest.approx(leg / 3, abs=2), vals
+        assert vals[1] == pytest.approx(2 * leg / 3, abs=2), vals
+
+    def test_dashed_labelled_edge_keeps_one_dashed_path(self):
+        # Dash rhythm is content: the pattern must never restart at a
+        # sub-path boundary, so a labelled dashed edge is ONE path.
+        svg = pipeline(DASHED_LABELED_SRC)
+        edges = svg.split('id="ggarch-edges"')[1]
+        assert edges.count("stroke-dasharray") == 1

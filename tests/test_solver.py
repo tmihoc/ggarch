@@ -658,22 +658,19 @@ diagram "ha" from "M" {
 
 
 class TestLabelContract:
-    """Two-phase label contract (0.25.3): gap-mode labels wherever the
-    layout allows.
+    """Two-phase label contract: strike avoidance (ADR-002, 0.25.4).
 
-    Phase two of solve() measures the route each labelled edge would
-    draw and reserves, at strong priority, the axis clearance its label
-    needs. Before this, labels on stamped-subtree internals (unit
-    agent -> charm inside an instanced pod) had no effective
-    reservation: the old fallback emitted both horizontal directions,
-    which cancel on any separated pair, and the child-expansion
-    pass matches raw model ids that instanced views never see -- so
-    those edges kept the 20px child gap and their labels floated
-    beside the arrow (the 0.25.2 geometry audit's offset-label and
-    gap-violation defect classes).
+    Phase two of solve() measures the rendered geometry each labelled
+    edge would draw -- an along-path label on its longest leg -- and
+    reserves STRONG-priority clearance only when the label's extent
+    would strike content: a word that cannot fit on the leg reserves
+    the word's width; a wrapped label's one-sided strip that would
+    strike a node, a container wall, or another label reserves the
+    clearance. Labels no longer need on-axis room (the stroke is never
+    cut), so reservations are narrower than the 0.25.3 gap-mode ones.
     """
 
-    def test_vertical_children_get_label_clearance(self):
+    def test_vertical_children_get_word_fit_clearance(self):
         src = """\
 model "M" {
   nodes {
@@ -694,11 +691,15 @@ diagram "D" from "M" {
 """
         layout = solve_src(src)
         ua, ch = layout.find("p1/ua"), layout.find("p1/ch")
-        # One line at 13.5px plus two 16px tails: the 20px child gap
-        # cannot host the label, so the contract must widen it.
-        assert ch.rect.y - ua.rect.y2 >= 13.5 + 32
+        # Widest word "runs" = 22px plus 2x8px side padding: the 20px
+        # child gap hosts the rotated label on one line at 44px (+
+        # reserve slack). Gap mode needed the label height plus two
+        # 16px tails (0.25.3 reserved 51.5) -- the along-path budget
+        # is narrower by exactly the abolished tails.
+        gap = ch.rect.y - ua.rect.y2
+        assert 43.5 <= gap <= 50.5, gap
 
-    def test_horizontal_children_get_label_clearance(self):
+    def test_horizontal_children_get_word_fit_clearance(self):
         src = """\
 model "M" {
   nodes {
@@ -718,9 +719,11 @@ diagram "D" from "M" {
 """
         layout = solve_src(src)
         ua, ch = layout.find("p1/ua"), layout.find("p1/ch")
-        # Widest word ("Pebble", 33px) plus tails: the 20px default
-        # child gap cannot host even a fully-wrapped label.
-        assert ch.rect.x - ua.rect.x2 >= 33 + 32
+        # Widest word "Pebble" = 33px plus 2x8px side padding + slack:
+        # the label wraps to one-word lines that each fit the leg.
+        # (0.25.3 reserved 71 -- label height's worth of extra tails.)
+        gap = ch.rect.x - ua.rect.x2
+        assert 54.5 <= gap <= 61.5, gap
 
     def test_fitting_label_leaves_geometry_alone(self):
         src = """\
@@ -741,3 +744,66 @@ diagram "D" from "M" {
         # "ok" fits with room to spare: no reservation, no movement --
         # the phase-one solution is the final one.
         assert b.rect.x - a.rect.x2 == pytest.approx(200)
+
+    def test_strike_avoidance_clears_label_strip_from_node(self):
+        # A wrapped label's one-sided strip extends above the stroke;
+        # when it would strike a node the stroke itself clears, the
+        # contract reserves the clearance (0.25.3 reserved nothing:
+        # gap mode only ever measured the on-axis gap).
+        src = """\
+model "M" {
+  nodes {
+    a [type: juju-software, label: "Agent"]
+    b [type: juju-software, label: "Worker"]
+    c [type: juju-software, label: "Overseer"]
+  }
+  edges { a -> b [type: control, label: "calls the Pebble API for changes and hooks"] }
+}
+diagram "D" from "M" {
+  select { nodes: a b c }
+  positions {
+    a left-of b gap: 98
+    a align-middle b
+    c above b gap: 20
+    c align-right b
+    c min-width: 160
+  }
+}
+"""
+        layout = solve_src(src)
+        a, c = layout.find("a").rect, layout.find("c").rect
+        # The label wraps to four lines on the 98px leg; the strip
+        # extends descent 2.25 + clearance 3 + 4 x line height 13.5
+        # = 59.25px above the stroke. Pre-contract c sits 41px above
+        # the stroke (gap 20 over b's half-height) -- a strike.
+        stroke_y = a.y + a.h / 2
+        assert stroke_y - c.y2 >= 58, stroke_y - c.y2
+
+    def test_strike_avoidance_grows_container_for_wall_clearance(self):
+        # Same mechanism against a container wall: the strip crossing
+        # its own container's top wall reserves wall clearance, which
+        # grows the container instead of pushing a neighbour.
+        src = """\
+model "M" {
+  nodes {
+    pod [type: container, label: "Pod"] {
+      ua [type: juju-software, label: "Unit agent"]
+      ch [type: charm, label: "Charm"]
+    }
+  }
+  edges { ua -> ch [type: control, label: "watches for changes often"] }
+}
+diagram "D" from "M" {
+  select {
+    nodes: pod
+    instances: pod [ { id: p1, label: "Pod 1" } ]
+  }
+}
+"""
+        layout = solve_src(src)
+        ua, pod = layout.find("p1/ua").rect, layout.find("p1").rect
+        # The label wraps to four lines on the widened child gap; the
+        # strip reaches 59.25px above the children's mid-line. A
+        # tightly-hugging container leaves 28px top pad + half the
+        # 42px child height = 49px -- a 10px wall strike.
+        assert (ua.y + ua.h / 2) - pod.y >= 58, (ua.y + ua.h / 2) - pod.y

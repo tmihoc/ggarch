@@ -164,10 +164,11 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
             hint="check for contradictory position constraints",
         ) from exc
 
-    # Label contract (two-phase): measure the geometry each labelled
-    # edge would render at and reserve, at strong priority, the axis
-    # clearance its label needs for gap-mode placement. Weak stays pin
-    # this solution, so only measured shortfalls move.
+    # Label contract (two-phase): measure the along-path geometry each
+    # labelled edge would render at and reserve, at strong priority,
+    # clearance wherever its label would strike content — a word that
+    # cannot fit the leg, a strip striking a node or wall. Weak stays
+    # pin this solution, so only measured shortfalls move.
     _apply_label_contract(solver, diagram, selected, mat_edges, vars_by_id)
 
     # Read results back.
@@ -591,88 +592,48 @@ def _expand_fan_constraints(
 
 
 # ---------------------------------------------------------------------------
-# User-declared constraints
+# Label contract — along-path reservations (ADR-002)
 # ---------------------------------------------------------------------------
+# Labels ride the arrow's longest leg (renderer.label_geometry is the
+# single source of measurement; the constants below are that module's).
+# The contract reserves clearance only when the label would strike
+# content: a word that cannot fit on the leg, a strip that would
+# strike a node or cross its own container's wall.
 
-# These constants mirror the renderer so the solver knows how much space
-# a label needs. Keep in sync with renderer.py.
-_LABEL_CHAR_W   = 5.5
-_LABEL_LINE_H   = 9 * 1.5   # font_size * 1.5
-_LABEL_PADDING  = 0          # px each side of gap — keep in sync with renderer.py
-_LABEL_MIN_TAIL = 16         # px of visible arrow on each side of gap
-
-# Two-phase label contract (see _apply_label_contract):
-_RESERVE_SLACK  = 6         # px headroom over the renderer's need
-_VERT_BUDGET_MIN = 132       # px wrap-budget floor on mostly-vertical
-                             # segments — keep in sync with
-                             # renderer._V_WRAP_BUDGET_MIN
-
-
-def _label_min_gap_h(label: str) -> float:
-    """Minimum gap for a horizontal arrow: label width + padding + tails."""
-    lines = label.split("\\n")
-    max_line_w = max(len(l) for l in lines) * _LABEL_CHAR_W
-    return max_line_w + _LABEL_PADDING * 2 + _LABEL_MIN_TAIL * 2
-
-
-def _label_min_gap_v(label: str) -> float:
-    """Minimum gap for a vertical arrow: wrapped label height + padding + tails.
-
-    For vertical arrows the label is rendered horizontally above the arrow;
-    the gap size is the wrapped text height.  We estimate wrapping using a
-    conservative path width of 60px (typical inter-node vertical gap).
-    """
-    TYPICAL_PATH_PX = 60
-    lines_raw = label.split("\\n")
-    max_chars = max(int(TYPICAL_PATH_PX / _LABEL_CHAR_W), 1)
-    wrapped_lines = 0
-    for raw in lines_raw:
-        words = raw.split()
-        if not words:
-            wrapped_lines += 1
-            continue
-        cur = words[0]
-        for w in words[1:]:
-            if len(cur) + 1 + len(w) <= max_chars:
-                cur += " " + w
-            else:
-                wrapped_lines += 1
-                cur = w
-        wrapped_lines += 1
-    text_h = _LABEL_LINE_H * wrapped_lines
-    return text_h + _LABEL_PADDING * 2 + _LABEL_MIN_TAIL * 2
-
-
-# ---------------------------------------------------------------------------
-# Label contract — two-phase gap-mode reservations
-# ---------------------------------------------------------------------------
+from ggarch.renderer import (  # noqa: E402 — shared measurement source
+    LABEL_CHAR_W,
+    LABEL_CLEARANCE,
+    LABEL_LINE_H,
+    LABEL_SIDE_PAD,
+    label_geometry,
+)
 
 _GAP_DEFAULT = 20  # px — default gap when not specified
+_RESERVE_SLACK = 6        # px headroom over the renderer's need
+_STRIKE_EPS = 1.0         # px — overlap tolerance for strike tests
+_LEG_DOMINANCE = 0.75     # |ux| or |uy| threshold for strike checks
 
 
-def _wrap_label(label: str, max_chars: int) -> list[str]:
-    """Greedy word wrap — mirrors renderer._render_edge exactly."""
-    wrapped: list[str] = []
-    for raw in label.split("\\n"):
-        words = raw.split()
-        if not words:
-            wrapped.append("")
-            continue
-        cur = words[0]
-        for w in words[1:]:
-            if len(cur) + 1 + len(w) <= max_chars:
-                cur += " " + w
-            else:
-                wrapped.append(cur)
-                cur = w
-        wrapped.append(cur)
-    return wrapped
-
-
-def _widest_word_w(label: str) -> float:
-    """Width in px of the widest word across the label's manual lines."""
+def _label_min_gap(label: str) -> float:
+    """Authored-gap floor for a labelled pair: the widest word plus
+    side padding — the shortest leg that hosts every word on a line
+    (labels wrap to the leg; the stroke is never cut)."""
     words = [w for raw in label.split("\\n") for w in raw.split()]
-    return max((len(w) for w in words), default=0) * _LABEL_CHAR_W
+    widest = max((len(w) for w in words), default=0) * LABEL_CHAR_W
+    return widest + LABEL_SIDE_PAD * 2
+
+
+def _pts_cross_rect(pts, x: float, y: float, x2: float, y2: float) -> bool:
+    """Does the polyline enter the rect's interior (already inset)?"""
+    for (px1, py1), (px2, py2) in zip(pts, pts[1:]):
+        length = math.hypot(px2 - px1, py2 - py1)
+        steps = max(2, int(length * 2))
+        for i in range(steps + 1):
+            t = i / steps
+            x_, y_ = px1 + (px2 - px1) * t, py1 + (py2 - py1) * t
+            if x < x_ < x2 and y < y_ < y2:
+                return True
+    return False
 
 
 def _measure_label_reservations(
@@ -681,18 +642,29 @@ def _measure_label_reservations(
     mat_edges: list,
     vars_by_id: dict[str, _NodeVars],
 ) -> list[tuple[str, str, str, float]]:
-    """Measured axis reservations needed for gap-mode label placement.
+    """Measured reservations for along-path label placement (ADR-002).
 
     For every labelled visible edge: resolve the effective endpoints
     (the deepest solver-tracked distinct ancestors — the pair the
     solver can actually push apart), draw the route the renderer would
-    draw between them, and replicate the renderer's gap-mode test on
-    its longest segment. Edges that already render in gap mode
-    contribute nothing; each shortfall contributes one reservation on
-    the segment's dominant axis:
+    draw between them, and measure the label it would draw on the
+    longest leg (renderer.label_geometry). Reservations, each applied
+    STRONG in _apply_label_contract:
 
-      ("h", left_id, right_id, gap)   — left.x2 + gap <= right.x
-      ("v", above_id, below_id, gap)  — above.y2 + gap <= below.y
+      ("h", left, right, gap)    word fit — left.x2 + gap <= right.x
+      ("v", above, below, gap)   word fit — above.y2 + gap <= below.y
+      ("v", node, end, gap)      node strike, horizontal leg (node above)
+      ("h", end, node, gap)      node strike, vertical leg (node right)
+      ("wall-top", cont, child, need)   strip past the container's top pad
+      ("wall-right", cont, child, need) strip past the container's right pad
+
+    Word-fit shortfalls reserve the widest word plus side padding.
+    Node strikes reserve the strip's perpendicular clearance from the
+    struck node to each endpoint — only when the stroke itself clears
+    the node (a stroke crossing a node is a router defect, never a
+    label reservation). Wall strikes grow the container. Strikes are
+    only measured on axis-dominant legs; diagonal labels are router
+    work (the geometry audit tracks them).
     """
     parent: dict[str, str] = {}
     def _walk(node: Node, pid: str | None) -> None:
@@ -710,8 +682,6 @@ def _measure_label_reservations(
             nid = parent.get(nid, "")
         return out
 
-    tails = _LABEL_MIN_TAIL * 2
-    pads = _LABEL_PADDING * 2
     out: list[tuple[str, str, str, float]] = []
     for edge in mat_edges:
         if not edge.label or edge.source == edge.target:
@@ -731,54 +701,94 @@ def _measure_label_reservations(
         rs = Rect(vs.x.value(), vs.y.value(), vs.w.value(), vs.h.value())
         rt = Rect(vt.x.value(), vt.y.value(), vt.w.value(), vt.h.value())
 
-        # The route the renderer would draw, and its longest segment.
+        # The route the renderer would draw.
         if edge.source_field or edge.target_field:
             # Field-qualified edges route flat at the fields' mid-y;
             # the segment spans the facing faces.
             left, right = (rs, rt) if rs.cx <= rt.cx else (rt, rs)
-            seg_len = max(right.x - left.x2, 0.0)
-            seg_dx, seg_dy = seg_len, 0.0
+            my = (rs.cy + rt.cy) / 2
+            pts = [(left.x2, my), (right.x, my)]
         else:
-            pts = _route_edge(rs, rt)
-            seg_lens = [math.hypot(b.x - a.x, b.y - a.y)
-                        for a, b in zip(pts, pts[1:])]
-            li = max(range(len(seg_lens)), key=lambda i: seg_lens[i])
-            a, b = pts[li], pts[li + 1]
-            seg_len = seg_lens[li]
-            seg_dx, seg_dy = abs(b.x - a.x), abs(b.y - a.y)
-        if seg_len <= 0:
+            pts = [(p.x, p.y) for p in _route_edge(rs, rt)]
+        if not pts:
             continue
-        ux = seg_dx / seg_len
-        uy = seg_dy / seg_len
 
-        if ux >= uy:
-            # Mostly horizontal: the gap must clear the wrapped label's
-            # width projected on the segment. The renderer wraps to the
-            # gap budget (segment minus tails), so no wrapped line is
-            # wider than that budget — reserving the widest word plus
-            # tails and slack guarantees gap mode at the new clearance.
-            budget = ux * (seg_len - pads - tails)
-            lines = _wrap_label(edge.label, max(int(budget / _LABEL_CHAR_W), 1))
-            max_line_w = max(len(l) for l in lines) * _LABEL_CHAR_W
-            if seg_len >= max_line_w / ux + pads + tails:
+        lg = label_geometry(pts, edge.label, 0.5)
+
+        # Word fit: a word wider than the leg minus side padding
+        # reserves the word's width on the leg's dominant axis. The
+        # strike geometry changes once the leg widens, so strikes are
+        # re-measured next round rather than reserved against a leg
+        # that is about to move.
+        if lg.widest_word_w > lg.leg_len - LABEL_SIDE_PAD * 2:
+            need = lg.widest_word_w + LABEL_SIDE_PAD * 2 + _RESERVE_SLACK
+            if lg.rotated:
+                above, below = (es, et) if rs.cy <= rt.cy else (et, es)
+                out.append(("v", above, below, need))
+            else:
+                left_id, right_id = (es, et) if rs.cx <= rt.cx else (et, es)
+                out.append(("h", left_id, right_id, need))
+            continue
+
+        # Strikes need an axis-dominant leg to have a clear axis.
+        if max(lg.ux, lg.uy) < _LEG_DOMINANCE:
+            continue
+        depth = LABEL_CLEARANCE + LABEL_LINE_H * len(lg.lines) + _RESERVE_SLACK
+        strip = lg.strip
+        sx, sy = lg.anchor
+
+        # Node strikes: the one-sided strip vs every node that is not
+        # an ancestor-or-self of an endpoint and that the stroke
+        # itself clears.
+        exempt = src_set | tgt_set
+        seen: set[int] = set()
+        for nid, nv in vars_by_id.items():
+            if id(nv) in seen:
                 continue
-            need = (max(_widest_word_w(edge.label), max_line_w)
-                    + pads + tails + _RESERVE_SLACK)
-            left_id, right_id = (es, et) if rs.cx <= rt.cx else (et, es)
-            out.append(("h", left_id, right_id, need))
-        else:
-            # Mostly vertical: the gap must clear the wrapped label's
-            # height. The wrap budget has a generous floor and only
-            # grows with the segment, so the measured line count is an
-            # upper bound at the reserved clearance.
-            budget = max(seg_len, _VERT_BUDGET_MIN)
-            lines = _wrap_label(edge.label, max(int(budget / _LABEL_CHAR_W), 1))
-            text_h = _LABEL_LINE_H * len(lines)
-            if seg_len >= text_h / uy + pads + tails:
+            seen.add(id(nv))
+            if nid in exempt:
                 continue
-            need = text_h / uy + pads + tails + _RESERVE_SLACK
-            above_id, below_id = (es, et) if rs.cy <= rt.cy else (et, es)
-            out.append(("v", above_id, below_id, need))
+            nx, ny = nv.x.value(), nv.y.value()
+            nw, nh = nv.w.value(), nv.h.value()
+            if (strip[2] <= nx + _STRIKE_EPS
+                    or strip[0] >= nx + nw - _STRIKE_EPS
+                    or strip[3] <= ny + _STRIKE_EPS
+                    or strip[1] >= ny + nh - _STRIKE_EPS):
+                continue  # no overlap
+            if _pts_cross_rect(pts, nx + _STRIKE_EPS, ny + _STRIKE_EPS,
+                               nx + nw - _STRIKE_EPS, ny + nh - _STRIKE_EPS):
+                continue  # the stroke already crosses it: router work
+            if lg.rotated:
+                # Vertical leg: the strip extends right of the stroke.
+                if nv.cx.value() <= sx:
+                    continue
+                for eid, ev in ((es, vs), (et, vt)):
+                    gap = depth - (sx - (ev.x.value() + ev.w.value()))
+                    if gap > 0:
+                        out.append(("h", eid, nid, gap))
+            else:
+                # Horizontal leg: the strip extends above the stroke.
+                if nv.cy.value() >= sy:
+                    continue
+                for eid, ev in ((es, vs), (et, vt)):
+                    gap = depth - (sy - ev.y.value())
+                    if gap > 0:
+                        out.append(("v", nid, eid, gap))
+
+        # Wall strikes: the strip crossing the padded boundary of the
+        # container shared by both endpoints (internal edges only --
+        # exit-edge wall crossings are router work).
+        c_id = next((a for a, b in zip(src_chain[1:], tgt_chain[1:])
+                     if a == b), None)
+        if c_id is not None and c_id in vars_by_id:
+            cv = vars_by_id[c_id]
+            cx2 = cv.x.value() + cv.w.value()
+            if not lg.rotated and strip[1] < cv.y.value() + CONTAINER_PAD_TOP:
+                need = CONTAINER_PAD_TOP + (vs.y.value() - strip[1])
+                out.append(("wall-top", c_id, es, need))
+            elif lg.rotated and strip[2] > cx2 - CONTAINER_PAD:
+                need = CONTAINER_PAD + (strip[2] - (vs.x.value() + vs.w.value()))
+                out.append(("wall-right", c_id, es, need))
     return out
 
 
@@ -789,21 +799,21 @@ def _apply_label_contract(
     mat_edges: list,
     vars_by_id: dict[str, _NodeVars],
 ) -> None:
-    """Two-phase label contract: gap-mode labels wherever layout allows.
+    """Two-phase label contract: strike avoidance (ADR-002).
 
     Phase one (the declared constraints) has already been solved. This
-    phase measures the rendered geometry of every labelled edge and,
-    for each gap-mode shortfall, adds a strong-priority clearance
-    reservation on the route's dominant axis, then re-solves. Weak
-    stays pin the phase-one solution as the reference point, so only
-    measured shortfalls move anything — views without shortfalls are
-    untouched.
+    phase measures the along-path geometry of every labelled edge and,
+    for each reservation _measure_label_reservations reports (word
+    fit, node strike, wall strike), adds a strong-priority constraint,
+    then re-solves. Weak stays pin the phase-one solution as the
+    reference point, so only measured shortfalls move anything — views
+    without shortfalls are untouched.
 
     Required constraints always outrank the reservations: an authored
-    arrangement that cannot spare the clearance keeps offset-mode
-    labels (the declared fallback) rather than erroring. The bounded
-    iteration lets a reservation that squeezes a neighbour trigger
-    that neighbour's own reservation.
+    arrangement that cannot spare the clearance keeps the struck label
+    rather than erroring. The bounded iteration lets a reservation
+    that squeezes a neighbour trigger that neighbour's own
+    reservation.
     """
     seen: set[int] = set()
     for v in vars_by_id.values():
@@ -829,12 +839,24 @@ def _apply_label_contract(
             va, vb = vars_by_id[a_id], vars_by_id[b_id]
             if axis == "h":
                 solver.addConstraint((va.x2 + gap <= vb.x) | "strong")
-            else:
+            elif axis == "v":
                 solver.addConstraint((va.y2 + gap <= vb.y) | "strong")
+            elif axis == "wall-top":
+                # The strip reaches above the container's top pad:
+                # grow the container (or push the child down).
+                solver.addConstraint((va.y + gap <= vb.y) | "strong")
+            elif axis == "wall-right":
+                # The strip reaches past the container's right pad:
+                # grow the container around the child.
+                solver.addConstraint((vb.x2 + gap <= va.x2) | "strong")
         if not added:
             return
         solver.updateVariables()
 
+
+# ---------------------------------------------------------------------------
+# User-declared constraints
+# ---------------------------------------------------------------------------
 
 def _add_user_constraints(
     solver: Solver,
@@ -864,11 +886,11 @@ def _add_user_constraints(
             if edge.label:
                 pair = frozenset([edge.source, edge.target])
                 if pair in h_pairs:
-                    lg = _label_min_gap_h(edge.label)
+                    lg = _label_min_gap(edge.label)
                     if lg > h_label_gaps.get(pair, 0):
                         h_label_gaps[pair] = lg
                 if pair in v_pairs:
-                    lg = _label_min_gap_v(edge.label)
+                    lg = _label_min_gap(edge.label)
                     if lg > v_label_gaps.get(pair, 0):
                         v_label_gaps[pair] = lg
 
@@ -1002,10 +1024,7 @@ def _auto_layout_children(
             pair = frozenset([edge.source, edge.target])
             child_ids = {c.id for c in children}
             if pair <= child_ids:  # both endpoints are children of this node
-                if direction == "right":
-                    lg = _label_min_gap_h(edge.label)
-                else:
-                    lg = _label_min_gap_v(edge.label)
+                lg = _label_min_gap(edge.label)
                 if lg > label_gaps.get(pair, 0):
                     label_gaps[pair] = lg
 
