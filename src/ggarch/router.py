@@ -61,9 +61,9 @@ GRID_TOL       = 0.5  # px — duplicate grid coordinates collapsed within
 SEED_STEP      = 6.0   # px between emergent face offsets (one corridor
                        # pair separation, so sibling edges find offsets)
 SEED_INSET     = 4.0   # px — face seeds stay clear of face corners
-BLOCK_PENALTY  = 500.0 # px — soft cost per obstacle entered when no
+BLOCK_PENALTY  = 2000.0 # px — soft cost per obstacle entered when no
                        # clear path exists (cheapest-collision fallback)
-MAX_POPS       = 6000  # A* expansion cap before the direct fallback
+MAX_POPS       = 20000  # A* expansion cap before the direct fallback
 RELEVANT_MARGIN = 150.0  # px — obstacle-corridor relevance for the grid
 LABEL_RETRIES  = 2     # label-strike nudges before residuals are reported
 
@@ -158,10 +158,17 @@ def _inflate(box: Box, d: float) -> Box:
     return (box[0] - d, box[1] - d, box[2] + d, box[3] + d)
 
 
+def _snap(v: float) -> float:
+    """Quantize a coordinate: the solver's floating-point noise
+    (run-to-run 1e-13 jitter) must not flip tie-breaking in the search
+    — routes are deterministic by construction."""
+    return round(v, 6)
+
+
 def _dedupe(vals: Sequence[float]) -> list[float]:
     """Sorted unique coordinates, duplicates collapsed within GRID_TOL."""
     out: list[float] = []
-    for v in sorted(vals):
+    for v in sorted(_snap(v) for v in vals):
         if not out or v - out[-1] > GRID_TOL:
             out.append(v)
     return out
@@ -199,14 +206,16 @@ def _face_coords(pool: Sequence[float], lo: float, hi: float) -> list[float]:
 
 
 def _face_seeds(rect: Rect, xs: Sequence[float], ys: Sequence[float]) -> list[Point]:
-    """Anchor candidates on all four faces of a rect."""
+    """Anchor candidates on all four faces of a rect (snapped)."""
     pts: list[Point] = []
-    for v in _face_coords(xs, rect.x, rect.x + rect.w):
-        pts.append(Point(v, rect.y))
-        pts.append(Point(v, rect.y + rect.h))
-    for v in _face_coords(ys, rect.y, rect.y + rect.h):
-        pts.append(Point(rect.x, v))
-        pts.append(Point(rect.x + rect.w, v))
+    x0, x1 = _snap(rect.x), _snap(rect.x + rect.w)
+    y0, y1 = _snap(rect.y), _snap(rect.y + rect.h)
+    for v in _face_coords(xs, x0, x1):
+        pts.append(Point(v, y0))
+        pts.append(Point(v, y1))
+    for v in _face_coords(ys, y0, y1):
+        pts.append(Point(x0, v))
+        pts.append(Point(x1, v))
     return pts
 
 
@@ -694,11 +703,11 @@ def _route_edge(
     xs0, ys0 = _dedupe(pool_xs), _dedupe(pool_ys)
 
     if src_anchor is not None:
-        starts = [src_anchor]
+        starts = [Point(_snap(src_anchor.x), _snap(src_anchor.y))]
     else:
         starts = _face_seeds(src_rect, xs0, ys0)
     if tgt_anchor is not None:
-        goals = [tgt_anchor]
+        goals = [Point(_snap(tgt_anchor.x), _snap(tgt_anchor.y))]
     else:
         goals = _face_seeds(tgt_rect, xs0, ys0)
 
@@ -836,10 +845,13 @@ def _bbox_of(points) -> Box:
 
 
 def _grow_box_up(box: Box, lg) -> Box:
-    """Grow a box along the label's up direction by ~the label depth,
-    so a path clearing the grown box carries its label clear of the
-    struck region."""
-    dx, dy = lg.up_x * 30.0, lg.up_y * 30.0
+    """Grow a box AGAINST the label's up direction (the side the label
+    rides) by ~the label depth, so a path clearing the grown box sits
+    far enough beyond the struck region for its label to clear it:
+    the label extends `up` from the stroke, so the stroke must move
+    away from the struck box on the up side."""
+    d = 30.0
+    dx, dy = -lg.up_x * d, -lg.up_y * d
     return (min(box[0], box[0] + dx), min(box[1], box[1] + dy),
             max(box[2], box[2] + dx), max(box[3], box[3] + dy))
 

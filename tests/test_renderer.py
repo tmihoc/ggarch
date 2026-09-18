@@ -1,5 +1,6 @@
 """Renderer tests — SVG output validation."""
 import re
+import math
 import pytest
 from ggarch import parse, validate
 from ggarch.solver import solve
@@ -538,12 +539,22 @@ class TestAlongPathLabels:
         # at the midpoint of its OWN leg (the 1/3-2/3 anchor workaround
         # is redundant once strokes separate).
         svg = pipeline(PAIR_SRC)
-        offsets = re.findall(r'startOffset="([^"]+)"', svg)
-        assert len(offsets) == 2
-        vals = sorted(float(o) for o in offsets)
-        leg = 120.0
-        assert vals[0] == pytest.approx(leg / 2, abs=3), vals
-        assert vals[1] == pytest.approx(leg / 2, abs=3), vals
+        # The label path each textPath references, with its length.
+        paths = {
+            m.group(5): math.hypot(
+                float(m.group(3)) - float(m.group(1)),
+                float(m.group(4)) - float(m.group(2)))
+            for m in re.finditer(
+                r'<path d="M ([\d.-]+) ([\d.-]+) L ([\d.-]+) ([\d.-]+)"'
+                r' id="([^"]+)"', svg)
+        }
+        pairs = re.findall(
+            r'<textPath xlink:href="#([^"]+)"[^>]*startOffset="([\d.-]+)"',
+            svg)
+        assert len(pairs) == 2, pairs
+        for href, off in pairs:
+            leg = paths[href]
+            assert float(off) == pytest.approx(leg / 2, abs=3), (href, off, leg)
 
     def test_dashed_labelled_edge_keeps_one_dashed_path(self):
         # Dash rhythm is content: the pattern must never restart at a
