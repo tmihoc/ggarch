@@ -198,11 +198,22 @@ class TestLayeredLayout:
                         or a[3] < b[1] + 1 or b[3] < a[1] + 1), \
                     f"labels overlap: {a[4]!r} <-> {b[4]!r}"
 
-    def test_transition_labels_have_opaque_backgrounds(self):
-        # Cross-edge strikes are masked: every transition label is backed
-        # by a background rect so a return path never strikes the text.
+    def test_transition_labels_ride_the_path(self):
+        # ADR-003 decision 10: transition labels adopt along-path
+        # textPath (ADR-002) — one label mechanism across all three view
+        # kinds. The opaque background masks die: a label riding its
+        # own stroke needs no mask.
         svg = self._uniter_svg()
-        states = {"idle", "preparing", "executing", "committing", "error"}
-        labels = [t for t, *_ in _texts(svg) if t not in states]
-        bg_rects = _re.findall(r'<rect[^>]*stroke="none"[^>]*/>', svg)
-        assert len(bg_rects) == len(labels)
+        # Labels ride their strokes (textPath); free-floating label
+        # texts (x/y-anchored, outside state boxes) are gone.
+        assert svg.count("<textPath") > 0
+        assert not _re.findall(r'<rect[^>]*stroke="none"[^>]*/>', svg)
+
+    def test_state_boxes_use_the_shared_border_radius(self):
+        # One visual identity: state boxes adopt the style's
+        # border_radius (juju-software = 6), not a hardcoded 8.
+        svg = self._uniter_svg()
+        # juju-software carries border_radius 4 in the preset — the
+        # bespoke hardcoded 8 is gone.
+        rxs = set(_re.findall(r'<rect[^>]*rx="(\d+)', svg))
+        assert rxs == {"4"}, rxs

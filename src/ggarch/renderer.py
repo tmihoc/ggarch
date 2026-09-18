@@ -863,6 +863,44 @@ def _render_records_chip(
                      text_anchor="middle",
                      dominant_baseline="central"))
 
+def draw_path_label(
+    g: dw.Group,
+    pts,
+    label: str,
+    fill: str,
+) -> None:
+    """The label follows the arrow (ADR-002): one textPath per wrapped
+    line on the longest leg, above the line in the text's local frame,
+    mirrored on right-to-left legs — no background mask, zero occlusion
+    by construction. Shared by the diagram and state renderers: one
+    label mechanism across view kinds (ADR-003 decision 10).
+    """
+    lg = label_geometry(pts, label)
+    lx0, ly0, lx1, ly1 = lg.leg
+    if lg.mirror:
+        # Read left-to-right (or top-to-bottom) on a right-to-left leg.
+        lx0, ly0, lx1, ly1 = lx1, ly1, lx0, ly0
+    label_path = dw.Path(d=_path_d([(lx0, ly0), (lx1, ly1)]))
+    # The geometric anchor maps to the mirrored path's own arc length.
+    # The midpoint is symmetric under mirroring.
+    frac = 0.5
+    for i, line in enumerate(lg.lines):
+        # Reading order: the first wrapped line is the topmost
+        # (outermost from the stroke), the last nearest — the block
+        # reads top-to-bottom. For rotated labels the same formula
+        # puts the first-read column outermost (rotate-the-block).
+        depth = (LABEL_DESCENT + LABEL_CLEARANCE
+                + (len(lg.lines) - 1 - i) * LABEL_LINE_H)
+        g.append(dw.Text(
+            line, LABEL_FONT_SIZE, path=label_path,
+            text_anchor="middle",
+            start_offset=round(frac * lg.leg_len, 1),
+            font_family=LABEL_FONT,
+            fill=fill,
+            line_offset=-(depth / LABEL_FONT_SIZE),
+        ))
+
+
 # ---------------------------------------------------------------------------
 # Edge rendering
 # ---------------------------------------------------------------------------
@@ -905,36 +943,7 @@ def _render_edge(
 
     if not edge.label:
         return
-
-    # The label follows the arrow: one textPath per wrapped line on the
-    # longest leg, above the line in the text's local frame — no
-    # background mask, zero occlusion by construction.
-    # Anchor 0.5: ADR-003 — pairs route at distinct offsets, so the
-    # 1/3-2/3 workaround for coincident strokes is gone.
-    lg = label_geometry(pts, edge.label)
-    lx0, ly0, lx1, ly1 = lg.leg
-    if lg.mirror:
-        # Read left-to-right (or top-to-bottom) on a right-to-left leg.
-        lx0, ly0, lx1, ly1 = lx1, ly1, lx0, ly0
-    label_path = dw.Path(d=_path_d([(lx0, ly0), (lx1, ly1)]))
-    # The geometric anchor maps to the mirrored path's own arc length.
-    # The midpoint is symmetric under mirroring.
-    frac = 0.5
-    for i, line in enumerate(lg.lines):
-        # Reading order: the first wrapped line is the topmost
-        # (outermost from the stroke), the last nearest — the block
-        # reads top-to-bottom. For rotated labels the same formula
-        # puts the first-read column outermost (rotate-the-block).
-        depth = (LABEL_DESCENT + LABEL_CLEARANCE
-                + (len(lg.lines) - 1 - i) * LABEL_LINE_H)
-        g.append(dw.Text(
-            line, LABEL_FONT_SIZE, path=label_path,
-            text_anchor="middle",
-            start_offset=round(frac * lg.leg_len, 1),
-            font_family=LABEL_FONT,
-            fill=es.font_color,
-            line_offset=-(depth / LABEL_FONT_SIZE),
-        ))
+    draw_path_label(g, pts, edge.label, es.font_color)
 
 
 # ---------------------------------------------------------------------------
