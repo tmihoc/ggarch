@@ -1049,7 +1049,12 @@ def _render_edge(
     # The geometric anchor maps to the mirrored path's own arc length.
     frac = 1 - anchor_frac if lg.mirror else anchor_frac
     for i, line in enumerate(lg.lines):
-        depth = LABEL_DESCENT + LABEL_CLEARANCE + i * LABEL_LINE_H
+        # Reading order: the first wrapped line is the topmost
+        # (outermost from the stroke), the last nearest — the block
+        # reads top-to-bottom. For rotated labels the same formula
+        # puts the first-read column outermost (rotate-the-block).
+        depth = (LABEL_DESCENT + LABEL_CLEARANCE
+                + (len(lg.lines) - 1 - i) * LABEL_LINE_H)
         g.append(dw.Text(
             line, LABEL_FONT_SIZE, path=label_path,
             text_anchor="middle",
@@ -1058,6 +1063,8 @@ def _render_edge(
             fill=es.font_color,
             line_offset=-(depth / LABEL_FONT_SIZE),
         ))
+
+
 # ---------------------------------------------------------------------------
 # Annotation rendering
 # ---------------------------------------------------------------------------
