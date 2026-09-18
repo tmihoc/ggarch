@@ -1646,28 +1646,49 @@ directional, never multiplicity-bearing. Custom association types are
 declared in the style block like any other type; family membership is
 by convention, not grammar.
 
-Routing strategy: straight lines by default. Orthogonal routing as an opt-in.
+Routing strategy (ADR-003, implemented 0.26.0): routes are
+obstacle-aware shortest paths over strips, found by search, not
+derived from endpoint geometry. A* runs over a Hanan grid (endpoint and
+obstacle rect coordinates, duplicates collapsed with a tolerance) with
+8-neighbour moves; cost = length + a fixed turn penalty K (40 px, tuned
+on the corpus through the audit's turns-per-edge report: 0.40 (juju3) /
+0.99 (juju4) bends per edge — a path bends only to clear an obstacle).
+The search chooses exit and entry faces: anchor candidates are the face
+centres, grid-line crossings on the faces, and centre +/- 6 px offsets,
+so pairs and meshes find distinct offsets emergently; field-qualified
+endpoints stay pinned — author speech outranks heuristics. The
+collision currency is the strip: path + stroke width + arrowhead caps +
+the one-sided ADR-002 label extent, measured by the shared geometry
+module (ggarch.geometry) that the router, solver, renderer and audit
+all import. Obstacles: node rects inflated by the corridor (ancestor-
+or-self of either endpoint exempt — containers their edges live in are
+passable), and earlier edges' strips (clipped near shared endpoints);
+endpoint-sharing groups route greedily after independent edges.
+Annotation boxes and regions are meta elements — never obstacles,
+never notched. No box explosion: the arrangement is fixed input; when
+no collision-free path exists the router returns the cheapest-collision
+path and reports it, and the audit prints every residual (edge,
+obstacle, blocker) — audited, never hidden. Diagonals are preserved by
+default (cost keeps them without special-casing); declared orthogonal
+routing becomes a 4-neighbour search with the same strip currency.
+Rounded joins ship as stroke-linejoin="round" (v1; fillets deferred).
+
 Label placement: ADR-002, implemented 0.25.4 — labels ride the longest
   leg on an SVG textPath, above the line in the text's local frame,
   one textPath per wrapped line stacked outward, mirrored on
   right-to-left legs (never upside-down), no background mask, the
-  stroke never split. The gap/offset duality is abolished. Anti-
-  parallel pairs (which share one coincident stroke today) anchor
-  their labels at 1/3 and 2/3 of the span; separating the strokes
-  themselves is router work below.
+  stroke never split. Every label anchors at the midpoint of its own
+  leg: pairs route at distinct offsets (ADR-003), so the 1/3-2/3
+  anchor workaround for coincident strokes is deleted.
 
-Measured routing limits (juju4 auto-layout spike, 0.25.1): straight-line
-routing cannot draw a full mesh between collinear nodes -- the HA Raft
-mesh puts six straight arrows between three same-row controllers and
-the two long arrows cross the middle controller's children; and four of
-the six "Raft sync" labels float beside their arrows instead of
-interrupting them (gap mode needs a segment longer than the label plus
-two 16px tails; adjacent-pair arrows are too short). These are ROUTER
-defects, not layout defects: auto-layout changed the arrangement and
-neither improved. Work items: curved/mesh-aware routing (arcs at
-distinct offsets), and label placement aware of parallel edges.
-Orthogonal routing stays an opt-in per diagram or per edge, pending a
-production-ready Python binding for adaptagrams libavoid.
+Border notches are ports (ADR-003 decision 11): a container border is
+notched only where exactly one endpoint of the edge is inside that
+subtree — the notch reads as a port. Edges passing over a container
+leave the border solid (their crossing is a routing defect the router
+eliminates); internal edges do not notch their own container;
+annotation boxes never notch. State-view transitions are routed strips
+like any edge, and their labels ride the path — one label mechanism
+across all three view kinds; the opaque background masks are gone.
 
 Geometry audit (0.25.2, both twins measured): the defect classes are
 SYSTEMIC, not auto-layout-specific. Audit of every diagram view's
@@ -1717,17 +1738,28 @@ defect rates by hand-compensating for the same root causes:
    **0.25.4 verdict (ADR-002):** the gap/offset defect class is
    DISSOLVED — there is no label mode left to flip (one placement
    mechanism; the audit's offset-label metric is retired with it).
-   Re-baselined audit: juju4 35 crossing-edges / 22 diagonals / 22
-   rotated labels / 4 node-strikes / 0 wall-crossings / 10
-   label-clashes; juju3 15 / 11 / 30 / 3 / 0 / 6. Crossings 31 -> 35
-   in the auto-layout twin: the abolished gap floors regressed the
-   space 0.25.3 spent widening gaps, and the floor twin tightened —
-   step 2 (edge-aware floor, column gaps sized to the labels routed
-   through them) owns the recovery; juju3 (authored) unchanged at 15.
    Wall-crossings 0/0: the strike-avoidance contract reserves them.
-   Rotated labels (22/30) are the orientation metric for the staged
-   auto-flip decision. Label-clashes (10/6) are the step-3 router
-   baseline.
+   Pre-router baseline for ADR-003: juju3 15 crossing-edges / 11
+   diagonals / 30 rotated labels / 3 node-strikes / 6 label-clashes;
+   juju4 35 / 22 / 22 / 4 / 10.
+
+   **0.26.0 verdict (ADR-003):** the obstacle-blind router is retired.
+   Measured: juju3 0 crossing-edges / 6 diagonals / 31 rotated labels /
+   1 node-strike / 2 label-clashes / turns-per-edge 0.40; juju4 2
+   crossing-edges (both audited residuals of the tight-corridor
+   "Integrate" mesh — the edge-aware floor, step 4, owns that
+   capacity) / 9 diagonals / 18 rotated / 3 strikes / 1 clash /
+   turns 0.99. Crossings 15/35 -> 0/2; label clashes 6/10 -> 2/1;
+   node strikes 3/4 -> 1/3. New audit metrics: strip crossings
+   (8/16, mostly chain/fan wedges just beyond the shared-endpoint hug
+   allowance), router-reported residuals (2/14) and turns per edge.
+   Known issue, recorded: juju3 rotated 31 vs the 30 baseline — the
+   +2 rotated labels are the direct price of zero crossings (the
+   u_app3 "watches" detour over the app columns) and emergent pair
+   offsets (object_store's offset entry onto lease_manager); one
+   rotated label was recovered elsewhere (endpoint_rec "belongs to").
+   The staged auto-flip decision (rotated as its metric) and the
+   edge-aware floor own the follow-up.
 
 ---
 

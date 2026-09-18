@@ -1,11 +1,15 @@
 # ADR-003: Obstacle-aware routing over strips
 
-**Date:** 2026-09-18  
-**Status:** Proposed — direction agreed in discussion (2026-09-18):
-one user decision (annotation boxes are meta elements) plus four
-recommendations adopted unless objected; see "Resolved in
-discussion". Implementation is 0.26.0 once accepted; nothing in this
-ADR is implemented yet.
+**Status:** Implemented (0.26.0, 2026-09-18). All eleven decisions,
+the discussion resolutions and the acceptance bar are landed; measured
+results recorded in SPEC ("Geometry audit") and SESSIONS. One
+measured tension at the acceptance bar: juju3 rotated labels 31 vs
+the 30 baseline — the +2 rotated labels are the direct price of
+eliminating crossings (the u_app3 mesh detour) and emergent pair
+offsets; see SESSIONS "0.26.0" for the analysis. Everything else is
+inside the bar: crossing-edges 0 (juju3) / 2 (juju4, both audited
+residuals), label clashes 2/1, node strikes 1/4, sequences
+byte-identical, turns/edge 0.40/0.99 with K=40.
 
 ## Context
 
