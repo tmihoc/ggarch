@@ -159,9 +159,9 @@ def point_box_dist(p, box: Box) -> float:
     return math.hypot(dx, dy)
 
 
-def _seg_box_t(a, b, box: Box) -> float | None:
-    """Liang-Barsky: t-interval of segment (a->b) inside the box, or None
-    if empty. Returns the entry t when the segment crosses the interior."""
+def _seg_box_interval(a, b, box: Box) -> tuple[float, float] | None:
+    """Liang-Barsky: the segment's t-interval inside the closed box,
+    clipped to [0, 1], or None if empty."""
     x0, y0, x1, y1 = box
     t_lo, t_hi = 0.0, 1.0
     dx, dy = b[0] - a[0], b[1] - a[1]
@@ -180,7 +180,16 @@ def _seg_box_t(a, b, box: Box) -> float | None:
             if r < t_lo:
                 return None
             t_hi = min(t_hi, r)
-    return t_lo
+    return (t_lo, t_hi)
+
+
+seg_box_interval = _seg_box_interval  # public alias
+
+
+def _seg_box_t(a, b, box: Box) -> float | None:
+    """Entry t of the segment's interval inside the box, or None."""
+    iv = _seg_box_interval(a, b, box)
+    return None if iv is None else iv[0]
 
 
 def seg_box_dist(a, b, box: Box) -> float:
@@ -345,6 +354,21 @@ class Strip:
                         < cap_a + cap_b:
                     return True
         return False
+
+def seg_enters_rect(a, b, box: Box) -> bool:
+    """Does segment (a->b) pass through the box's interior?
+
+    Touching the boundary at a single point (grazing a corner, leaving
+    from a border point) does NOT count — the router's move legality
+    depends on it: seeds sit ON the borders of their own rects.
+    """
+    iv = _seg_box_interval(a, b, box)
+    return iv is not None and iv[0] < iv[1]
+
+
+def point_seg_dist(p, a, b) -> float:
+    """Distance from point p to segment (a, b)."""
+    return _point_seg_dist(p, a, b)
 
 
 def strips_overlap(a: Strip, b: Strip) -> bool:

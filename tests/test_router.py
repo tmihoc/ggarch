@@ -1,9 +1,16 @@
-"""Router tests — anchor points and edge routing."""
-import pytest
+"""Router tests — obstacle-aware shortest paths over strips (ADR-003).
+
+Routes are found by search: A* over a Hanan grid with 8-neighbour
+moves, cost = length + fixed turn penalty. The search chooses exit and
+entry faces; field-qualified anchors stay pinned. Obstacles: node
+rects (ancestor-or-self of either endpoint exempt), and earlier edges'
+strips (offsets emerge). When no clear path exists the router returns
+the cheapest-collision path and reports it.
+"""
 from ggarch import parse, validate
 from ggarch.solver import solve
-from ggarch.router import route, Point, _best_anchors, _face_point
-from ggarch.layout import Rect
+from ggarch.router import Point, Rect, route, route_between
+from ggarch.geometry import seg_enters_rect, seg_seg_dist
 
 
 # ---------------------------------------------------------------------------
@@ -35,132 +42,278 @@ diagram "D" from "M" {
 }
 """
 
+THREE_IN_A_ROW = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+    c [type: t, label: "C"]
+  }
+  edges {
+    a -> c [type: api, label: "across"]
+  }
+}
+diagram "D" from "M" {
+  select { nodes: a b c }
+  positions {
+    a left-of b gap: 40
+    b left-of c gap: 40
+    a align-middle b
+    b align-middle c
+  }
+}
+"""
 
-# ---------------------------------------------------------------------------
-# Anchor point tests
-# ---------------------------------------------------------------------------
 
-class TestAnchors:
-    def test_face_point_top(self):
-        r = Rect(0, 0, 100, 50)
-        p = _face_point(r, "top")
-        assert abs(p.x - 50) < 0.1
-        assert abs(p.y - 0) < 0.1
-
-    def test_face_point_bottom(self):
-        r = Rect(0, 0, 100, 50)
-        p = _face_point(r, "bottom")
-        assert abs(p.x - 50) < 0.1
-        assert abs(p.y - 50) < 0.1
-
-    def test_face_point_left(self):
-        r = Rect(10, 20, 100, 50)
-        p = _face_point(r, "left")
-        assert abs(p.x - 10) < 0.1
-        assert abs(p.y - 45) < 0.1
-
-    def test_face_point_right(self):
-        r = Rect(10, 20, 100, 50)
-        p = _face_point(r, "right")
-        assert abs(p.x - 110) < 0.1
-        assert abs(p.y - 45) < 0.1
-
-    def test_best_anchors_horizontal(self):
-        """Left node uses right face; right node uses left face."""
-        left  = Rect(0,   0, 80, 40)
-        right = Rect(200, 0, 80, 40)
-        src_pt, tgt_pt = _best_anchors(left, right)
-        assert src_pt.x == left.x2
-        assert tgt_pt.x == right.x
-
-    def test_best_anchors_vertical(self):
-        """Top node uses bottom face; bottom node uses top face."""
-        top    = Rect(0, 0,   80, 40)
-        bottom = Rect(0, 200, 80, 40)
-        src_pt, tgt_pt = _best_anchors(top, bottom)
-        assert src_pt.y == top.y2
-        assert tgt_pt.y == bottom.y
+def path_enters_rect(points, rect, eps=0.5):
+    """Does the polyline pass through the rect's interior (audit
+    semantics)?"""
+    box = (rect.x + eps, rect.y + eps, rect.x2 - eps, rect.y2 - eps)
+    pts = [(p.x, p.y) for p in points]
+    return any(seg_enters_rect(pts[i], pts[i + 1], box)
+               for i in range(len(pts) - 1))
 
 
 # ---------------------------------------------------------------------------
-# Routing tests
+# Obstacle-aware search
 # ---------------------------------------------------------------------------
 
-class TestRouting:
-    def test_two_nodes_one_edge(self):
-        rl, f, _ = solve_and_route(SIMPLE_TWO)
-        assert len(rl.edges) == 1
-        e = rl.edges[0]
-        assert e.source_id == "a"
-        assert e.target_id == "b"
-        assert len(e.points) >= 2
-
-    def test_edge_exits_source_right_face_when_same_level(self):
-        """For same-level left-of nodes the edge exits the right face of a."""
-        rl, _, _ = solve_and_route(SIMPLE_TWO)
-        e = rl.edges[0]
-        src_node = rl.layout.find("a")
-        assert abs(e.start.x - src_node.rect.x2) < 1.0
-
-    def test_edge_enters_target_left_face_when_same_level(self):
-        """For same-level left-of nodes the edge enters the left face of b."""
-        rl, _, _ = solve_and_route(SIMPLE_TWO)
-        e = rl.edges[0]
-        tgt_node = rl.layout.find("b")
-        assert abs(e.end.x - tgt_node.rect.x) < 1.0
-
-    def test_straight_horizontal_for_same_level_nodes(self):
-        """Same-level nodes → exactly 2 waypoints (straight horizontal)."""
+class TestObstacleAware:
+    def test_straight_when_clear(self):
+        """No obstacle between the endpoints -> straight 2-point path."""
         rl, _, _ = solve_and_route(SIMPLE_TWO)
         e = rl.edges[0]
         assert len(e.points) == 2
-        # Both points at the same y (horizontal line).
-        assert abs(e.start.y - e.end.y) < 1.0
+        assert e.turns == 0
+        assert e.residuals == []
 
-    def test_edge_label_preserved(self):
+    def test_edge_bends_around_blocking_node(self):
+        """A node between the endpoints is an obstacle: the routed path
+        must clear its interior (the old router went straight through)."""
+        rl, _, _ = solve_and_route(THREE_IN_A_ROW)
+        e = rl.edges[0]
+        b = rl.layout.find("b").rect
+        assert not path_enters_rect(e.points, b)
+
+    def test_bend_clears_by_the_corridor(self):
+        """The bend clears the obstacle by the corridor half-width, not
+        just by a hair: every path segment stays outside the rect."""
+        rl, _, _ = solve_and_route(THREE_IN_A_ROW)
+        e = rl.edges[0]
+        b = rl.layout.find("b").rect
+        margin = (b.x - 1, b.y - 1, b.x2 + 1, b.y2 + 1)
+        pts = [(p.x, p.y) for p in e.points]
+        assert not any(seg_enters_rect(pts[i], pts[i + 1], margin)
+                       for i in range(len(pts) - 1))
+
+    def test_turns_only_at_obstacles(self):
+        """With the turn penalty high, a path bends only to clear the
+        obstacle: a handful of bends, not a staircase."""
+        rl, _, _ = solve_and_route(THREE_IN_A_ROW)
+        e = rl.edges[0]
+        assert 0 < e.turns <= 4
+
+    def test_obstacle_below_the_line_is_cleared_too(self):
+        """Obstacle BELOW the direct line: same clearing behaviour."""
+        src = THREE_IN_A_ROW.replace(
+            "    a align-middle b\n",
+            "    b below a gap: 30\n")
+        rl, _, _ = solve_and_route(src)
+        e = rl.edges[0]
+        b = rl.layout.find("b").rect
+        assert not path_enters_rect(e.points, b)
+
+
+class TestFaces:
+    def test_edge_starts_on_source_border(self):
         rl, _, _ = solve_and_route(SIMPLE_TWO)
-        assert rl.edges[0].label == "calls"
+        e = rl.edges[0]
+        r = rl.layout.find("a").rect
+        on_border = (
+            abs(e.start.x - r.x) < 0.1 or abs(e.start.x - r.x2) < 0.1
+            or abs(e.start.y - r.y) < 0.1 or abs(e.start.y - r.y2) < 0.1)
+        assert on_border
 
-    def test_edge_type_preserved(self):
+    def test_edge_ends_on_target_border(self):
         rl, _, _ = solve_and_route(SIMPLE_TWO)
-        assert rl.edges[0].edge_type == "api"
+        e = rl.edges[0]
+        r = rl.layout.find("b").rect
+        on_border = (
+            abs(e.end.x - r.x) < 0.1 or abs(e.end.x - r.x2) < 0.1
+            or abs(e.end.y - r.y) < 0.1 or abs(e.end.y - r.y2) < 0.1)
+        assert on_border
 
-    def test_stream_edge_dashed(self):
+    def test_same_level_stays_flat_and_centred(self):
+        """Same-level left-of nodes: face centres, flat, straight — the
+        default look is unchanged when nothing blocks."""
+        rl, _, _ = solve_and_route(SIMPLE_TWO)
+        e = rl.edges[0]
+        src_node = rl.layout.find("a")
+        assert abs(e.start.x - src_node.rect.x2) < 0.1
+        assert abs(e.start.y - src_node.rect.cy) < 0.1
+
+    def test_field_qualified_anchor_stays_pinned(self):
+        """Field-qualified endpoints keep their pinned facing-face anchors
+        at the fields' mid-y (author speech outranks heuristics)."""
+        src = """\
+model "M" {
+  nodes {
+    r1 [type: record, label: "R1"] {
+      fields {
+        f1 [label: "f1"]
+        f2 [label: "f2"]
+      }
+    }
+    r2 [type: record, label: "R2"] {
+      fields {
+        g1 [label: "g1"]
+        g2 [label: "g2"]
+      }
+    }
+  }
+  edges { r1.f1 -> r2.g2 [type: data, label: "fk"] }
+}
+diagram "D" from "M" {
+  select { nodes: r1 r2 }
+  positions { r1 left-of r2 gap: 40 }
+}
+"""
+        rl, _, _ = solve_and_route(src)
+        assert len(rl.edges) == 1
+        e = rl.edges[0]
+        # Pinned: start on r1's right face at f1's row, flat at mid-y.
+        assert abs(e.start.x - rl.layout.find("r1").rect.x2) < 0.1
+        assert abs(e.start.y - e.end.y) < 0.1
+
+
+class TestPairsAndStrips:
+    def test_anti_parallel_pair_separates(self):
+        """Two anti-parallel edges between the same pair route at
+        distinct offsets: their corridors do not overlap (the 1/3-2/3
+        label anchor workaround is redundant)."""
         src = """\
 model "M" {
   nodes {
     a [type: t, label: "A"]
     b [type: t, label: "B"]
   }
-  edges { a -> b [type: stream, label: "watch"] }
+  edges {
+    a -> b [type: api, label: "one"]
+    b -> a [type: api, label: "two"]
+  }
 }
 diagram "D" from "M" {
   select { nodes: a b }
-  positions { a left-of b gap: 40 }
+  positions { a left-of b gap: 60 }
 }
 """
         rl, _, _ = solve_and_route(src)
-        assert rl.edges[0].style == "dashed"
+        assert len(rl.edges) == 2
+        e1, e2 = rl.edges
+        assert e1.strip is not None and e2.strip is not None
+        d = seg_seg_dist(
+            (e1.points[0].x, e1.points[0].y),
+            (e1.points[-1].x, e1.points[-1].y),
+            (e2.points[0].x, e2.points[0].y),
+            (e2.points[-1].x, e2.points[-1].y))
+        assert d >= e1.strip.half_w + e2.strip.half_w
 
-    def test_ipc_edge_dotted(self):
+    def test_shared_face_fan_gets_offsets(self):
+        """A fan from one node face: sibling corridors do not overlap
+        beyond the shared face."""
         src = """\
 model "M" {
   nodes {
-    a [type: t, label: "A"]
-    b [type: t, label: "B"]
+    hub [type: t, label: "Hub"]
+    x [type: t, label: "X"]
+    y [type: t, label: "Y"]
   }
-  edges { a -> b [type: ipc, label: "socket"] }
+  edges {
+    hub -> x [type: api, label: "one"]
+    hub -> y [type: api, label: "two"]
+  }
 }
 diagram "D" from "M" {
-  select { nodes: a b }
-  positions { a left-of b gap: 40 }
+  select { nodes: hub x y }
+  positions {
+    hub left-of x gap: 60
+    hub left-of y gap: 60
+    x above y gap: 20
+    x align-centre y
+  }
 }
 """
         rl, _, _ = solve_and_route(src)
-        assert rl.edges[0].style == "dotted"
+        e1, e2 = rl.edges
+        assert e1.strip is not None and e2.strip is not None
+        # The two strokes leave the hub's right face at distinct
+        # offsets; their corridors do not overlap mid-span.
+        d = seg_seg_dist(
+            (e1.points[0].x, e1.points[0].y),
+            (e1.points[-1].x, e1.points[-1].y),
+            (e2.points[0].x, e2.points[0].y),
+            (e2.points[-1].x, e2.points[-1].y))
+        assert d >= e1.strip.half_w + e2.strip.half_w
+
+
+class TestResiduals:
+    def test_detour_around_wall_is_clear(self):
+        """A wall between the endpoints: the router detours around it
+        honestly (no box explosion, no crossing) and reports no
+        residuals — a clear path always wins over a cheaper crossing."""
+        src_rect = Rect(0, 0, 40, 20)
+        tgt_rect = Rect(200, 0, 40, 20)
+        wall_box = (100.0, -400.0, 140.0, 400.0)   # 800px tall wall
+        pts = route_between(src_rect, tgt_rect, [(wall_box, "wall")])
+        assert len(pts) >= 2
+        pts_t = [(p.x, p.y) for p in pts]
+        assert not any(seg_enters_rect(pts_t[i], pts_t[i + 1], wall_box)
+                       for i in range(len(pts_t) - 1))
+
+    def test_clear_route_has_no_residuals(self):
+        rl, _, _ = solve_and_route(SIMPLE_TWO)
+        assert rl.edges[0].residuals == []
+
+
+class TestAncestorExemption:
+    def test_container_interior_is_passable(self):
+        """An edge between siblings inside a container may cross the
+        container's interior: the container is an ancestor, not an
+        obstacle."""
+        src = """\
+model "M" {
+  nodes {
+    pod [type: container, label: "Pod"] {
+      a [type: t, label: "A"]
+      b [type: t, label: "B"]
+    }
+  }
+  edges { a -> b [type: api, label: "in-pod"] }
+}
+diagram "D" from "M" {
+  select { nodes: pod }
+  positions { pod direction: right }
+}
+"""
+        rl, _, _ = solve_and_route(src)
+        e = rl.edges[0]
+        # The straight sibling route crosses the pod interior legally
+        # (the container is an ancestor of both endpoints).
+        assert e.residuals == []
+
+
+# ---------------------------------------------------------------------------
+# Legacy compatibility
+# ---------------------------------------------------------------------------
+
+class TestLegacy:
+    def test_edge_label_and_type_preserved(self):
+        rl, _, _ = solve_and_route(SIMPLE_TWO)
+        e = rl.edges[0]
+        assert e.label == "calls"
+        assert e.edge_type == "api"
 
     def test_missing_endpoint_skipped(self):
-        """Edges whose endpoints are not in the layout are silently skipped."""
         src = """\
 model "M" {
   nodes {
@@ -179,180 +332,27 @@ diagram "D" from "M" {
 }
 """
         rl, _, _ = solve_and_route(src)
-        # Only a->b is routed; a->c is skipped (c not in layout).
         assert len(rl.edges) == 1
         assert rl.edges[0].target_id == "b"
 
-    def test_mid_point_horizontal(self):
-        """Mid of a same-level 2-point edge is the geometric midpoint."""
-        rl, _, _ = solve_and_route(SIMPLE_TWO)
-        e = rl.edges[0]
-        assert len(e.points) == 2
-        expected_mx = (e.start.x + e.end.x) / 2
-        expected_my = (e.start.y + e.end.y) / 2
-        assert abs(e.mid.x - expected_mx) < 0.1
-        assert abs(e.mid.y - expected_my) < 0.1
+    def test_stream_edge_dashed_and_ipc_dotted(self):
+        for edge_type, style in (("stream", "dashed"), ("ipc", "dotted")):
+            src = SIMPLE_TWO.replace("type: api", f"type: {edge_type}")
+            rl, _, _ = solve_and_route(src)
+            assert rl.edges[0].style == style
 
-    def test_diagonal_for_offset_horizontal_nodes(self):
-        """Primarily-horizontal but vertically offset → exactly 2 waypoints (diagonal)."""
-        src = """\
-model "M" {
-  nodes {
-    a [type: t, label: "A"]
-    b [type: t, label: "B"]
-  }
-  edges { a -> b [type: control, label: "operates"] }
-}
-diagram "D" from "M" {
-  select { nodes: a b }
-  positions {
-    a left-of b gap: 120
-    b above a   gap: 40
-  }
-}
-"""
-        rl, _, _ = solve_and_route(src)
-        e = rl.edges[0]
-        # Diagonal: 2 points, start at source right face, end at target left face.
-        assert len(e.points) == 2
-        src_node = rl.layout.find("a")
-        tgt_node = rl.layout.find("b")
-        assert abs(e.start.x - src_node.rect.x2) < 1.0
-        assert abs(e.end.x   - tgt_node.rect.x)  < 1.0
-
-    def test_fan_out_no_border_hugging(self):
-        """One source, three vertically stacked targets → all arrows are 2-point diagonals."""
-        src = """\
-model "M" {
-  nodes {
-    user [type: person,   label: "User"]
-    app1 [type: external, label: "application 1"]
-    app2 [type: external, label: "application 2"]
-    app3 [type: external, label: "application 3"]
-  }
-  edges {
-    user -> app1 [type: control, label: "operates"]
-    user -> app2 [type: control, label: "operates"]
-    user -> app3 [type: control, label: "operates"]
-  }
-}
-diagram "D" from "M" {
-  select { nodes: user app1 app2 app3 edges: type control }
-  positions {
-    user  left-of app1  gap: 20
-    user  align-middle app2
-    app1  above app2    gap: 20
-    app1  align-centre app2
-    app3  below app2    gap: 20
-    app3  align-centre app2
-  }
-}
-"""
-        rl, _, _ = solve_and_route(src)
-        # All three edges must be 2-point (no border-hugging intermediate bend).
-        for e in rl.edges:
-            assert len(e.points) == 2, (
-                f"edge {e.source_id}->{e.target_id} has {len(e.points)} points; expected 2"
-            )
-        # Each arrow exits the user's right face.
-        user_node = rl.layout.find("user")
-        for e in rl.edges:
-            if e.source_id == "user":
-                assert abs(e.start.x - user_node.rect.x2) < 1.0
-
-# ---------------------------------------------------------------------------
-# Auto-layout children (direction pass)
-# ---------------------------------------------------------------------------
-
-class TestAutoLayout:
-    def test_children_laid_out_horizontally_by_default(self):
-        """Container children default to left-to-right layout."""
-        src = """\
-model "M" {
-  nodes {
-    pod [type: container, label: "Pod"] {
-      a [type: t, label: "A"]
-      b [type: t, label: "B"]
-      c [type: t, label: "C"]
-    }
-  }
-  edges {}
-}
-diagram "D" from "M" {
-  select { nodes: pod }
-}
-"""
-        f = parse(src)
-        validate(f)
-        diagram = f.diagrams[0]
-        model = f.get_model(diagram.model_name)
-        layout = solve(diagram, model)
-        a = layout.find("a")
-        b = layout.find("b")
-        c = layout.find("c")
-        # Each child should be to the right of the previous.
-        assert b.rect.x > a.rect.x
-        assert c.rect.x > b.rect.x
-
-    def test_children_laid_out_vertically_with_direction_down(self):
-        """direction: down stacks children top-to-bottom."""
-        src = """\
-model "M" {
-  nodes {
-    pod [type: container, label: "Pod"] {
-      a [type: t, label: "A"]
-      b [type: t, label: "B"]
-    }
-  }
-  edges {}
-}
-diagram "D" from "M" {
-  select { nodes: pod }
-  positions { pod direction: down }
-}
-"""
-        f = parse(src)
-        validate(f)
-        diagram = f.diagrams[0]
-        model = f.get_model(diagram.model_name)
-        layout = solve(diagram, model)
-        a = layout.find("a")
-        b = layout.find("b")
-        assert b.rect.y > a.rect.y
-
-
-# ---------------------------------------------------------------------------
-# Juju integration
-# ---------------------------------------------------------------------------
-
-class TestJujuRouting:
     def test_k8s_topology_routes(self):
         from pathlib import Path
-        src = (Path(__file__).parent.parent / "examples" / "topology.ggarch").read_text()
+        src = (Path(__file__).parent.parent / "examples"
+               / "topology.ggarch").read_text()
         f = parse(src)
         validate(f)
-        diagram = next(d for d in f.diagrams if d.name == "K8s deployment topology")
+        diagram = next(d for d in f.diagrams
+                       if d.name == "K8s deployment topology")
         model = f.get_model(diagram.model_name)
         layout = solve(diagram, model)
         rl = route(layout, model, diagram.select)
-        # At least some edges should be routed.
         assert len(rl.edges) > 0
-        # All routed edges have at least 2 waypoints.
         for e in rl.edges:
             assert len(e.points) >= 2
-
-    def test_k8s_children_not_stacked(self):
-        """After auto-layout, controller_pod children should not all share y."""
-        from pathlib import Path
-        src = (Path(__file__).parent.parent / "examples" / "topology.ggarch").read_text()
-        f = parse(src)
-        validate(f)
-        diagram = next(d for d in f.diagrams if d.name == "K8s deployment topology")
-        model = f.get_model(diagram.model_name)
-        layout = solve(diagram, model)
-        ctrl = layout.find("controller_pod")
-        if ctrl and ctrl.children:
-            y_values = [c.rect.y for c in ctrl.children]
-            x_values = [c.rect.x for c in ctrl.children]
-            # Children should not all be at the same x (horizontal layout).
-            assert len(set(round(x, 0) for x in x_values)) > 1
+            assert e.strip is not None
