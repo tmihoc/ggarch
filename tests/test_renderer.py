@@ -533,16 +533,17 @@ class TestAlongPathLabels:
             "label path must run left-to-right (mirrored)"
         )
 
-    def test_antiparallel_pair_labels_anchor_at_thirds(self):
-        # Anti-parallel edges share a leg; both labels at the midpoint
-        # would collide (coincident strokes). Anchor at 1/3 and 2/3.
+    def test_antiparallel_pair_labels_ride_their_own_strokes(self):
+        # ADR-003: pairs route at distinct offsets — each label anchors
+        # at the midpoint of its OWN leg (the 1/3-2/3 anchor workaround
+        # is redundant once strokes separate).
         svg = pipeline(PAIR_SRC)
         offsets = re.findall(r'startOffset="([^"]+)"', svg)
         assert len(offsets) == 2
         vals = sorted(float(o) for o in offsets)
         leg = 120.0
-        assert vals[0] == pytest.approx(leg / 3, abs=2), vals
-        assert vals[1] == pytest.approx(2 * leg / 3, abs=2), vals
+        assert vals[0] == pytest.approx(leg / 2, abs=3), vals
+        assert vals[1] == pytest.approx(leg / 2, abs=3), vals
 
     def test_dashed_labelled_edge_keeps_one_dashed_path(self):
         # Dash rhythm is content: the pattern must never restart at a

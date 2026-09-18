@@ -78,59 +78,6 @@ from ggarch.geometry import (  # noqa: E402 — re-export
 )
 
 
-def _edge_endpoints(edge) -> tuple:
-    """(source_id, target_id) for a routed or materialized edge."""
-    src = getattr(edge, "source_id", None)
-    tgt = getattr(edge, "target_id", None)
-    if src is None:
-        src, tgt = edge.source, edge.target
-    return src, tgt
-# Anti-parallel pairs share one stroke today; anchor their labels at
-# 1/3 and 2/3 of the leg so the two labels do not collide. (Separating
-# the coincident strokes themselves is router work — SPEC, Routing
-# strategy.)
-PAIR_ANCHOR_FIRST  = 1 / 3
-PAIR_ANCHOR_SECOND = 2 / 3
-
-
-def pair_anchor_fracs(edges) -> dict[int, float]:
-    """Anchor fractions for labelled edges sharing both endpoints.
-
-    Two edges between the same node pair share a stroke today (the HA
-    anti-parallel Raft pairs render coincident). Anti-parallel edges
-    each anchor at 1/3 along their own direction, which lands the two
-    labels on opposite thirds of the shared span; same-direction
-    duplicates take 1/3 and 2/3. Fractions are geometric — along each
-    edge's own leg, before mirroring. (Separating the coincident
-    strokes themselves is router work — SPEC, Routing strategy.)
-    """
-    groups: dict[frozenset, list[int]] = {}
-    for i, e in enumerate(edges):
-        if not e.label:
-            continue
-        src, tgt = _edge_endpoints(e)
-        groups.setdefault(frozenset((src, tgt)), []).append(i)
-    out: dict[int, float] = {}
-    for idxs in groups.values():
-        if len(idxs) == 2:
-            s0, t0 = _edge_endpoints(edges[idxs[0]])
-            s1, t1 = _edge_endpoints(edges[idxs[1]])
-            if (s0, t0) == (s1, t1):
-                out[idxs[0]] = PAIR_ANCHOR_FIRST
-                out[idxs[1]] = PAIR_ANCHOR_SECOND
-            else:
-                # Anti-parallel: the same own-direction fraction sits
-                # on opposite thirds of the span (1/3 from one end is
-                # 2/3 from the other) -- raw 1/3 + 2/3 would collide.
-                out[idxs[0]] = PAIR_ANCHOR_FIRST
-                out[idxs[1]] = PAIR_ANCHOR_FIRST
-        elif len(idxs) > 2:
-            for j, i in enumerate(idxs):
-                out[i] = (j + 1) / (len(idxs) + 1)
-    return out
-
-
-
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -387,10 +334,8 @@ def render(
     edges_g = dw.Group(id="ggarch-edges")
     ann_g   = dw.Group(id="ggarch-annotations")
     _render_nodes(nodes_g, layout.nodes, node_styles, ox, oy, view, dark, border_gaps)
-    anchor_fracs = pair_anchor_fracs(routed.edges)
-    for i, edge in enumerate(routed.edges):
-        _render_edge(edges_g, edge, edge_styles, ox, oy,
-                    anchor_fracs.get(i, 0.5))
+    for edge in routed.edges:
+        _render_edge(edges_g, edge, edge_styles, ox, oy)
 
     for ann in view.annotations:
         if skip_legend and isinstance(ann, AnnotationLegend):
@@ -907,11 +852,9 @@ def _render_edge(
     edge_styles: dict[str, EdgeStyle],
     ox: float,
     oy: float,
-    anchor_frac: float = 0.5,
 ) -> None:
-    es = edge_styles.get(edge.edge_type, edge_styles.get("default", EdgeStyle()))
     pts = [(p.x + ox, p.y + oy) for p in edge.points]
-
+    es = edge_styles.get(edge.edge_type, edge_styles.get("default", EdgeStyle()))
     path_kwargs: dict = dict(
         fill="none",
         stroke=es.stroke,
@@ -937,14 +880,17 @@ def _render_edge(
     # The label follows the arrow: one textPath per wrapped line on the
     # longest leg, above the line in the text's local frame — no
     # background mask, zero occlusion by construction.
-    lg = label_geometry(pts, edge.label, anchor_frac)
+    # Anchor 0.5: ADR-003 — pairs route at distinct offsets, so the
+    # 1/3-2/3 workaround for coincident strokes is gone.
+    lg = label_geometry(pts, edge.label)
     lx0, ly0, lx1, ly1 = lg.leg
     if lg.mirror:
         # Read left-to-right (or top-to-bottom) on a right-to-left leg.
         lx0, ly0, lx1, ly1 = lx1, ly1, lx0, ly0
     label_path = dw.Path(d=_path_d([(lx0, ly0), (lx1, ly1)]))
     # The geometric anchor maps to the mirrored path's own arc length.
-    frac = 1 - anchor_frac if lg.mirror else anchor_frac
+    # The midpoint is symmetric under mirroring.
+    frac = 0.5
     for i, line in enumerate(lg.lines):
         # Reading order: the first wrapped line is the topmost
         # (outermost from the stroke), the last nearest — the block

@@ -36,7 +36,7 @@ import math
 
 from ggarch import parse, validate, solve, route
 from ggarch.layout import CONTAINER_PAD, CONTAINER_PAD_TOP
-from ggarch.renderer import label_geometry, pair_anchor_fracs
+from ggarch.renderer import label_geometry
 
 EPS = 0.5
 WALL_EPS = 1.0
@@ -123,8 +123,6 @@ def audit_file(path):
         anc = ancestors_map(solved)
         rects = all_rects(solved)
         rmap = rects_by_id(solved)
-        anchor_fracs = pair_anchor_fracs(routed.edges)
-
         crossings = []
         diagonals = []
         rotated = 0
@@ -159,7 +157,7 @@ def audit_file(path):
                 continue
             labelled += 1
             pts = [(p.x, p.y) for p in e.points]
-            lg = label_geometry(pts, e.label, anchor_fracs.get(i, 0.5))
+            lg = label_geometry(pts, e.label, 0.5)
             if lg.rotated:
                 rotated += 1
             labels.append((desc, lg.strip))
