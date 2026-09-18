@@ -691,6 +691,7 @@ def _measure_label_reservations(
             continue
         src_chain, tgt_chain = _chain(edge.source), _chain(edge.target)
         src_set, tgt_set = set(src_chain), set(tgt_chain)
+        exempt_ids = src_set | tgt_set
         es = next((n for n in src_chain if n not in tgt_set), None)
         et = next((n for n in tgt_chain if n not in src_set), None)
         if es is None or et is None or es == et:
@@ -709,7 +710,15 @@ def _measure_label_reservations(
             my = (rs.cy + rt.cy) / 2
             pts = [(left.x2, my), (right.x, my)]
         else:
-            pts = [(p.x, p.y) for p in _route_edge(rs, rt)]
+            # The route the router would draw, obstacles included
+            # (ancestor-or-self of either endpoint exempt) — the
+            # contract measures the detour the label actually rides.
+            obstacles = [
+                ((v.x.value(), v.y.value(),
+                  v.x.value() + v.w.value(), v.y.value() + v.h.value()), nid)
+                for nid, v in vars_by_id.items()
+                if nid not in exempt_ids]
+            pts = [(p.x, p.y) for p in _route_edge(rs, rt, obstacles)]
         if not pts:
             continue
 
