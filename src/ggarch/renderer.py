@@ -55,136 +55,27 @@ from ggarch.router import RoutedEdge, RoutedLayout
 # ---------------------------------------------------------------------------
 
 MARGIN          = 20    # px — white-space margin around the diagram
-ARROWHEAD_SIZE  = 8     # px
-LABEL_FONT      = "'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif"
-ANNOTATION_FONT = "'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif"
 
-# ---------------------------------------------------------------------------
-# Along-path edge labels (ADR-002) — shared geometry
-# ---------------------------------------------------------------------------
-# Single source of truth for how a label rides an edge. The solver's
-# strike-avoidance contract (solver.py) and the geometry audit
-# (scripts/audit-geometry.py) import these so all three measure the
-# same thing the renderer draws.
-
-LABEL_FONT_SIZE = 9
-LABEL_CHAR_W    = 5.5                    # px per character (width model)
-LABEL_LINE_H    = LABEL_FONT_SIZE * 1.5   # px per wrapped line
-LABEL_SIDE_PAD  = 8     # px — clearance from endpoint boxes / arrowheads
-LABEL_CLEARANCE = 3     # px — stroke-to-text clearance below the descent
-LABEL_DESCENT   = LABEL_FONT_SIZE * 0.25  # px — descent below the baseline
-
-# Anti-parallel pairs share one stroke today; anchor their labels at
-# 1/3 and 2/3 of the leg so the two labels do not collide. (Separating
-# the coincident strokes themselves is router work — SPEC, Routing
-# strategy.)
-PAIR_ANCHOR_FIRST  = 1 / 3
-PAIR_ANCHOR_SECOND = 2 / 3
-
-
-@dataclass
-class LabelGeometry:
-    """Everything the renderer, solver, or audit needs about a label."""
-    leg: tuple[float, float, float, float]  # x0, y0, x1, y1 — longest leg
-    leg_len: float
-    ux: float   # mirror-normalized unit direction of the label path
-    uy: float
-    up_x: float  # unit "above" in the text's local frame (screen coords)
-    up_y: float
-    mirror: bool
-    rotated: bool  # |uy| > |ux| — the label renders rotated
-    lines: list[str]
-    max_line_w: float
-    widest_word_w: float
-    anchor: tuple[float, float]  # anchor point at anchor_frac along the leg
-    strip: tuple[float, float, float, float]  # x, y, x2, y2 — text extent
-
-
-def wrap_label_lines(label: str, max_chars: int) -> list[str]:
-    """Greedy word wrap across manual lines. A word longer than
-    max_chars keeps its own line (words are never split) — callers
-    detect the overflow via LabelGeometry.widest_word_w."""
-    wrapped: list[str] = []
-    for raw in label.split("\\n"):
-        words = raw.split()
-        if not words:
-            wrapped.append("")
-            continue
-        cur = words[0]
-        for w in words[1:]:
-            if len(cur) + 1 + len(w) <= max_chars:
-                cur += " " + w
-            else:
-                wrapped.append(cur)
-                cur = w
-        wrapped.append(cur)
-    return wrapped
-
-
-def label_geometry(points, label: str, anchor_frac: float = 0.5) -> LabelGeometry:
-    """Measure the along-path label an edge with `points` would draw.
-
-    The label rides the longest leg; `anchor_frac` positions its
-    centre along that leg (0.5 for a lone edge, 1/3 and 2/3 for a
-    pair sharing a stroke). The strip is the one-sided text extent
-    above the stroke — the collision currency for strike checks.
-    """
-    pts = [(float(x), float(y)) for x, y in points]
-    seg_lens = [
-        math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1])
-        for i in range(len(pts) - 1)
-    ]
-    li = max(range(len(seg_lens)), key=lambda i: seg_lens[i])
-    x0, y0 = pts[li]
-    x1, y1 = pts[li + 1]
-    leg_len = seg_lens[li]
-    if leg_len < 1:
-        # Degenerate leg: a 1px eastward direction so the label still
-        # renders instead of dividing by zero.
-        x0, y0 = pts[0]
-        x1, y1 = x0 + 1.0, y0
-        leg_len = 1.0
-    ux, uy = (x1 - x0) / leg_len, (y1 - y0) / leg_len
-    # Never upside-down: a leg running right-to-left (or bottom-to-top
-    # when vertical) carries mirrored text along a reversed path.
-    mirror = ux < 0 or (abs(ux) < 1e-9 and uy < 0)
-    if mirror:
-        ux, uy = -ux, -uy
-    # Text-local "above" (SVG y grows downward): quarter turn
-    # counter-clockwise from the reading direction.
-    up_x, up_y = uy, -ux
-
-    budget = max(leg_len - LABEL_SIDE_PAD * 2, 1.0)
-    max_chars = max(int(budget / LABEL_CHAR_W), 1)
-    lines = wrap_label_lines(label, max_chars)
-    max_line_w = max(len(l) for l in lines) * LABEL_CHAR_W
-    widest_word_w = max(
-        (len(w) for raw in label.split("\\n") for w in raw.split()),
-        default=0,
-    ) * LABEL_CHAR_W
-
-    ax = x0 + (x1 - x0) * anchor_frac
-    ay = y0 + (y1 - y0) * anchor_frac
-    # Text extent: max_line_w centred on the anchor along the leg,
-    # stacked `up` from the stroke (clearance cancels the descent: the
-    # bottom line's descent sits `clearance` above the stroke, the top
-    # line's ascent tops out at clearance + n * line height).
-    depth = LABEL_CLEARANCE + LABEL_LINE_H * len(lines)
-    half_w = max_line_w / 2
-    corners = (
-        (ax - ux * half_w, ay - uy * half_w),
-        (ax + ux * half_w, ay + uy * half_w),
-        (ax + ux * half_w + up_x * depth, ay + uy * half_w + up_y * depth),
-        (ax - ux * half_w + up_x * depth, ay - uy * half_w + up_y * depth),
-    )
-    xs = [p[0] for p in corners]
-    ys = [p[1] for p in corners]
-    return LabelGeometry(
-        leg=(x0, y0, x1, y1), leg_len=leg_len, ux=ux, uy=uy,
-        up_x=up_x, up_y=up_y, mirror=mirror, rotated=abs(uy) > abs(ux),
-        lines=lines, max_line_w=max_line_w, widest_word_w=widest_word_w,
-        anchor=(ax, ay), strip=(min(xs), min(ys), max(xs), max(ys)),
-    )
+# Along-path edge labels (ADR-002) and strips (ADR-003) — shared
+# geometry: the single source of measurement lives in ggarch.geometry
+# (label_geometry precedent), imported by the solver, router and the
+# geometry audit. Re-exported here for existing importers.
+from ggarch.geometry import (  # noqa: E402 — re-export
+    ANNOTATION_FONT,
+    ARROWHEAD_SIZE,
+    LABEL_CHAR_W,
+    LABEL_CLEARANCE,
+    LABEL_DESCENT,
+    LABEL_FONT,
+    LABEL_FONT_SIZE,
+    LABEL_LINE_H,
+    LABEL_SIDE_PAD,
+    LabelGeometry,
+    Strip,
+    label_geometry,
+    strip_for_edge,
+    wrap_label_lines,
+)
 
 
 def _edge_endpoints(edge) -> tuple:
@@ -194,6 +85,12 @@ def _edge_endpoints(edge) -> tuple:
     if src is None:
         src, tgt = edge.source, edge.target
     return src, tgt
+# Anti-parallel pairs share one stroke today; anchor their labels at
+# 1/3 and 2/3 of the leg so the two labels do not collide. (Separating
+# the coincident strokes themselves is router work — SPEC, Routing
+# strategy.)
+PAIR_ANCHOR_FIRST  = 1 / 3
+PAIR_ANCHOR_SECOND = 2 / 3
 
 
 def pair_anchor_fracs(edges) -> dict[int, float]:
