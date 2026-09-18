@@ -59,7 +59,7 @@ MARGIN_BOTTOM      = 30    # px
 SELF_LOOP_W        = 20    # px — width of self-call loop
 ACTIVATION_W       = 10    # px — width of activation bar on lifeline
 LABEL_CLEAR        = 7     # px — message label clearance above its arrow
-LABEL_PAD          = 6     # px — message label padding from the arrow's start
+LABEL_PAD          = 12    # px — message label clearance from the arrow's endpoints
 
 
 # ---------------------------------------------------------------------------
@@ -418,9 +418,12 @@ def _render_arrow(
     if label:
         CHAR_W = 5.5  # px at 11px font
         span = abs(x2 - x1)
-        # Wrap budget: the span minus fixed padding. The old 0.85 factor
-        # wrapped labels that fit by a character ("watcher fires (data
-        # changed)" on a 180px span).
+        # Wrap budget: the span minus fixed padding on both sides, so
+        # the widest one-line label stays clear of the activation
+        # bars and lifelines the arrow connects (the arrow runs
+        # centre-to-centre; bars occupy +/-5px around each centre).
+        # The old 0.85 factor wrapped labels that fit by a character
+        # ("watcher fires (data changed)" on a 180px span).
         max_chars = max(int((span - 2 * LABEL_PAD) / CHAR_W), 10)
         raw_lines = label.split("\\n")
         wrapped: list[str] = []
@@ -437,24 +440,20 @@ def _render_arrow(
                     wrapped.append(cur)
                     cur = w
             wrapped.append(cur)
-        # Anchor at the arrow's start (the sender's end) rather than the
-        # span midpoint, LABEL_PAD in; right-to-left arrows mirror, so
-        # a label always leads from its own sender and stacked
-        # call/return pairs on the same span read apart.
-        if x2 >= x1:
-            lx, anchor = x1 + LABEL_PAD, "start"
-        else:
-            lx, anchor = x1 - LABEL_PAD, "end"
+        # Centred on the span midpoint: association reads at a glance
+        # and the block grows symmetrically when wrapped (0.25.7
+        # reverts 0.25.6's start-anchoring -- user follow-up).
+        mx = (x1 + x2) / 2
         # Block bottom-anchored LABEL_CLEAR above the stroke; line 0
         # stays topmost (top-to-bottom reading order, 0.25.5).
         lh = 13
         n = len(wrapped)
         for i, line in enumerate(wrapped):
             g.append(dw.Text(
-                line, 11, lx, y - LABEL_CLEAR - (n - 1 - i) * lh,
+                line, 11, mx, y - LABEL_CLEAR - (n - 1 - i) * lh,
                 font_family=LABEL_FONT,
                 fill=ctx.text_color,
-                text_anchor=anchor,
+                text_anchor="middle",
                 dominant_baseline="central",
             ))
 

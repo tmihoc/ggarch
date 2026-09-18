@@ -530,22 +530,21 @@ sequence "S" from "M" {
 
 
 class TestSequenceLabelProximity:
-    """Message labels sit 7px above their own arrow, anchored at the
-    arrow's start (the sender's end).
+    """Message labels sit 7px above their own arrow, centred on its span.
 
-    Before 0.25.6 the label block centered 14px above the span midpoint:
-    rows are 36px apart, so the float made it hard to tell which arrow a
-    label described. Now the block is bottom-anchored (the nearest
-    wrapped line sits 7px clear of the stroke, the first line stays
-    topmost -- the 0.25.5 reading order) and the leading edge sits 6px
-    from the source lifeline, so a stacked call/return pair reads apart:
-    the call label at the sender's left, the return label at its right.
+    0.25.6 bottom-anchored the block (the nearest wrapped line sits
+    7px clear of the stroke, first line topmost -- the 0.25.5 reading
+    order) but also anchored it at the arrow's start, per review
+    note 1's "consider". User follow-up: centred looked better -- the
+    block hugged the sender and left dead space at the receiver.
+    0.25.7 keeps the proximity and reverts the horizontal anchor to
+    the span midpoint.
     """
 
     def _arrow_rows(self, svg):
-        """Straight two-point arrow paths as (x_source, y)."""
+        """Straight two-point arrow paths as (x_source, y, x_target)."""
         return [
-            (float(m.group(1)), float(m.group(2)))
+            (float(m.group(1)), float(m.group(2)), float(m.group(3)))
             for m in re.finditer(
                 r'<path d="M([\d.]+),([\d.]+) L([\d.]+),\2"[^>]*marker-end',
                 svg,
@@ -564,23 +563,22 @@ class TestSequenceLabelProximity:
 
     def test_single_line_label_seven_px_above_arrow(self):
         svg = pipeline(SIMPLE_SEQ)
-        x1, y = self._arrow_rows(svg)[0]
+        _, y, _ = self._arrow_rows(svg)[0]
         _, ly, _ = self._label(svg, "deploy application")
         assert ly == pytest.approx(y - 7), (
             f"label at {ly}, arrow at {y} -- not 7px above"
         )
 
-    def test_label_leads_from_the_arrow_start(self):
+    def test_label_centered_on_arrow_span(self):
         svg = pipeline(SIMPLE_SEQ)
         rows = self._arrow_rows(svg)
-        # Call a -> b (leftward span): start-anchored 6px past the source.
+        # Both directions centre on their own span's midpoint.
         lx, _, attrs = self._label(svg, "deploy application")
-        assert lx == pytest.approx(rows[0][0] + 6)
-        assert 'text-anchor="start"' in attrs
-        # Return b -> a (right-to-left): end-anchored 6px before the source.
+        assert lx == pytest.approx((rows[0][0] + rows[0][2]) / 2)
+        assert 'text-anchor="middle"' in attrs
         lx, _, attrs = self._label(svg, "done")
-        assert lx == pytest.approx(rows[1][0] - 6)
-        assert 'text-anchor="end"' in attrs
+        assert lx == pytest.approx((rows[1][0] + rows[1][2]) / 2)
+        assert 'text-anchor="middle"' in attrs
 
     def test_multiline_block_bottom_anchored_first_line_topmost(self):
         src = """\
@@ -605,8 +603,8 @@ sequence "Deploy" from "M" {
 }
 """
         svg = pipeline(src)
-        x1, y = self._arrow_rows(svg)[0]
         _, ly0, _ = self._label(svg, "first line")
+        _, y, _ = self._arrow_rows(svg)[0]
         _, ly1, _ = self._label(svg, "second line")
         assert ly0 == pytest.approx(y - 7 - 13), "first line not topmost"
         assert ly1 == pytest.approx(y - 7), "nearest line not 7px clear"
@@ -639,8 +637,11 @@ class TestSequenceWrapBudget:
     Regression (juju4 "Integrate"): "watcher fires (data changed)" is
     28 chars and the adjacent-column span is 180px, but
     int(180 * 0.85 / 5.5) = 27 wrapped it by one char even though it
-    fits. The budget is now the span minus the leading-edge and
-    far-side padding.
+    fits. The budget is now span - 2*LABEL_PAD (12px per side): wide
+    enough to keep that label on one line, tight enough that the
+    widest one-line label stays clear of the activation bars and
+    lifelines the arrow connects (the arrow runs centre-to-centre;
+    the bars occupy +/-5px around each centre).
     """
 
     def test_label_that_fits_the_span_does_not_wrap(self):
@@ -648,6 +649,24 @@ class TestSequenceWrapBudget:
         assert re.search(
             r'>watcher fires \(data changed\)</text>', svg
         ), "label wrapped although it fits the arrow span"
+
+    def test_widest_one_line_label_stays_clear_of_the_endpoints(self):
+        # 28 chars fit an adjacent-column span at 5.5px/char
+        # (154px <= 180 - 24); 29 do not -- the block never runs the
+        # full arrow width into the things the arrow connects.
+        svg = pipeline(WRAP_SRC)
+        assert re.search(
+            r'>watcher fires \(data changed\)</text>', svg
+        )
+        longer = pipeline(WRAP_SRC.replace(
+            "watcher fires (data changed)",
+            "watcher fires (data changed)!",
+        ))
+        assert not re.search(
+            r'>watcher fires \(data changed\)!</text>', longer
+        ), "29-char label rendered on one line -- spans the full width"
+        assert "watcher fires (data" in longer
+        assert "changed)!" in longer
 
 
 PERSON_SEQ_SRC = """\
