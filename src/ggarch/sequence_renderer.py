@@ -41,6 +41,7 @@ LIFELINE_HEADER_H  = 40    # px — single-line header height; extended per diag
 LIFELINE_LINE_H    = 16    # px — line height inside a header label
 LIFELINE_SPACING   = 60    # px — horizontal gap between lifeline columns
 STEP_HEIGHT        = 36    # px — vertical space per step row
+STEP_LEAD_IN       = int(STEP_HEIGHT * 1.5)  # px — header→first-arrow breathing room
 BLOCK_PAD          = 8     # px — padding inside loop/alt/opt/par regions
 MARGIN_TOP         = 20    # px
 MARGIN_SIDE        = 30    # px
@@ -146,11 +147,15 @@ def render_sequence(
         default=1,
     )
     header_h = max(LIFELINE_HEADER_H, 12 + max_lines * LIFELINE_LINE_H)
-
     col_step  = LIFELINE_WIDTH + LIFELINE_SPACING
     diagram_w = MARGIN_SIDE * 2 + n * col_step - LIFELINE_SPACING + SELF_LOOP_W + 100
-    lifeline_h = header_h + total_rows * STEP_HEIGHT + MARGIN_BOTTOM
-    diagram_h  = MARGIN_TOP + lifeline_h + header_h
+    # Height budget mirrors actual consumption: the lead-in below the
+    # headers, one STEP_HEIGHT per counted row, clearance below the last
+    # row (block regions extend BLOCK_PAD past their last step), then
+    # the closing footer boxes.
+    y_start     = MARGIN_TOP + header_h + STEP_LEAD_IN
+    content_bot = y_start + total_rows * STEP_HEIGHT + BLOCK_PAD
+    diagram_h   = content_bot + header_h + MARGIN_BOTTOM
 
     # Column centre positions.
     col_cx: dict[str, float] = {}
@@ -166,7 +171,7 @@ def render_sequence(
 
     content = dw.Group()
 
-    # Lifeline headers and vertical dashed lines.
+    # Lifeline headers.
     for pid in participants:
         cx = col_cx[pid]
         node = model.find_node(pid)
@@ -206,20 +211,11 @@ def render_sequence(
                 text_anchor="middle",
                 dominant_baseline="central",
             ))
-        # Vertical lifeline.
-        lifeline_top = MARGIN_TOP + header_h
-        lifeline_bot = MARGIN_TOP + lifeline_h - MARGIN_BOTTOM
-        line_color = "#666666" if dark else "#CCCCCC"
-        content.append(dw.Line(
-            cx, lifeline_top, cx, lifeline_bot,
-            stroke=line_color,
-            stroke_width=1,
-            stroke_dasharray="6,4",
-        ))
 
-    # Steps — rendered top-down, tracking current y offset.
-    # bars_group is appended to drawing first so activation bars appear
-    # behind the arrow lines.
+    # Steps — rendered top-down into their own group so the lifelines
+    # can be drawn behind them once the actual final y is known. That
+    # returned y places the lifeline bottom and the footer boxes, so
+    # they can never overlap the last row.
     bars_group = dw.Group()
     ctx = _RenderCtx(
         col_cx=col_cx,
@@ -232,12 +228,25 @@ def render_sequence(
         activation_stack=[],
         bg="#1E1E2E" if dark else "#FFFFFF",
     )
-    content.append(bars_group)  # append before steps so bars paint behind arrows
-    y_start = MARGIN_TOP + header_h + int(STEP_HEIGHT * 1.5)
-    _render_steps(content, behaviour.steps, y_start, ctx)
+    steps_group = dw.Group()
+    y_final = _render_steps(steps_group, behaviour.steps, y_start, ctx)
+    lifeline_bot_y = y_final + BLOCK_PAD
+
+    # Vertical dashed lifelines — behind the arrows, ending at the
+    # footer tops.
+    line_color = "#666666" if dark else "#CCCCCC"
+    for pid in participants:
+        content.append(dw.Line(
+            col_cx[pid], MARGIN_TOP + header_h, col_cx[pid], lifeline_bot_y,
+            stroke=line_color,
+            stroke_width=1,
+            stroke_dasharray="6,4",
+        ))
+
+    content.append(bars_group)  # bars paint behind the arrow lines
+    content.append(steps_group)
 
     # Closing boxes at the bottom of each lifeline — same style as headers.
-    lifeline_bot_y = MARGIN_TOP + lifeline_h - MARGIN_BOTTOM
     for pid in participants:
         cx   = col_cx[pid]
         node = model.find_node(pid)

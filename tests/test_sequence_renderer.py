@@ -455,3 +455,71 @@ class TestSelfCallLabels:
     def test_self_label_has_background_mask(self):
         svg = self._svg()
         assert 'stroke="none"' in svg
+
+
+class TestFooterClearance:
+    """The closing actor boxes must not cover the bottom-most arrow.
+
+    Regression: the footer y was derived from a height budget that
+    ignored the lead-in below the headers (y_start began at
+    header_h + STEP_HEIGHT * 1.5, but lifeline_h only budgeted
+    header_h + rows * STEP_HEIGHT). The last arrow row landed 18px
+    below the footer tops and was painted over by them. The lifeline
+    bottom and footer boxes are now placed from the y actually returned
+    by rendering the steps.
+    """
+
+    def _geometry(self, svg, n_participants):
+        height = float(re.search(r'height="(\d+)"', svg).group(1))
+        paths = re.findall(r"<path[^>]*>", svg)
+        arrow_ys = [
+            float(re.search(r"M[0-9.]+,([0-9.]+)", p).group(1))
+            for p in paths if "url(#seq-arrow" in p
+        ]
+        rects = re.findall(r"<rect[^>]*>", svg)
+        footer_tops = [float(re.search(r' y="([0-9.]+)"', r).group(1))
+                       for r in rects[-n_participants:]]
+        return height, arrow_ys, footer_tops
+
+    def test_footer_below_last_arrow(self):
+        svg = pipeline(SIMPLE_SEQ)
+        height, arrow_ys, footer_tops = self._geometry(svg, 2)
+        assert arrow_ys, "no arrows rendered"
+        assert min(footer_tops) > max(arrow_ys), (
+            f"footer top {min(footer_tops)} covers last arrow {max(arrow_ys)}"
+        )
+        assert min(footer_tops) + 40 <= height, "footer exceeds canvas"
+
+    def test_footer_below_trailing_block(self):
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+  }
+  edges {
+    a -> b [type: api, label: "x"]
+    b -> a [type: api, label: "y"]
+  }
+  behaviours {
+    behaviour "retrying" {
+      a -> b: call "first"
+      loop "retry" {
+        a -> b: call "second"
+      }
+    }
+  }
+}
+sequence "S" from "M" {
+  select { behaviour: "retrying" }
+}
+"""
+        svg = pipeline(src)
+        height, arrow_ys, footer_tops = self._geometry(svg, 2)
+        assert arrow_ys, "no arrows rendered"
+        # The block region extends BLOCK_PAD past its last step; the
+        # footer must sit below that, not just below the arrow row.
+        assert min(footer_tops) > max(arrow_ys), (
+            f"footer top {min(footer_tops)} covers block's last arrow {max(arrow_ys)}"
+        )
+        assert min(footer_tops) + 40 <= height, "footer exceeds canvas"
