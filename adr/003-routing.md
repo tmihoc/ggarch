@@ -1,8 +1,11 @@
 # ADR-003: Obstacle-aware routing over strips
 
 **Date:** 2026-09-18  
-**Status:** Proposed — for discussion (implementation is 0.26.0 once
-decided; nothing in this ADR is implemented yet)
+**Status:** Proposed — direction agreed in discussion (2026-09-18):
+one user decision (annotation boxes are meta elements) plus four
+recommendations adopted unless objected; see "Resolved in
+discussion". Implementation is 0.26.0 once accepted; nothing in this
+ADR is implemented yet.
 
 ## Context
 
@@ -54,58 +57,81 @@ search, not derived from endpoint geometry.** Specifically:
    rect coordinates (Hanan grid); the search is A* with 8-neighbour
    moves, so a path bends only to clear an obstacle. This is the
    libavoid-free v1 the 0.25.2 plan already scoped. Diagonal edges
-   are the default and survive routing (see 4).
-2. **The collision currency is the strip: path + label extent.**
+   are the default and survive routing (see 6).
+2. **The search chooses exit and entry faces.** Anchor candidates
+   come from the grid, not from closest-opposing-face pre-selection;
+   `_best_anchors` retires into grid seeding. Author-declared anchors
+   stay pinned (field-qualified endpoints are model content — author
+   speech outranks heuristics). Face spreading becomes emergent:
+   each later route sees earlier strips as obstacles and offsets
+   along the shared face; the post-pass retires once measured on the
+   corpus.
+3. **The collision currency is the strip: path + label extent.**
    Every edge occupies a swept corridor — stroke width, arrowhead,
    and the one-sided ADR-002 label extent (text above the line). A
    route is collision-free only if its whole strip clears every
-   obstacle: node rects, annotation boxes and regions, container
-   walls, and other edges' strips. Labels never strike; routing
-   never has to be re-done for labelling.
-3. **Cost = length + turn penalty.** The search minimizes path
-   length plus a per-turn constant. This answers "minimize arrow
-   length" directly while leaving diagonals cheaper than their
-   L-equivalents (a diagonal is shorter AND has fewer turns). The
-   turn constant is the one tuning knob; it should start high enough
-   that a path only bends to clear an obstacle.
-4. **Diagonal-preserving; L-shaped stays opt-in.** The directness of
-   a connection is meaning: consumer→provider adjacency, hub
-   reach, fan structure. The router must not flatten that into
-   orthogonal tidiness. Declared orthogonal routing (the existing
-   "straight by default, orthogonal opt-in" decision) becomes a
-   4-neighbour search with the same strip currency — one mechanism,
-   two axis vocabularies.
-5. **No box explosion.** The router treats the solved arrangement as
+   obstacle: node rects, container walls, and other edges' strips.
+   Labels never strike; routing never has to be re-done for
+   labelling.
+4. **Annotation boxes and regions are meta elements — never
+   obstacles** (user decision, 2026-09-18). An annotation box is a
+   human circling an area of the board for emphasis: a statement
+   about the nodes it encloses, not a thing in the model. Edges cross
+   annotation regions freely; annotation borders are never notched
+   (notches are container-port semantics, decision 11 — the
+   side-gap notch computation in `_render_ann_box` is deleted at
+   implementation: a circling has no gates). Annotation boxes stay
+   stroke-only (`fill=none`) and paint last, so a crossing edge is
+   overlaid by a thin marker stroke and occluded by nothing.
+5. **Cost = length + turn penalty, fixed per turn.** The search
+   minimizes path length plus a per-turn constant K. K is a fixed
+   pixel price, not scaled by edge length (see Resolved 1); it is
+   tuned against the corpus, with turns-per-edge reported by the
+   audit so the tuning is measured, not guessed. A diagonal is
+   shorter AND has fewer turns, so cost keeps diagonals by default
+   without special-casing. The turn constant should start high
+   enough that a path only bends to clear an obstacle.
+6. **Diagonal-preserving; L-shaped stays opt-in.** The directness of
+   a connection is meaning: consumer→provider adjacency, hub reach,
+   fan structure. The router must not flatten that into orthogonal
+   tidiness. Declared orthogonal routing (the existing "straight by
+   default, orthogonal opt-in" decision) becomes a 4-neighbour
+   search with the same strip currency — one mechanism, two axis
+   vocabularies.
+7. **No box explosion.** The router treats the solved arrangement as
    fixed input (position is content): it never moves nodes, never
    inflates containers, never inserts gap floors to make room. When
    no collision-free path exists, the router returns the
-   cheapest-collision path and reports it to the solver's label
-   contract, which may reserve clearance and re-solve — the
-   arrangement yields only through the solver, under the user's
-   constraints, never through the router.
-6. **Anti-parallel and mesh edges route at distinct offsets.** Edges
-   sharing an endpoint pair (or a face) get separate corridors —
-   this extends today's face spreading into the search. The ⅓-⅔
-   label anchors become redundant and are removed: each label rides
-   its own stroke.
-7. **Rounded joins are a later aesthetic pass.** The path is found
-   and stored as polylines (strips are rectangular); corner rounding
-   is a renderer-side post-process that does not participate in the
-   search. Deferred until the router is proven on the corpus.
-8. **State-view transition labels adopt along-path textPath under
-   this decision.** Transition curves become routed strips like any
-   edge (back-edge bows outside the machine are the same
-   corridor-around-obstacle problem); labels ride the curve per
-   ADR-002 and the opaque background masks die. One label mechanism
-   across all three view kinds — decided globally, as reviewed.
-9. **Port semantics for border notches.** `_compute_border_gaps`
-   notches a container border only when **exactly one endpoint of
-   the edge is inside that subtree** — the notch then reads as a
-   port (the edge genuinely enters or exits there). Edges passing
-   over a container (both endpoints outside) leave the border solid;
-   their crossing is a routing defect for 1-6 to eliminate, not a
-   border feature. Edges internal to the subtree do not notch
-   their own container.
+   cheapest-collision path and reports it — audited, never silent
+   (Resolved 3) — to the solver's label contract, which may reserve
+   clearance and re-solve. The arrangement yields only through the
+   solver, under the user's constraints, never through the router.
+8. **Anti-parallel and mesh edges route at distinct offsets.** Edges
+   sharing an endpoint pair (or a face) get separate corridors
+   (decision 2's emergent spreading). The ⅓-⅔ label anchors become
+   redundant and are removed: each label rides its own stroke.
+9. **Rounded joins are a later aesthetic pass.** v1 ships polylines
+   with `stroke-linejoin="round"` — one attribute, zero geometry,
+   sub-pixel corners. True fillets (arcs in the path data) are
+   deferred behind the acceptance bar and dropped if the corpus
+   reads clean with polylines — the diagonal-preserving search bends
+   only at obstacles, so corners are rare. If kept, fillet radius
+   stays below the strip side padding, so rounding is provably
+   clearance-safe. Rounding never participates in the search.
+10. **State-view transition labels adopt along-path textPath under
+    this decision.** Transition curves become routed strips like any
+    edge (back-edge bows outside the machine are the same
+    corridor-around-obstacle problem); labels ride the curve per
+    ADR-002 and the opaque background masks die. One label mechanism
+    across all three view kinds — decided globally, as reviewed.
+11. **Port semantics for border notches.** `_compute_border_gaps`
+    notches a container border only when **exactly one endpoint of
+    the edge is inside that subtree** — the notch then reads as a
+    port (the edge genuinely enters or exits there). Edges passing
+    over a container (both endpoints outside) leave the border solid;
+    their crossing is a routing defect for 1-8 to eliminate, not a
+    border feature. Edges internal to the subtree do not notch
+    their own container. Annotation boxes never notch (decision 4).
 
 ## Reasoning
 
@@ -119,18 +145,27 @@ ADR-002 already made uniform — handles crossings, coincident pairs,
 label strikes, and state-view bows as the same problem: a strip
 intersecting an obstacle.
 
+**Why are annotation boxes not obstacles?** Because they are
+commentary, not content (user, 2026-09-18): an annotation box is a
+human circling an area of the board for emphasis — a statement about
+the nodes it encloses, not a thing in the model. Making commentary a
+wall inverts the relationship: the emphasized content would be
+routing around the emphasis. The corpus proves the point — the
+"Forced structure" regions span the containment hierarchy on
+purpose, so every flow edge crosses them; a wall there is
+unrenderable. The current rendering already fits the metaphor
+(measured): annotation boxes are stroke-only (`fill=none`) and paint
+last, so a crossing edge is overlaid by a thin marker stroke and
+occluded by nothing. The one behavior contradicting the metaphor —
+notching the annotation border where edges cross (`_render_ann_box`
+side-gaps) — is deleted by this decision.
+
 **Why preserve diagonals?** The review's own principle: meaning lives
 in the diagonal. A hub whose spokes all reach directly reads
 preattentively ("all roads lead to x"); the same spokes bent into
 Ls read as a maze — tidiness overrides meaning. Diagonals are also
 the shortest paths, so cost = length + turns keeps them by default
 without special-casing.
-
-**Why length + turns and not length alone?** Pure length prefers
-staircase paths that graze obstacle corners. The turn penalty makes
-the search pay for each bend, so paths are straight where possible
-and bend only to clear geometry — the visual convention the review
-asked for (minimal arrows, minimal kinks).
 
 **Why no box explosion?** Structurizr's router makes room by inflating
 boxes and gaps until every edge is a tidy orthogonal; the result
@@ -150,10 +185,8 @@ and mask machinery alive — the exact mode-duality ADR-002 removed.
 and ports only make sense relative to routed paths: once routes are
 obstacle-aware, an edge crossing a container it does not enter is a
 router bug to eliminate; the border renderer must not paper over it
-by notching. Fixing the ancestry check alone today (without the
-router) would leave pass-over arrows visually un-notched but still
-crossing — cosmetic honesty that hides the defect. Landing it with
-the router makes the notch an honest signal.
+by notching. Landing it with the router makes the notch an honest
+signal.
 
 ## Consequences
 
@@ -165,6 +198,11 @@ the router makes the notch an honest signal.
   authored positions.
 - Anti-parallel pairs separate; ⅓-⅔ anchor workaround is deleted.
 - State-view masks die; one label mechanism everywhere.
+- Annotation boxes never constrain routing — cross-cutting regions
+  stay crossable by design (Forced structure); their side-gap
+  notch computation is deleted, and the audit's crossing metric
+  (which already measures node rects only) needs no change, so the
+  recorded baselines stand.
 - The audit harness (segment-vs-rect, label-strike tests) already
   measures everything the acceptance bar needs.
 
@@ -176,33 +214,57 @@ the router makes the notch an honest signal.
 - Pairwise strip-vs-strip collision makes the search order-dependent
   for meshes (route A's offset constrains route B); v1 routes pairs
   and fan-groups greedily after independent edges.
-- "Cheapest collision" paths must degrade gracefully: a crossing
-  should remain visible in the audit rather than being silently
-  accepted.
+- "Cheapest collision" paths must degrade gracefully: residual
+  crossings appear as audit lines (edge, obstacle, blocker) — the
+  router must never distort a route to hide one.
 - Sequences keep their own row-router — out of scope by acceptance
   (byte-identical), but the strip concept should stay compatible.
 
-**Acceptance bar (from the 0.26 plan):** crossing-edges near zero in
-both twins, annotation boxes counting as obstacles; sequences
-byte-identical; rotated-label and label-clash counts no worse than
-the 0.25.5 baseline; strips clear all obstacles in the audit.
+**Acceptance bar (from the 0.26 plan, revised by discussion):**
+crossing-edges near zero in both twins over node and strip obstacles
+(annotation boxes/regions are meta elements and do not count);
+sequences byte-identical; rotated-label and label-clash counts no
+worse than the 0.25.5 baseline; strips clear all node obstacles in
+the audit; turns-per-edge reported so the turn constant is tuned,
+not guessed.
 
-## Open questions for discussion
+## Resolved in discussion (2026-09-18)
 
-1. **Turn constant and grid density** — start values and whether the
-   turn penalty should scale with edge length (long edges afford more
-   turns without looking kinked).
-2. **Crossing over annotation boxes** — the plan counts them as
-   obstacles (annotation boxes are content). Confirm: no edge may
-   pass through a region even when the region is visually "empty".
-3. **Degenerate cases** — when the cheapest path still collides
-   (locked authored layouts, REQUIRED constraints), is the residual
-   crossing acceptable, or does the router fail the build? Proposal:
-   acceptable + audited, never silent.
-4. **Anchor faces** — does the search also choose exit/entry faces
-   (replacing `_best_anchors`), or do today's closest-opposing-face
-   anchors seed the grid? Proposal: let the search choose; anchors
-   become grid candidates.
-5. **Rounded joins** — confirmed as a post-pass, or dropped entirely?
-   Proposal: post-pass, scheduled only after the acceptance bar
-   passes on the corpus.
+1. **Turn constant: fixed K, no length scaling** (recommendation,
+   adopted). The bend trade is local: around one obstacle the search
+   compares two clear paths differing by local detour length and one
+   bend; K is the exchange rate in pixels ("a bend is worth K px of
+   detour"). Total edge length is irrelevant to that comparison, and
+   scaling K with it makes long edges refuse bends and buy them back
+   with detour length — backwards for "minimize arrow length". Bend
+   count is naturally bounded (each bend must save ≥K px, and bends
+   only occur clearing obstacles), so long-edge zigzag needs no
+   special case; if the corpus shows one anyway, the staged fix is a
+   per-edge turn budget (a legible constraint), not a continuous
+   coupling. Grid: classic Hanan coordinates v1 (endpoints + obstacle
+   projections, duplicates collapsed with a tolerance); refine only
+   on audit evidence of forced crossings in packed containers.
+2. **Annotation boxes are not obstacles** (user decision). Meta
+   elements — a human circling an area for emphasis — never
+   obstacles, never notched, never in the collision economy.
+   Recorded as decision 4. This reverses the 0.26 plan's earlier
+   wording ("annotation boxes count"); the audit never measured them,
+   so the baselines are unaffected.
+3. **Residual crossings: audited + reported, never a build failure**
+   (recommendation, adopted). A crossing under authored constraints
+   is a rendering-quality fact, not a model untruth — build failures
+   are reserved for model lies (parse, validation). A hard gate would
+   make valid authored views unrenderable and the corpus (15 authored
+   crossings today) permanently red, inviting bypass. The router draws
+   the cheapest-collision path honestly — the crossing is visible in
+   the SVG by construction — and the audit reports every residual.
+   The forbidden behavior is hiding, not failing.
+4. **Anchor faces: the search chooses; declared anchors stay pinned**
+   (recommendation, adopted). Closest-opposing-face pre-selection is
+   endpoint-only geometry — the same obstacle-blind class this ADR
+   retires; cost = length + turns is the honest arbiter. Recorded as
+   decision 2.
+5. **Rounded joins: post-pass; v1 = `stroke-linejoin="round"`**
+   (recommendation, adopted). One attribute, zero geometry,
+   sub-pixel corners; true fillets only if the corpus still reads
+   harsh after the acceptance bar. Recorded as decision 9.
