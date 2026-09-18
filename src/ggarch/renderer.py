@@ -120,45 +120,73 @@ def _seg_intersect_vert(
 BORDER_GAP = 6  # px each side of the crossing point
 
 
+
 def _compute_border_gaps(
     nodes: list,
     edges: list,
     ox: float, oy: float,
 ) -> dict:
-    """Return {node_id: {'top': [x,...], 'bottom': [x,...], 'left': [y,...], 'right': [y,...]}}."""
+    """{node_id: {'top': [x,...], 'bottom': [...], 'left': [y,...],
+    'right': [...]}} — the ports of each container border.
+
+    A notch is a port (ADR-003 decision 11): it is cut only where an
+    edge genuinely enters or exits the subtree — exactly one endpoint
+    inside. Edges passing OVER a container (both endpoints outside)
+    leave the border solid — that is a routing defect for the router
+    to eliminate, not a border feature. Edges internal to the subtree
+    do not notch their own container.
+    """
     gaps: dict = {}
 
-    # Build a flat dict of node rects (in SVG coords).
+    # Rects (in SVG coords) and subtree membership (inclusive).
     rects: dict = {}
+    subtree: dict[str, set[str]] = {}
+
     def collect(ns):
         for n in ns:
             r = n.rect
             rects[n.id] = (r.x + ox, r.y + oy, r.w, r.h)
-            if n.children:
-                collect(n.children)
+            members = subtree.setdefault(n.id, {n.id})
+            for c in n.children:
+                collect([c])
+                members.update(subtree.get(c.id, {c.id}))
+            subtree[n.id] = members
     collect(nodes)
+
+    def _endpoints(edge):
+        src = getattr(edge, "source_id", None) or edge.source
+        tgt = getattr(edge, "target_id", None) or edge.target
+        return src, tgt
 
     for edge in edges:
         pts = [(p.x + ox, p.y + oy) for p in edge.points]
+        src, tgt = _endpoints(edge)
         for nid, (nx, ny, nw, nh) in rects.items():
+            # Port semantics: exactly one endpoint inside the subtree.
+            inside = [e for e in (src, tgt) if e in subtree.get(nid, ())]
+            if len(inside) != 1:
+                continue
             for i in range(len(pts) - 1):
                 x1, y1 = pts[i]
-                x2, y2 = pts[i+1]
-                g = gaps.setdefault(nid, {'top': [], 'bottom': [], 'left': [], 'right': []})
+                x2, y2 = pts[i + 1]
+                g = gaps.setdefault(
+                    nid, {'top': [], 'bottom': [], 'left': [], 'right': []})
                 # Top edge
-                cx = _seg_intersect_horiz(x1, y1, x2, y2, nx, nx+nw, ny)
+                cx = _seg_intersect_horiz(x1, y1, x2, y2, nx, nx + nw, ny)
                 if cx is not None:
                     g['top'].append(cx)
                 # Bottom edge
-                cx = _seg_intersect_horiz(x1, y1, x2, y2, nx, nx+nw, ny+nh)
+                cx = _seg_intersect_horiz(
+                    x1, y1, x2, y2, nx, nx + nw, ny + nh)
                 if cx is not None:
                     g['bottom'].append(cx)
                 # Left edge
-                cy = _seg_intersect_vert(x1, y1, x2, y2, ny, ny+nh, nx)
+                cy = _seg_intersect_vert(x1, y1, x2, y2, ny, ny + nh, nx)
                 if cy is not None:
                     g['left'].append(cy)
                 # Right edge
-                cy = _seg_intersect_vert(x1, y1, x2, y2, ny, ny+nh, nx+nw)
+                cy = _seg_intersect_vert(
+                    x1, y1, x2, y2, ny, ny + nh, nx + nw)
                 if cy is not None:
                     g['right'].append(cy)
     return gaps
@@ -173,7 +201,8 @@ def _draw_side_with_gaps(
     stroke_dash: str,
     gap: float = BORDER_GAP,
 ) -> None:
-    """Draw a straight line from pts[0] to pts[-1] as segments, skipping gaps at crossings.
+    """Draw a straight line from pts[0] to pts[-1] as segments, skipping
+    gaps at crossings.
 
     pts must be a two-point list defining a horizontal or vertical line.
     crossings are the coordinates (x for horiz, y for vert) where gaps are cut.
@@ -926,7 +955,7 @@ def _render_annotation(
     vh: float = 0,
 ) -> None:
     if isinstance(ann, AnnotationBox):
-        _render_ann_box(g, ann, layout, ox, oy, dark, edges or [])
+        _render_ann_box(g, ann, layout, ox, oy, dark)
     elif isinstance(ann, AnnotationCallout):
         _render_ann_callout(g, ann, layout, ox, oy, dark)
     elif isinstance(ann, AnnotationSeparator):
@@ -960,7 +989,6 @@ def _render_ann_box(
     layout: SolvedLayout,
     ox: float, oy: float,
     dark: bool,
-    edges: list | None = None,
 ) -> None:
     pad   = ann.padding if hasattr(ann, 'padding') else 10
     pt    = (ann.padding_top    if hasattr(ann, 'padding_top')    and ann.padding_top    is not None else pad)
@@ -986,35 +1014,13 @@ def _render_ann_box(
     color = ann.color or ("#888888" if dark else "#666666")
     dash = "6,4" if ann.style == "dashed" else ""
 
-    # Compute where routed edges cross each side of the annotation box.
-    side_gaps: dict[str, list[float]] = {'top': [], 'bottom': [], 'left': [], 'right': []}
-    for edge in (edges or []):
-        pts = [(p.x + ox, p.y + oy) for p in edge.points]
-        for i in range(len(pts) - 1):
-            x1, y1 = pts[i]; x2, y2 = pts[i+1]
-            cx = _seg_intersect_horiz(x1, y1, x2, y2, x, x+w, y)
-            if cx is not None: side_gaps['top'].append(cx)
-            cx = _seg_intersect_horiz(x1, y1, x2, y2, x, x+w, y+h)
-            if cx is not None: side_gaps['bottom'].append(cx)
-            cy = _seg_intersect_vert(x1, y1, x2, y2, y, y+h, x)
-            if cy is not None: side_gaps['left'].append(cy)
-            cy = _seg_intersect_vert(x1, y1, x2, y2, y, y+h, x+w)
-            if cy is not None: side_gaps['right'].append(cy)
-
-    has_gaps = any(side_gaps[f] for f in side_gaps)
-    if has_gaps:
-        for face, pts2, crossings in (
-            ('top',    [(x, y),   (x+w, y)],   side_gaps['top']),
-            ('bottom', [(x, y+h), (x+w, y+h)], side_gaps['bottom']),
-            ('left',   [(x, y),   (x, y+h)],   side_gaps['left']),
-            ('right',  [(x+w, y), (x+w, y+h)], side_gaps['right']),
-        ):
-            _draw_side_with_gaps(g, pts2, crossings, color, 1, dash)
-    else:
-        rect_kwargs: dict = dict(fill="none", stroke=color, stroke_width=1, rx=6, ry=6)
-        if dash:
-            rect_kwargs["stroke_dasharray"] = dash
-        g.append(dw.Rectangle(x, y, w, h, **rect_kwargs))
+    # A circling has no gates: annotation boxes are meta elements
+    # (ADR-003 decision 4) — stroke-only, painted last, borders never
+    # notched. Edges cross them freely and are never occluded.
+    rect_kwargs: dict = dict(fill="none", stroke=color, stroke_width=1, rx=6, ry=6)
+    if dash:
+        rect_kwargs["stroke_dasharray"] = dash
+    g.append(dw.Rectangle(x, y, w, h, **rect_kwargs))
 
     if ann.label:
         if pos == 'inside-bottom':
