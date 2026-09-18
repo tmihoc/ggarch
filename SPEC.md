@@ -308,12 +308,32 @@ same margin so the constraint solver's geometry is honest for every type.
   rejected blue duplicated what colour already encoded and added only visual
   noise.
 - Person nodes are a rounded rect with a small head+shoulders badge in the
-  top-right corner. The badge is the type indicator; the label is centred
+  top-left corner. The badge is the type indicator; the label is centred
   inside the box. Same bounding-box convention as every other shape.
 - The shape vocabulary is intentionally small: rect, cylinder, person. C4-style
   shape proliferation (person, software system, container, component, database,
   queue...) is avoided because C4's hierarchy encodes abstraction level via
   shape, which ggarch handles better through multi-view + `abstracts:`.
+
+**One node, one visual identity across all view kinds.** A node's type
+is a model fact; every view projects that fact, so the node's identity
+(shape, colours, border, lifecycle dash) must not change between view
+kinds. Sequences therefore draw participant headers and footers with
+the same shape machinery as topology boxes (0.25.6): a person-typed
+participant carries the person glyph, a database the cylinder caps,
+and the lifecycle dash comes from the shared style bank — only the
+geometry (lifeline column, header band) is sequence-specific. Before
+0.25.6 sequences took only the type's colours and invented a private
+border convention ("4,3" init dash, fixed 4px radius), so the same
+entity read differently across views (juju4 review: the sequence
+"User" lost its person badge).
+
+Audit (0.25.6): state views carry the same latent gap — state boxes
+apply type colours but draw every state as a fixed-radius rounded
+rect, ignoring the shape and border-radius channels. No corpus state
+is person- or cylinder-typed today, so nothing renders wrong; the fix
+lands with the state-renderer pass in ADR-003 (transition labels),
+not in isolation.
 
 **TODO: investigate zoom-level annotation.** C4's zoom-in hierarchy is
 genuinely useful for readers -- seeing that "Juju" expands to client +

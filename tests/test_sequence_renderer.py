@@ -523,3 +523,186 @@ sequence "S" from "M" {
             f"footer top {min(footer_tops)} covers block's last arrow {max(arrow_ys)}"
         )
         assert min(footer_tops) + 40 <= height, "footer exceeds canvas"
+
+# ---------------------------------------------------------------------------
+# Sequence polish (0.25.6)
+# ---------------------------------------------------------------------------
+
+
+class TestSequenceLabelProximity:
+    """Message labels sit 7px above their own arrow, anchored at the
+    arrow's start (the sender's end).
+
+    Before 0.25.6 the label block centered 14px above the span midpoint:
+    rows are 36px apart, so the float made it hard to tell which arrow a
+    label described. Now the block is bottom-anchored (the nearest
+    wrapped line sits 7px clear of the stroke, the first line stays
+    topmost -- the 0.25.5 reading order) and the leading edge sits 6px
+    from the source lifeline, so a stacked call/return pair reads apart:
+    the call label at the sender's left, the return label at its right.
+    """
+
+    def _arrow_rows(self, svg):
+        """Straight two-point arrow paths as (x_source, y)."""
+        return [
+            (float(m.group(1)), float(m.group(2)))
+            for m in re.finditer(
+                r'<path d="M([\d.]+),([\d.]+) L([\d.]+),\2"[^>]*marker-end',
+                svg,
+            )
+        ]
+
+    def _label(self, svg, text):
+        m = re.search(rf'<text([^>]*)>{re.escape(text)}</text>', svg)
+        assert m, f"label {text!r} not rendered"
+        attrs = m.group(1)
+        return (
+            float(re.search(r'x="([\d.]+)"', attrs).group(1)),
+            float(re.search(r'y="([\d.]+)"', attrs).group(1)),
+            attrs,
+        )
+
+    def test_single_line_label_seven_px_above_arrow(self):
+        svg = pipeline(SIMPLE_SEQ)
+        x1, y = self._arrow_rows(svg)[0]
+        _, ly, _ = self._label(svg, "deploy application")
+        assert ly == pytest.approx(y - 7), (
+            f"label at {ly}, arrow at {y} -- not 7px above"
+        )
+
+    def test_label_leads_from_the_arrow_start(self):
+        svg = pipeline(SIMPLE_SEQ)
+        rows = self._arrow_rows(svg)
+        # Call a -> b (leftward span): start-anchored 6px past the source.
+        lx, _, attrs = self._label(svg, "deploy application")
+        assert lx == pytest.approx(rows[0][0] + 6)
+        assert 'text-anchor="start"' in attrs
+        # Return b -> a (right-to-left): end-anchored 6px before the source.
+        lx, _, attrs = self._label(svg, "done")
+        assert lx == pytest.approx(rows[1][0] - 6)
+        assert 'text-anchor="end"' in attrs
+
+    def test_multiline_block_bottom_anchored_first_line_topmost(self):
+        src = """\
+model "M" {
+  nodes {
+    a [type: juju-software, label: "Client"]
+    b [type: juju-software, label: "Controller"]
+  }
+  edges {
+    a -> b [type: api, label: "deploy"]
+    b -> a [type: api, label: "ok"]
+  }
+  behaviours {
+    behaviour "deploy" {
+      a -> b: call "first line\\nsecond line"
+      b -> a: return "done"
+    }
+  }
+}
+sequence "Deploy" from "M" {
+  select { behaviour: "deploy" }
+}
+"""
+        svg = pipeline(src)
+        x1, y = self._arrow_rows(svg)[0]
+        _, ly0, _ = self._label(svg, "first line")
+        _, ly1, _ = self._label(svg, "second line")
+        assert ly0 == pytest.approx(y - 7 - 13), "first line not topmost"
+        assert ly1 == pytest.approx(y - 7), "nearest line not 7px clear"
+
+
+WRAP_SRC = """\
+model "M" {
+  nodes {
+    b [type: juju-software, label: "Controller"]
+    c [type: juju-software, label: "Unit agent"]
+  }
+  edges {
+    b -> c [type: api, label: "notify"]
+  }
+  behaviours {
+    behaviour "notify" {
+      b -> c: async "watcher fires (data changed)"
+    }
+  }
+}
+sequence "Notify" from "M" {
+  select { behaviour: "notify" }
+}
+"""
+
+
+class TestSequenceWrapBudget:
+    """The wrap budget is the arrow span minus fixed padding, not 85% of it.
+
+    Regression (juju4 "Integrate"): "watcher fires (data changed)" is
+    28 chars and the adjacent-column span is 180px, but
+    int(180 * 0.85 / 5.5) = 27 wrapped it by one char even though it
+    fits. The budget is now the span minus the leading-edge and
+    far-side padding.
+    """
+
+    def test_label_that_fits_the_span_does_not_wrap(self):
+        svg = pipeline(WRAP_SRC)
+        assert re.search(
+            r'>watcher fires \(data changed\)</text>', svg
+        ), "label wrapped although it fits the arrow span"
+
+
+PERSON_SEQ_SRC = """\
+model "M" {
+  nodes {
+    u [type: person, label: "User"]
+    k [type: juju-software, label: "Controller"]
+  }
+  edges {
+    u -> k [type: api, label: "juju deploy"]
+  }
+  behaviours {
+    behaviour "deploy" {
+      u -> k: call "juju deploy"
+      k -> u: return "deployed"
+    }
+  }
+}
+sequence "Deploy" from "M" {
+  select { behaviour: "deploy" }
+}
+"""
+
+DB_SEQ_SRC = PERSON_SEQ_SRC.replace(
+    'u [type: person, label: "User"]',
+    'd [type: database, label: "Model DB"]',
+).replace("u -> k", "d -> k").replace("k -> u", "k -> d").replace(
+    "u: call", "d: call",
+)
+
+INIT_SEQ_SRC = PERSON_SEQ_SRC.replace(
+    'k [type: juju-software, label: "Controller"]',
+    'k [type: juju-software, label: "Controller", lifecycle: init]',
+)
+
+
+class TestTypeFaithfulParticipantHeaders:
+    """One node, one visual identity across all view kinds (SPEC):
+    participant headers and footers render the node's TYPE SHAPE, not
+    just its colours -- a person-typed participant carries the same
+    person glyph as its topology box, a database the same cylinder
+    caps, and lifecycle/border styling comes from the resolved node
+    style (the sequence-specific "4,3" init dash was a divergence).
+    """
+
+    def test_person_participant_carries_glyph_in_header_and_footer(self):
+        svg = pipeline(PERSON_SEQ_SRC)
+        # One head circle per participant box: header + footer.
+        assert svg.count("<circle") == 2
+
+    def test_database_participant_carries_cylinder_caps(self):
+        svg = pipeline(DB_SEQ_SRC)
+        # Two caps per participant box: header + footer.
+        assert svg.count("<ellipse") == 4
+
+    def test_init_lifecycle_dash_matches_topology(self):
+        svg = pipeline(INIT_SEQ_SRC)
+        assert 'stroke-dasharray="6,3"' in svg

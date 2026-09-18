@@ -7,6 +7,9 @@ Layout:
 - Time flows top-to-bottom.
 - Each step occupies a fixed row height.
 - loop/alt/par blocks are rectangular regions drawn behind the steps they contain.
+- Participant headers/footers render the node's type shape (person
+  glyph, cylinder caps) and lifecycle dash -- one node, one visual
+  identity across all view kinds.
 
 Produces light and dark SVG strings via render_sequence() / render_sequence_both().
 """
@@ -28,8 +31,15 @@ from ggarch.model import (
     Step,
     StepKind,
 )
-from ggarch.presets import get_preset, resolve_style
-from ggarch.renderer import ANNOTATION_FONT, ARROWHEAD_SIZE, LABEL_FONT
+from ggarch.presets import NodeStyle, get_preset, resolve_style
+from ggarch.renderer import (
+    ANNOTATION_FONT,
+    ARROWHEAD_SIZE,
+    LABEL_FONT,
+    _render_box,
+    _render_cylinder,
+    _render_person,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +58,8 @@ MARGIN_SIDE        = 30    # px
 MARGIN_BOTTOM      = 30    # px
 SELF_LOOP_W        = 20    # px — width of self-call loop
 ACTIVATION_W       = 10    # px — width of activation bar on lifeline
+LABEL_CLEAR        = 7     # px — message label clearance above its arrow
+LABEL_PAD          = 6     # px — message label padding from the arrow's start
 
 
 # ---------------------------------------------------------------------------
@@ -171,46 +183,13 @@ def render_sequence(
 
     content = dw.Group()
 
-    # Lifeline headers.
+    # Lifeline headers — the node's type shape, not just its colours
+    # (one node, one visual identity across all view kinds).
     for pid in participants:
-        cx = col_cx[pid]
-        node = model.find_node(pid)
-        label = node.label if node else pid
-        lifecycle = node.lifecycle if node else Lifecycle.PERSISTENT
-        style = node_styles.get(
-            node.type if node else "default",
-            node_styles.get("default"),
+        _render_participant_box(
+            content, col_cx[pid], MARGIN_TOP, header_h,
+            model.find_node(pid), node_styles,
         )
-
-        # Header box — dashed border for init lifecycle.
-        rect_kwargs: dict = dict(
-            fill=style.fill if style.fill != "none" else ("#2A2A3E" if dark else "#F5F5F5"),
-            stroke=style.stroke,
-            stroke_width=1,
-            rx=4, ry=4,
-        )
-        if lifecycle == Lifecycle.INIT:
-            rect_kwargs["stroke_dasharray"] = "4,3"
-
-        content.append(dw.Rectangle(
-            cx - LIFELINE_WIDTH / 2, MARGIN_TOP,
-            LIFELINE_WIDTH, header_h,
-            **rect_kwargs,
-        ))
-        # Header label — split on \n.
-        text_color = style.font_color or ("#CDD6F4" if dark else "#333333")
-        lines = label.split("\\n")
-        lh = LIFELINE_LINE_H
-        total_text_h = len(lines) * lh
-        start_y = MARGIN_TOP + header_h / 2 - total_text_h / 2 + lh * 0.5
-        for i, line in enumerate(lines):
-            content.append(dw.Text(
-                line, 12, cx, start_y + i * lh,
-                font_family=LABEL_FONT,
-                fill=text_color,
-                text_anchor="middle",
-                dominant_baseline="central",
-            ))
 
     # Steps — rendered top-down into their own group so the lifelines
     # can be drawn behind them once the actual final y is known. That
@@ -246,42 +225,13 @@ def render_sequence(
     content.append(bars_group)  # bars paint behind the arrow lines
     content.append(steps_group)
 
-    # Closing boxes at the bottom of each lifeline — same style as headers.
+    # Closing boxes at the bottom of each lifeline — same shape and
+    # style as the headers.
     for pid in participants:
-        cx   = col_cx[pid]
-        node = model.find_node(pid)
-        label = node.label if node else pid
-        lifecycle = node.lifecycle if node else Lifecycle.PERSISTENT
-        style = node_styles.get(
-            node.type if node else "default",
-            node_styles.get("default"),
+        _render_participant_box(
+            content, col_cx[pid], lifeline_bot_y, header_h,
+            model.find_node(pid), node_styles,
         )
-        rect_kwargs: dict = dict(
-            fill=style.fill if style.fill != "none" else ("#2A2A3E" if dark else "#F5F5F5"),
-            stroke=style.stroke,
-            stroke_width=1,
-            rx=4, ry=4,
-        )
-        if lifecycle == Lifecycle.INIT:
-            rect_kwargs["stroke_dasharray"] = "4,3"
-        content.append(dw.Rectangle(
-            cx - LIFELINE_WIDTH / 2, lifeline_bot_y,
-            LIFELINE_WIDTH, header_h,
-            **rect_kwargs,
-        ))
-        text_color = style.font_color or ("#CDD6F4" if dark else "#333333")
-        lines = label.split("\\n")
-        lh = LIFELINE_LINE_H
-        total_text_h = len(lines) * lh
-        start_y = lifeline_bot_y + header_h / 2 - total_text_h / 2 + lh * 0.5
-        for i, line in enumerate(lines):
-            content.append(dw.Text(
-                line, 12, cx, start_y + i * lh,
-                font_family=LABEL_FONT,
-                fill=text_color,
-                text_anchor="middle",
-                dominant_baseline="central",
-            ))
     drawing.append(content)
     return drawing.as_svg()
 
@@ -298,8 +248,39 @@ def render_sequence_both(
 
 
 # ---------------------------------------------------------------------------
-# Arrowhead
+# Participant boxes
 # ---------------------------------------------------------------------------
+
+def _render_participant_box(
+    g: dw.Group,
+    cx: float,
+    top: float,
+    h: float,
+    node: Node | None,
+    node_styles: dict[str, NodeStyle],
+) -> None:
+    """Render a participant header/footer box in the node's own visual
+    identity: the resolved type style's SHAPE (person glyph, cylinder
+    caps) and lifecycle dash, identical to the node's topology box.
+    Only the geometry is sequence-specific (lifeline column, header
+    band); colours, border, label font and dash come from the shared
+    style bank, so a node reads as the same entity in every view kind.
+    """
+    style = node_styles.get(
+        node.type if node else "default",
+        node_styles.get("default", NodeStyle()),
+    )
+    x = cx - LIFELINE_WIDTH / 2
+    label = node.label if node else ""
+    lifecycle = node.lifecycle.value if node else "persistent"
+    if style.shape == "person":
+        _render_person(g, x, top, LIFELINE_WIDTH, h, style, label)
+    elif style.shape == "cylinder":
+        _render_cylinder(g, x, top, LIFELINE_WIDTH, h, style, label)
+    else:
+        _render_box(g, x, top, LIFELINE_WIDTH, h, style, label, lifecycle)
+
+
 
 def _add_sequence_arrowhead(drawing: dw.Drawing, dark: bool) -> None:
     color = "#AAAAAA" if dark else "#555555"
@@ -435,9 +416,12 @@ def _render_arrow(
     g.append(dw.Line(x1, y, x2, y, **line_kwargs))
 
     if label:
-        mx = (x1 + x2) / 2
         CHAR_W = 5.5  # px at 11px font
-        max_chars = max(int(abs(x2 - x1) * 0.85 / CHAR_W), 10)
+        span = abs(x2 - x1)
+        # Wrap budget: the span minus fixed padding. The old 0.85 factor
+        # wrapped labels that fit by a character ("watcher fires (data
+        # changed)" on a 180px span).
+        max_chars = max(int((span - 2 * LABEL_PAD) / CHAR_W), 10)
         raw_lines = label.split("\\n")
         wrapped: list[str] = []
         for raw in raw_lines:
@@ -453,15 +437,24 @@ def _render_arrow(
                     wrapped.append(cur)
                     cur = w
             wrapped.append(cur)
+        # Anchor at the arrow's start (the sender's end) rather than the
+        # span midpoint, LABEL_PAD in; right-to-left arrows mirror, so
+        # a label always leads from its own sender and stacked
+        # call/return pairs on the same span read apart.
+        if x2 >= x1:
+            lx, anchor = x1 + LABEL_PAD, "start"
+        else:
+            lx, anchor = x1 - LABEL_PAD, "end"
+        # Block bottom-anchored LABEL_CLEAR above the stroke; line 0
+        # stays topmost (top-to-bottom reading order, 0.25.5).
         lh = 13
-        total_h = lh * len(wrapped)
-        start_y = (y - 14) - total_h / 2 + lh * 0.5
+        n = len(wrapped)
         for i, line in enumerate(wrapped):
             g.append(dw.Text(
-                line, 11, mx, start_y + i * lh,
+                line, 11, lx, y - LABEL_CLEAR - (n - 1 - i) * lh,
                 font_family=LABEL_FONT,
                 fill=ctx.text_color,
-                text_anchor="middle",
+                text_anchor=anchor,
                 dominant_baseline="central",
             ))
 
