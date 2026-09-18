@@ -21,6 +21,8 @@ Constraint strictness:
 """
 from __future__ import annotations
 
+import math
+
 from kiwisolver import Solver, Variable, UnsatisfiableConstraint  # type: ignore
 
 from ggarch.errors import ValidationError
@@ -46,6 +48,7 @@ from ggarch.model import (
     Node,
     SelectClause,
 )
+from ggarch.router import _route_edge
 
 
 # ---------------------------------------------------------------------------
@@ -152,11 +155,6 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     _add_auto_layout_pass(solver, selected, vars_by_id, diagram.select, direction_map, model)
     # Add user-declared constraints, with label-aware gap expansion.
     _add_user_constraints(solver, expanded_constraints, vars_by_id, diagram.name, model)
-    # Ensure sufficient separation for every labelled edge (covers auto-layout children).
-    if model is not None:
-        _add_label_gap_constraints(
-            solver, mat_nodes, mat_edges, vars_by_id, expanded_constraints)
-
     # Solve.
     try:
         solver.updateVariables()
@@ -165,6 +163,12 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
             f"diagram {diagram.name!r}: unsatisfiable layout constraints — {exc}",
             hint="check for contradictory position constraints",
         ) from exc
+
+    # Label contract (two-phase): measure the geometry each labelled
+    # edge would render at and reserve, at strong priority, the axis
+    # clearance its label needs for gap-mode placement. Weak stays pin
+    # this solution, so only measured shortfalls move.
+    _apply_label_contract(solver, diagram, selected, mat_edges, vars_by_id)
 
     # Read results back.
     return _build_layout(selected, vars_by_id, model, diagram.select)
@@ -597,6 +601,12 @@ _LABEL_LINE_H   = 9 * 1.5   # font_size * 1.5
 _LABEL_PADDING  = 0          # px each side of gap — keep in sync with renderer.py
 _LABEL_MIN_TAIL = 16         # px of visible arrow on each side of gap
 
+# Two-phase label contract (see _apply_label_contract):
+_RESERVE_SLACK  = 6         # px headroom over the renderer's need
+_VERT_BUDGET_MIN = 132       # px wrap-budget floor on mostly-vertical
+                             # segments — keep in sync with
+                             # renderer._V_WRAP_BUDGET_MIN
+
 
 def _label_min_gap_h(label: str) -> float:
     """Minimum gap for a horizontal arrow: label width + padding + tails."""
@@ -633,103 +643,198 @@ def _label_min_gap_v(label: str) -> float:
     return text_h + _LABEL_PADDING * 2 + _LABEL_MIN_TAIL * 2
 
 
+# ---------------------------------------------------------------------------
+# Label contract — two-phase gap-mode reservations
+# ---------------------------------------------------------------------------
+
 _GAP_DEFAULT = 20  # px — default gap when not specified
 
-def _add_label_gap_constraints(
-    solver: Solver,
-    nodes: list[Node],
-    edges: list,
-    vars_by_id: dict[str, _NodeVars],
-    constraints: list,
-) -> None:
-    """Emit STRONG-priority minimum-separation for every labelled edge.
 
-    Operates on top-level ancestors so container nodes get pushed.
-    Only emits horizontal constraints for horizontally-related pairs and
-    vertical constraints for vertically-related pairs, to avoid displacing
-    nodes that are related on the perpendicular axis.
+def _wrap_label(label: str, max_chars: int) -> list[str]:
+    """Greedy word wrap — mirrors renderer._render_edge exactly."""
+    wrapped: list[str] = []
+    for raw in label.split("\\n"):
+        words = raw.split()
+        if not words:
+            wrapped.append("")
+            continue
+        cur = words[0]
+        for w in words[1:]:
+            if len(cur) + 1 + len(w) <= max_chars:
+                cur += " " + w
+            else:
+                wrapped.append(cur)
+                cur = w
+        wrapped.append(cur)
+    return wrapped
+
+
+def _widest_word_w(label: str) -> float:
+    """Width in px of the widest word across the label's manual lines."""
+    words = [w for raw in label.split("\\n") for w in raw.split()]
+    return max((len(w) for w in words), default=0) * _LABEL_CHAR_W
+
+
+def _measure_label_reservations(
+    diagram: DiagramView,
+    selected: list[Node],
+    mat_edges: list,
+    vars_by_id: dict[str, _NodeVars],
+) -> list[tuple[str, str, str, float]]:
+    """Measured axis reservations needed for gap-mode label placement.
+
+    For every labelled visible edge: resolve the effective endpoints
+    (the deepest solver-tracked distinct ancestors — the pair the
+    solver can actually push apart), draw the route the renderer would
+    draw between them, and replicate the renderer's gap-mode test on
+    its longest segment. Edges that already render in gap mode
+    contribute nothing; each shortfall contributes one reservation on
+    the segment's dominant axis:
+
+      ("h", left_id, right_id, gap)   — left.x2 + gap <= right.x
+      ("v", above_id, below_id, gap)  — above.y2 + gap <= below.y
     """
-    # Build parent map.
     parent: dict[str, str] = {}
-    def _walk(node: "Node", pid: str | None) -> None:
+    def _walk(node: Node, pid: str | None) -> None:
         if pid is not None:
             parent[node.id] = pid
         for child in node.children:
             _walk(child, node.id)
-    for node in nodes:
+    for node in selected:
         _walk(node, None)
 
-    def _solver_ancestors(nid: str) -> list[str]:
-        """Return [nid, parent, grandparent, ...] stopping at nodes not in vars_by_id."""
-        chain = []
+    def _chain(nid: str) -> list[str]:
+        out = []
         while nid in vars_by_id:
-            chain.append(nid)
+            out.append(nid)
             nid = parent.get(nid, "")
-        return chain
+        return out
 
-    def _effective_id(src: str, tgt: str) -> tuple[str, str]:
-        """Return the lowest solver-tracked ancestor of each node that is
-        distinct from the other's ancestry — i.e. the nodes that the solver
-        will actually push apart when we add a gap constraint.
-        Walks up from the node rather than straight to the top, so two nodes
-        inside sibling containers resolve to those containers, not the shared
-        grandparent container.
-        """
-        src_chain = _solver_ancestors(src)
-        tgt_chain = _solver_ancestors(tgt)
-        tgt_set   = set(tgt_chain)
-        src_set   = set(src_chain)
-        # Deepest src ancestor not in tgt's ancestry
-        eff_src = next((n for n in src_chain if n not in tgt_set), src_chain[-1] if src_chain else src)
-        # Deepest tgt ancestor not in src's ancestry
-        eff_tgt = next((n for n in tgt_chain if n not in src_set), tgt_chain[-1] if tgt_chain else tgt)
-        return eff_src, eff_tgt
+    tails = _LABEL_MIN_TAIL * 2
+    pads = _LABEL_PADDING * 2
+    out: list[tuple[str, str, str, float]] = []
+    for edge in mat_edges:
+        if not edge.label or edge.source == edge.target:
+            continue
+        if (diagram.select.edge_types
+                and edge.type not in diagram.select.edge_types):
+            continue
+        src_chain, tgt_chain = _chain(edge.source), _chain(edge.target)
+        src_set, tgt_set = set(src_chain), set(tgt_chain)
+        es = next((n for n in src_chain if n not in tgt_set), None)
+        et = next((n for n in tgt_chain if n not in src_set), None)
+        if es is None or et is None or es == et:
+            continue
+        vs, vt = vars_by_id.get(es), vars_by_id.get(et)
+        if vs is None or vt is None:
+            continue
+        rs = Rect(vs.x.value(), vs.y.value(), vs.w.value(), vs.h.value())
+        rt = Rect(vt.x.value(), vt.y.value(), vt.w.value(), vt.h.value())
 
-    # Build axis relationship sets from expanded constraints.
-    right_of: set[tuple[str,str]] = set()  # (right_node, left_node)
-    above_of:  set[tuple[str,str]] = set()  # (above_node, below_node)
-    for c in constraints:
-        if not isinstance(c, Constraint):
+        # The route the renderer would draw, and its longest segment.
+        if edge.source_field or edge.target_field:
+            # Field-qualified edges route flat at the fields' mid-y;
+            # the segment spans the facing faces.
+            left, right = (rs, rt) if rs.cx <= rt.cx else (rt, rs)
+            seg_len = max(right.x - left.x2, 0.0)
+            seg_dx, seg_dy = seg_len, 0.0
+        else:
+            pts = _route_edge(rs, rt)
+            seg_lens = [math.hypot(b.x - a.x, b.y - a.y)
+                        for a, b in zip(pts, pts[1:])]
+            li = max(range(len(seg_lens)), key=lambda i: seg_lens[i])
+            a, b = pts[li], pts[li + 1]
+            seg_len = seg_lens[li]
+            seg_dx, seg_dy = abs(b.x - a.x), abs(b.y - a.y)
+        if seg_len <= 0:
             continue
-        if c.kind == "right-of":
-            right_of.add((c.subject, c.object))
-        elif c.kind == "left-of":
-            right_of.add((c.object, c.subject))
-        elif c.kind == "above":
-            above_of.add((c.subject, c.object))
-        elif c.kind == "below":
-            above_of.add((c.object, c.subject))
+        ux = seg_dx / seg_len
+        uy = seg_dy / seg_len
 
-    for edge in edges:
-        if not edge.label:
+        if ux >= uy:
+            # Mostly horizontal: the gap must clear the wrapped label's
+            # width projected on the segment. The renderer wraps to the
+            # gap budget (segment minus tails), so no wrapped line is
+            # wider than that budget — reserving the widest word plus
+            # tails and slack guarantees gap mode at the new clearance.
+            budget = ux * (seg_len - pads - tails)
+            lines = _wrap_label(edge.label, max(int(budget / _LABEL_CHAR_W), 1))
+            max_line_w = max(len(l) for l in lines) * _LABEL_CHAR_W
+            if seg_len >= max_line_w / ux + pads + tails:
+                continue
+            need = (max(_widest_word_w(edge.label), max_line_w)
+                    + pads + tails + _RESERVE_SLACK)
+            left_id, right_id = (es, et) if rs.cx <= rt.cx else (et, es)
+            out.append(("h", left_id, right_id, need))
+        else:
+            # Mostly vertical: the gap must clear the wrapped label's
+            # height. The wrap budget has a generous floor and only
+            # grows with the segment, so the measured line count is an
+            # upper bound at the reserved clearance.
+            budget = max(seg_len, _VERT_BUDGET_MIN)
+            lines = _wrap_label(edge.label, max(int(budget / _LABEL_CHAR_W), 1))
+            text_h = _LABEL_LINE_H * len(lines)
+            if seg_len >= text_h / uy + pads + tails:
+                continue
+            need = text_h / uy + pads + tails + _RESERVE_SLACK
+            above_id, below_id = (es, et) if rs.cy <= rt.cy else (et, es)
+            out.append(("v", above_id, below_id, need))
+    return out
+
+
+def _apply_label_contract(
+    solver: Solver,
+    diagram: DiagramView,
+    selected: list[Node],
+    mat_edges: list,
+    vars_by_id: dict[str, _NodeVars],
+) -> None:
+    """Two-phase label contract: gap-mode labels wherever layout allows.
+
+    Phase one (the declared constraints) has already been solved. This
+    phase measures the rendered geometry of every labelled edge and,
+    for each gap-mode shortfall, adds a strong-priority clearance
+    reservation on the route's dominant axis, then re-solves. Weak
+    stays pin the phase-one solution as the reference point, so only
+    measured shortfalls move anything — views without shortfalls are
+    untouched.
+
+    Required constraints always outrank the reservations: an authored
+    arrangement that cannot spare the clearance keeps offset-mode
+    labels (the declared fallback) rather than erroring. The bounded
+    iteration lets a reservation that squeezes a neighbour trigger
+    that neighbour's own reservation.
+    """
+    seen: set[int] = set()
+    for v in vars_by_id.values():
+        if id(v) in seen:
             continue
-        src_id, tgt_id = _effective_id(edge.source, edge.target)
-        if src_id == tgt_id:
-            continue
-        src = vars_by_id.get(src_id)
-        tgt = vars_by_id.get(tgt_id)
-        if src is None or tgt is None:
-            continue
-        pair = (src_id, tgt_id)
-        rpair = (tgt_id, src_id)
-        h_related = pair in right_of or rpair in right_of
-        v_related = pair in above_of or rpair in above_of
-        if not h_related and not v_related:
-            # No declared spatial relationship — emit horizontal STRONG only
-            # (covers auto-layout children with direction: right).
-            min_h = _label_min_gap_h(edge.label)
-            solver.addConstraint((tgt.x - src.x2 >= min_h) | "strong")
-            solver.addConstraint((src.x - tgt.x2 >= min_h) | "strong")
-        elif h_related:
-            # Horizontal relationship — emit horizontal STRONG in correct direction.
-            min_h = _label_min_gap_h(edge.label)
-            if pair in right_of:
-                solver.addConstraint((src.x - tgt.x2 >= min_h) | "strong")
+        seen.add(id(v))
+        solver.addConstraint((v.x == v.x.value()) | "weak")
+        solver.addConstraint((v.y == v.y.value()) | "weak")
+        solver.addConstraint((v.w == v.w.value()) | "weak")
+        solver.addConstraint((v.h == v.h.value()) | "weak")
+
+    reserved: dict[tuple[str, str, str], float] = {}
+    for _ in range(3):
+        shortfalls = _measure_label_reservations(
+            diagram, selected, mat_edges, vars_by_id)
+        added = False
+        for axis, a_id, b_id, gap in shortfalls:
+            key = (axis, a_id, b_id)
+            if gap <= reserved.get(key, 0.0):
+                continue
+            reserved[key] = gap
+            added = True
+            va, vb = vars_by_id[a_id], vars_by_id[b_id]
+            if axis == "h":
+                solver.addConstraint((va.x2 + gap <= vb.x) | "strong")
             else:
-                solver.addConstraint((tgt.x - src.x2 >= min_h) | "strong")
-        # v_related: vertical relationship handled by _label_min_gap_v in
-        # _add_user_constraints (above/below constraint label expansion).
-        # Don't emit horizontal STRONG — it would push nodes sideways.
+                solver.addConstraint((va.y2 + gap <= vb.y) | "strong")
+        if not added:
+            return
+        solver.updateVariables()
+
 
 def _add_user_constraints(
     solver: Solver,

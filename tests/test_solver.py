@@ -655,3 +655,89 @@ diagram "ha" from "M" {
         d1 = lay.find("c1/dqlite").rect
         d2 = lay.find("c2/dqlite").rect
         assert d2.x - (d1.x + d1.w) >= 80
+
+
+class TestLabelContract:
+    """Two-phase label contract (0.25.3): gap-mode labels wherever the
+    layout allows.
+
+    Phase two of solve() measures the route each labelled edge would
+    draw and reserves, at strong priority, the axis clearance its label
+    needs. Before this, labels on stamped-subtree internals (unit
+    agent -> charm inside an instanced pod) had no effective
+    reservation: the old fallback emitted both horizontal directions,
+    which cancel on any separated pair, and the child-expansion
+    pass matches raw model ids that instanced views never see -- so
+    those edges kept the 20px child gap and their labels floated
+    beside the arrow (the 0.25.2 geometry audit's offset-label and
+    gap-violation defect classes).
+    """
+
+    def test_vertical_children_get_label_clearance(self):
+        src = """\
+model "M" {
+  nodes {
+    pod [type: container, label: "Pod"] {
+      ua [type: juju-software, label: "Unit agent"]
+      ch [type: charm, label: "Charm"]
+    }
+  }
+  edges { ua -> ch [type: control, label: "runs"] }
+}
+diagram "D" from "M" {
+  select {
+    nodes: pod
+    instances: pod [ { id: p1, label: "Pod 1" } ]
+  }
+  positions { p1 direction: down }
+}
+"""
+        layout = solve_src(src)
+        ua, ch = layout.find("p1/ua"), layout.find("p1/ch")
+        # One line at 13.5px plus two 16px tails: the 20px child gap
+        # cannot host the label, so the contract must widen it.
+        assert ch.rect.y - ua.rect.y2 >= 13.5 + 32
+
+    def test_horizontal_children_get_label_clearance(self):
+        src = """\
+model "M" {
+  nodes {
+    pod [type: container, label: "Pod"] {
+      ua [type: juju-software, label: "Unit agent"]
+      ch [type: charm, label: "Charm"]
+    }
+  }
+  edges { ua -> ch [type: control, label: "calls Pebble API"] }
+}
+diagram "D" from "M" {
+  select {
+    nodes: pod
+    instances: pod [ { id: p1, label: "Pod 1" } ]
+  }
+}
+"""
+        layout = solve_src(src)
+        ua, ch = layout.find("p1/ua"), layout.find("p1/ch")
+        # Widest word ("Pebble", 33px) plus tails: the 20px default
+        # child gap cannot host even a fully-wrapped label.
+        assert ch.rect.x - ua.rect.x2 >= 33 + 32
+
+    def test_fitting_label_leaves_geometry_alone(self):
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+  }
+  edges { a -> b [type: api, label: "ok"] }
+}
+diagram "D" from "M" {
+  select { nodes: a b }
+  positions { a left-of b gap: 200 }
+}
+"""
+        layout = solve_src(src)
+        a, b = layout.find("a"), layout.find("b")
+        # "ok" fits with room to spare: no reservation, no movement --
+        # the phase-one solution is the final one.
+        assert b.rect.x - a.rect.x2 == pytest.approx(200)

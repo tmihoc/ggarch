@@ -1,4 +1,5 @@
 """Renderer tests — SVG output validation."""
+import re
 import pytest
 from ggarch import parse, validate
 from ggarch.solver import solve
@@ -381,3 +382,54 @@ class TestCustomEdgeTypes:
         m = f.get_model("M")
         rl = route(solve(d, m), m, d.select)
         assert {e.edge_type for e in rl.edges} == {"cloud-call"}
+
+
+GAP_BUDGET_SRC = """\
+model "M" {
+  nodes {
+    pod [type: container, label: "Pod"] {
+      a [type: charm, label: "Charm"]
+      b [type: pebble, label: "Pebble"]
+    }
+  }
+  edges {
+    a -> b [type: ipc, label: "calls Pebble API"]
+  }
+}
+diagram "D" from "M" {
+  select {
+    nodes: pod
+    instances: pod [ { id: p1, label: "Pod 1" } ]
+  }
+}
+"""
+
+
+class TestLabelGapBudget:
+    """Labels wrap to the width a gap can clear, not the full segment
+    (0.25.3).
+
+    Before, the wrap budget was the whole segment, so a label on a
+    short arrow could never interrupt it: gap mode needs the wrapped
+    label plus two 16px tails, and a label wrapped to segment width is
+    already too wide by exactly that. The budget is now the gap budget
+    (segment minus tails), so gap mode succeeds whenever the longest
+    word fits -- here on a stamped-subtree internal edge, the class the
+    solver's two-phase label contract widens to match.
+    """
+
+    def test_label_wraps_to_gap_budget_and_interrupts_arrow(self):
+        svg = pipeline(GAP_BUDGET_SRC)
+        # The stamped children start at the 20px container-child gap;
+        # the contract widens it just enough for the wrapped label,
+        # which at the gap budget is three lines, widest "Pebble".
+        # Gap mode: the arrow renders in two segments with the label
+        # interrupting it, not floating beside an unbroken arrow.
+        for line in (">calls<", ">Pebble<", ">API<"):
+            assert line in svg, f"wrapped line {line!r} missing"
+        edge_paths = [p for p in re.findall(r"<path[^>]*>", svg)
+                      if 'fill="none"' in p]
+        assert len(edge_paths) == 2, (
+            f"expected gap-mode (two segments), got {len(edge_paths)}: "
+            "label floats beside an unbroken arrow"
+        )

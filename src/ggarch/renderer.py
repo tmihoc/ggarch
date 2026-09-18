@@ -58,6 +58,11 @@ ARROWHEAD_SIZE  = 8     # px
 LABEL_FONT      = "'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif"
 ANNOTATION_FONT = "'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif"
 
+# Floor for the label wrap budget on mostly-vertical segments (px).
+# The gap clears the label's HEIGHT, not its width, so vertical arrows
+# wrap generously. Keep in sync with solver._VERT_BUDGET_MIN.
+_V_WRAP_BUDGET_MIN = 132  # px = 24 chars * 5.5
+
 
 
 # ---------------------------------------------------------------------------
@@ -937,8 +942,21 @@ def _render_edge(
     px =  seg_dy / seg_len if seg_len > 0 else 0.0
     py = -seg_dx / seg_len if seg_len > 0 else -1.0
 
-    # Wrap label using the longest segment as the budget (not total path).
-    max_chars = max(int(seg_lens[longest_i] / char_w), 1)
+    # Wrap budget (chars). Keep in sync with the solver's label-contract
+    # measurement (_measure_label_reservations in solver.py), which
+    # predicts this to reserve clearance.
+    # - Mostly horizontal: wrap to the width a gap can actually clear
+    #   (segment minus tails), so gap mode is reachable whenever the
+    #   longest word fits. The old full-segment budget could never fit
+    #   its own gap: a label wrapped to segment width needs the segment
+    #   PLUS two tails.
+    # - Mostly vertical: the gap clears the label's height, not its
+    #   width -- wrap generously; width is free across the arrow.
+    if ux >= uy:
+        budget_px = ux * (seg_len - PADDING * 2 - MIN_TAIL * 2)
+    else:
+        budget_px = max(seg_len, _V_WRAP_BUDGET_MIN)
+    max_chars = max(int(budget_px / char_w), 1)
     raw_lines = edge.label.split("\\n")
     wrapped: list[str] = []
     for raw in raw_lines:
