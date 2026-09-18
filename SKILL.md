@@ -315,12 +315,15 @@ a min-width: 160
   intended top-left node of the layout.
 - Leaf nodes hold their **natural (label-derived) size**; only
   `min-width` / `same-width` floors can raise it.
-- Label-gap resolution is **pair-local**: declare a direct `left-of` /
-  `above` between the endpoints of every labelled edge — especially an
-  edge that skips a rung in a chain (e.g. `domain_services ->
-  db_accessor` in a spine agent → DB → change stream → domain services).
-  Without the direct constraint, the solver separates the pair in both
-  horizontal directions, which displaces the layout sideways.
+- **Label contract (0.25.3)**: every labelled edge whose gap can't host
+  its label is measured after the declared constraints solve, and the
+  solver reserves the clearance it needs (strong priority — required
+  constraints still win). You no longer need to declare a direct
+  `left-of` / `above` between labelled endpoints to keep labels
+  interrupting their arrows; declaring one is still how you control
+  *where* the clearance is taken. Labels wrap to the width the gap can
+  clear, so short arrows get multi-line labels rather than floating
+  ones.
 
 
 ### 6. Write sequence views

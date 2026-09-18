@@ -891,13 +891,37 @@ evidence:
   twice its centre offset. Three committed juju2 views had silently
   ballooned boxes (e.g. "Worker tree (machine cloud)"'s controller node
   at 197.6px for a 104px label) before this was found.
+- **Label contract (0.25.3).** Gap-mode label placement is enforced by
+  the solver, not left to authoring. solve() runs in two phases: the
+  declared constraints solve first; then every labelled visible edge
+  is measured (its renderer route, its longest segment, its wrap at
+  the gap budget) and each gap-mode shortfall reserves, at STRONG
+  priority, the axis clearance its label needs, re-solved against
+  WEAK stays pinning the phase-one solution — only measured
+  shortfalls move anything. Required constraints outrank the
+  reservations, so an authored arrangement that cannot spare the
+  clearance keeps offset-mode labels rather than erroring. The
+  renderer's wrap budget is the gap budget (segment minus tails) for
+  mostly-horizontal segments, so gap mode succeeds whenever the
+  widest word fits; mostly-vertical segments wrap generously (the
+  gap clears the label's height, not its width). The 0.24.1
+  pair-local authoring rule below is superseded as a REQUIREMENT —
+  it remains good practice for deliberate spacing.
+
+  **Superseded in policy by ADR-002** (adr/002-edge-labels-follow-the-
+  arrow.md, accepted 2026-09-18, implementation pending 0.25.4): labels
+  render along the path, above the line, never splitting the stroke —
+  gap mode is abolished. The two-phase machinery survives; its policy
+  becomes strike avoidance (reserve when a wrapped along-path label
+  would strike a node, wall, or other label).
 - Label-gap resolution is pair-local, not transitive: a labelled edge
-  whose endpoints have no *directly declared* spatial constraint (even if
-  they are linked through a chain) gets both-direction horizontal STRONG
-  separation, which can displace the layout sideways. Authoring rule:
-  declare a direct `left-of`/`above` between the endpoints of every
-  labelled edge that skips a rung (e.g. domain-services -> db-accessor
-  in a spine chain).
+  whose endpoints have no *directly declared* spatial constraint (even
+  if linked through a chain) gets its clearance from the measured
+  label contract above, not from the declared-chain expansion.
+  Before 0.25.3 the fallback here emitted both-direction horizontal
+  STRONG separation — an error-minimising no-op on any separated
+  pair — which is why stamped-subtree internals kept 20px child gaps
+  with floating labels in both the authored and auto-layout twins.
 
 ---
 
@@ -1601,6 +1625,8 @@ declared in the style block like any other type; family membership is
 by convention, not grammar.
 
 Routing strategy: straight lines by default. Orthogonal routing as an opt-in.
+Label placement: see ADR-002 (along-path, above the line, stroke never
+split — supersedes the gap/offset duality once implemented).
 
 Measured routing limits (juju4 auto-layout spike, 0.25.1): straight-line
 routing cannot draw a full mesh between collinear nodes -- the HA Raft
@@ -1612,8 +1638,54 @@ two 16px tails; adjacent-pair arrows are too short). These are ROUTER
 defects, not layout defects: auto-layout changed the arrangement and
 neither improved. Work items: curved/mesh-aware routing (arcs at
 distinct offsets), and label placement aware of parallel edges.
-per diagram or per edge, pending a production-ready Python binding for
-adaptagrams libavoid.
+Orthogonal routing stays an opt-in per diagram or per edge, pending a
+production-ready Python binding for adaptagrams libavoid.
+
+Geometry audit (0.25.2, both twins measured): the defect classes are
+SYSTEMIC, not auto-layout-specific. Audit of every diagram view's
+solved+routed geometry (segment-vs-rect interior crossing test,
+diagonal classification, replicated renderer gap/offset test):
+juju4 (no positions) 31 crossing-edges / 26 diagonals / 11 offset
+labels; juju3 (authored) 15 / 15 / 9. Authored positions halve the
+defect rates by hand-compensating for the same root causes:
+
+1. The router is obstacle-blind: every route is derived from the two
+   endpoint rects alone. Straight lines cross intermediate nodes (fan
+   edges cross stacked column-mates; mesh arrows traverse the target
+   container's siblings) and L-route legs plow through unrelated nodes
+   (the controller worker tree's leader-lease edge crosses api_server
+   and http_server in its own column). Container exit paths even cross
+   the endpoint's own container-mates.
+2. Horizontal-dominant edges render face-centre to face-centre -- flat
+   only when the centres coincide, otherwise diagonal. The mid-y
+   flattening that field-qualified edges already get (router route())
+   is not applied to plain edges; the synthesized floor declares no
+   cross-column alignment, so centre offsets are the norm.
+3. Label-space reservation is decoupled from the rendered geometry.
+   The reservation axis is inferred from declared constraint kinds;
+   undeclared pairs (stamped subtree internals) get a both-directions
+   horizontal fallback at soft priority that cancels out on vertical
+   stacks -- "runs"/"supervises" stay at 20px in BOTH twins. The
+   reserved quantity is axis-aligned between effective endpoints; the
+   renderer needs it along the actual segment (divided by the segment's
+   horizontal component), with wrapping at segment width. And the
+   reservation leaves zero slack: an edge reserved exactly 142px needs
+   142px, so sub-pixel solver wiggle flips its label mode.
+4. The synthesized floor is 1-D: columns with all-pairs left-of between
+   neighbours and vertical stacks within columns -- no row structure
+   across columns, no corridor budget for labels or spanning edges, no
+   container-internal axis awareness (the HA containers lay children
+   side-by-side while the containers themselves are in a row, forcing
+   every mesh arrow through its target's agent sibling).
+
+   **Step 1 verdict (0.25.3, label contract):** root cause 3 is FIXED.
+   Measured post-change (same audit): offset labels juju4 11 -> 0,
+   juju3 9 -> 0; every labelled edge in all five model files now
+   renders in gap mode. Crossings unchanged (31/15 — router work,
+   step 3); diagonals effectively unchanged (27/15 — alignment and
+   router work, steps 2-3). 36 of 43 views changed geometry, all by
+   reservation-driven expansion; views without shortfalls were
+   byte-identical.
 
 ---
 
