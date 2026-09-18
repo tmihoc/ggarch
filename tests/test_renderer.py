@@ -562,3 +562,15 @@ class TestAlongPathLabels:
         svg = pipeline(DASHED_LABELED_SRC)
         edges = svg.split('id="ggarch-edges"')[1]
         assert edges.count("stroke-dasharray") == 1
+
+
+class TestRoundedJoins:
+    def test_routed_paths_use_round_linejoin(self):
+        # ADR-003 decision 9: v1 ships polylines with
+        # stroke-linejoin="round" — one attribute, zero geometry,
+        # sub-pixel corners. Rounding never participates in the search.
+        svg = pipeline(PAIR_SRC)
+        edge_paths = re.findall(r'<path[^>]*marker-end="url\(#arrow\)"[^>]*>', svg)
+        assert edge_paths
+        for p in edge_paths:
+            assert 'stroke-linejoin="round"' in p, p

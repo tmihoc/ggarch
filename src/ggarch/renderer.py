@@ -922,10 +922,13 @@ def _render_edge(
 ) -> None:
     pts = [(p.x + ox, p.y + oy) for p in edge.points]
     es = edge_styles.get(edge.edge_type, edge_styles.get("default", EdgeStyle()))
+    # ADR-003 decision 9: rounded joins — one attribute, zero
+    # geometry, sub-pixel corners; never participates in the search.
     path_kwargs: dict = dict(
         fill="none",
         stroke=es.stroke,
         stroke_width=es.stroke_width,
+        stroke_linejoin="round",
     )
     if edge.style == "dashed" or es.stroke_dash:
         path_kwargs["stroke_dasharray"] = es.stroke_dash or "6,3"
