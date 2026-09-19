@@ -160,14 +160,14 @@ model "M" {
   nodes {
     r1 [type: record, label: "R1"] {
       fields {
-        f1 [label: "f1"]
+        f1 [label: "f1", fk: true]
         f2 [label: "f2"]
       }
     }
     r2 [type: record, label: "R2"] {
       fields {
         g1 [label: "g1"]
-        g2 [label: "g2"]
+        g2 [label: "g2", pk: true]
       }
     }
   }

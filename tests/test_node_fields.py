@@ -125,6 +125,88 @@ class TestFieldValidation:
             validate(f)
 
 
+class TestFkCompleteness:
+    """Record-node data edges must mirror where the pointers live: every
+    fk: column originates exactly one data edge; no data edge starts at
+    a non-fk field. (Class nodes are out of scope: `fk:` there renders
+    as the UML '#' marker, not a foreign key.)"""
+
+    def test_fk_field_without_data_edge_rejected(self):
+        """A drawn FK column with no arrow: the pointer is hidden."""
+        src = RECORD_SRC.replace(
+            'post.user_id -> user.id [type: data, label: "author"]', "")
+        f = parse(src)
+        with pytest.raises(ValidationError, match="exactly 1 expected"):
+            validate(f)
+
+    def test_fk_field_with_two_data_edges_rejected(self):
+        """One column, two arrows: asserts a column with two FK targets."""
+        src = RECORD_SRC.replace(
+            "post.user_id -> user.id [type: data, label: \"author\"]",
+            "post.user_id -> user.id [type: data, label: \"author\"]\n"
+            "    post.user_id -> user.name [type: data, label: \"names\"]")
+        f = parse(src)
+        with pytest.raises(ValidationError, match="exactly 1 expected"):
+            validate(f)
+
+    def test_data_edge_from_non_fk_field_rejected(self):
+        """A data edge anchored at a plain field asserts a phantom pointer."""
+        src = RECORD_SRC.replace(
+            "post.user_id -> user.id", "post.body -> user.id")
+        f = parse(src)
+        with pytest.raises(ValidationError, match="not marked fk"):
+            validate(f)
+
+    def test_data_edge_from_non_fk_field_hinted(self):
+        """The error tells the author the two honest outs."""
+        src = RECORD_SRC.replace(
+            "post.user_id -> user.id", "post.body -> user.id")
+        f = parse(src)
+        with pytest.raises(ValidationError, match="mark the column fk"):
+            validate(f)
+
+    def test_non_data_edge_from_fk_field_rejected(self):
+        """An edge from an FK column is a pointer: type data, no substitutes."""
+        src = RECORD_SRC.replace(
+            'post.user_id -> user.id [type: data, label: "author"]',
+            'post.user_id -> user.id [type: api, label: "calls"]')
+        f = parse(src)
+        with pytest.raises(ValidationError, match="type: data"):
+            validate(f)
+
+    def test_unqualified_data_edges_unaffected(self):
+        """Unqualified data edges (no field anchors) carry no pointer
+        claim — the FK contract applies to field-qualified edges only."""
+        src = RECORD_SRC.replace(
+            'post.user_id -> user.id [type: data, label: "author"]',
+            'post -> user [type: data, label: "written on"]')
+        f = parse(src)
+        with pytest.raises(ValidationError, match="exactly 1 expected"):
+            # The unqualified edge is fine; the drawn FK column with no
+            # arrow is what fails.
+            validate(f)
+
+    def test_class_fk_field_out_of_scope(self):
+        """`fk: true` on a class field renders as UML '#'; no pointer
+        contract applies."""
+        f = parse(CLASS_SRC)
+        validate(f)  # must not raise
+
+    def test_nullable_fk_column_still_needs_its_edge(self):
+        """null: true widens the cardinality (0..1) but the pointer
+        still lives in the column: exactly one edge, nullable or not."""
+        src = RECORD_SRC.replace(
+            'user_id [label: "user_id", type: "uuid", fk: true]',
+            'user_id [label: "user_id", type: "uuid", fk: true, null: true]')
+        f = parse(src)
+        validate(f)  # edge present: must not raise
+        broken = src.replace(
+            'post.user_id -> user.id [type: data, label: "author"]', "")
+        f2 = parse(broken)
+        with pytest.raises(ValidationError, match="exactly 1 expected"):
+            validate(f2)
+
+
 class TestFieldLayout:
     def test_field_node_min_size(self):
         w, h = field_node_min_size("user", 3)

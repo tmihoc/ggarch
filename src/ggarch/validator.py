@@ -65,6 +65,100 @@ def _collect_field_ids(node, out: dict[str, set[str]]) -> None:
     for child in node.children:
         _collect_field_ids(child, out)
 
+def _fk_complete_nodes(model: Model) -> list:
+    """Nodes whose fields carry real FK semantics: record-type nodes with
+    declared fields. On class nodes `fk:` renders as the UML '#'
+    (protected) marker — not a foreign key — so class fields stay out of
+    scope."""
+    out = []
+    for node in model.nodes:
+        _fk_complete_walk(node, out)
+    return out
+
+
+def _fk_complete_walk(node, out: list) -> None:
+    if node.type == "record" and node.fields:
+        out.append(node)
+    for child in node.children:
+        _fk_complete_walk(child, out)
+
+
+def _validate_fk_edges(model: Model) -> None:
+    """FK-completeness (record nodes): the FK field is the storage-level
+    truth of a data association — where the pointer lives — so the
+    declared data edges must mirror it exactly:
+
+    1. a field-qualified edge endpoint on an fk: field must have type
+       data (a non-data edge is not a pointer);
+    2. every fk: field originates exactly one data edge (the pointer is
+       drawn; a half-drawn junction hides truth);
+    3. every data edge originating at a record's field starts from an
+       fk: field (no phantom pointers).
+    """
+    nodes = _fk_complete_nodes(model)
+    if not nodes:
+        return
+
+    fk_fields: dict[str, set[str]] = {}
+    field_owner: dict[str, str] = {}
+    for node in nodes:
+        fk_fields[node.id] = {f.id for f in node.fields if f.fk}
+        for f in node.fields:
+            field_owner[(node.id, f.id)] = node.id
+
+    def _edge_src(e) -> tuple[str, str] | None:
+        """The (node, field) a data edge would start at, or None. The
+        parser stores field-qualified endpoints split (source +
+        source_field); a dotted node id is tolerated for robustness."""
+        if e.source_field:
+            return e.source, e.source_field
+        node_id, _, field = e.source.partition(".")
+        return (node_id, field) if field else None
+
+    edges = model.edges
+    for e in edges:
+        src = _edge_src(e)
+        if src and src in field_owner and e.type != "data":
+            raise ValidationError(
+                f"model {model.name!r}: edge {e.source}->{e.target} "
+                f"starts at field {e.source!r} but has type {e.type!r}; "
+                f"an edge from a foreign key column is a pointer "
+                f"(type: data)",
+            )
+
+    origin_count: dict[tuple[str, str], int] = {}
+    for e in edges:
+        src = _edge_src(e)
+        if not src or src not in field_owner:
+            continue
+        node_id, field = src
+        origin_count[(node_id, field)] = origin_count.get((node_id, field), 0) + 1
+        if field not in fk_fields.get(node_id, set()):
+            raise ValidationError(
+                f"model {model.name!r}: data edge {e.source}->{e.target} "
+                f"starts at field {e.source!r} which is not marked fk: "
+                f"— a data edge from a record field must start at the "
+                f"foreign key column that stores the pointer",
+                hint="mark the column fk: true, or re-anchor the edge at "
+                     "the node (unqualified) if no column stores it",
+            )
+
+    for node in nodes:
+        for f in node.fields:
+            if f.id not in fk_fields[node.id]:
+                continue
+            n = origin_count.get((node.id, f.id), 0)
+            if n != 1:
+                raise ValidationError(
+                    f"model {model.name!r}: fk field "
+                    f"{node.id}.{f.id!r} originates {n} data edges; "
+                    f"exactly 1 expected — the FK column is the storage "
+                    f"truth of the association and must be drawn exactly "
+                    f"once (a missing edge hides the pointer; a second "
+                    f"one asserts a column with two FK targets)",
+                )
+
+
 def _validate_records(node, model: Model) -> None:
     """A records: target must be a declared record-type node."""
     if node.records:
@@ -156,6 +250,12 @@ def _validate_model(model: Model) -> None:
                         f"references undeclared field",
                         hint=f"declared fields on {ep_node!r}: {sorted(node_fields)}",
                     )
+
+    # FK completeness on record nodes: declared data edges must mirror
+    # where the pointers live (every fk: column drawn exactly once; no
+    # data edges from non-fk fields). Runs after endpoint validation so
+    # undeclared fields get the precise error first.
+    _validate_fk_edges(model)
 
     # Build resolved edge pairs: also expand abstract ids to their concrete ids.
     edge_pairs: set[tuple[str, str]] = set()

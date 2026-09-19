@@ -169,7 +169,7 @@ class TestErDiagramExample:
         f = _load(self.F)
         m = f.models[0]
         qualified = [e for e in m.edges if e.source_field or e.target_field]
-        assert len(qualified) == 4
+        assert len(qualified) == 5
 
     def test_pk_fk_nullable_in_svg(self):
         svgs = _render_all(_load(self.F))

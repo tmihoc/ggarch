@@ -10,7 +10,10 @@
 //   A trailing ? marks nullable columns. Field types are shown right-
 //   aligned in italic. Arrows connect the FK column in the child table to
 //   the PK column in the parent; they anchor at the exact field row so the
-//   relationship is unambiguous even in dense diagrams.
+//   relationship is unambiguous even in dense diagrams. Every FK column
+//   is drawn exactly once — the arrow is where the pointer lives — and
+//   labels are aligned to the arrow: child-first ("belongs to"), the
+//   direction the storage layer states.
 
 model "JujuSchema" {
 
@@ -27,10 +30,12 @@ model "JujuSchema" {
 
     unit [type: record, label: "unit"] {
       fields {
-        uuid     [label: "uuid",     type: "uuid", pk: true]
-        app_uuid [label: "app_uuid", type: "uuid", fk: true]
-        name     [label: "name",     type: "text"]
-        life     [label: "life",     type: "text"]
+        uuid         [label: "uuid",         type: "uuid", pk: true]
+        app_uuid     [label: "app_uuid",     type: "uuid", fk: true]
+        machine_uuid [label: "machine_uuid", type: "uuid", fk: true,
+                      null: true]
+        name         [label: "name",         type: "text"]
+        life         [label: "life",         type: "text"]
       }
     }
 
@@ -62,10 +67,11 @@ model "JujuSchema" {
   }
 
   edges {
-    unit.app_uuid          -> application.uuid  [type: data, label: "has units"]
-    application.charm_uuid -> charm.uuid        [type: data, label: "uses"]
-    unit.app_uuid          -> machine.uuid      [type: data, label: "runs on"]
-    relation.app_a         -> application.uuid  [type: data, label: "connects"]
+    unit.app_uuid          -> application.uuid  [type: data, label: "belongs to"]
+    unit.machine_uuid      -> machine.uuid      [type: data, label: "provisions"]
+    application.charm_uuid -> charm.uuid        [type: data, label: "deploys"]
+    relation.app_a         -> application.uuid  [type: data, label: "joins"]
+    relation.app_b         -> application.uuid  [type: data, label: "joins"]
   }
 
   style { extends: juju }

@@ -629,10 +629,16 @@ def _field_anchor(
         return Point(node.rect.x2, field_y)
     elif face == "left":
         return Point(node.rect.x, field_y)
-    elif face == "top":
-        return Point(node.rect.cx, node.rect.y)
-    else:  # bottom
-        return Point(node.rect.cx, node.rect.y2)
+    else:
+        # Horizontal faces: field rows are full-width, so there is no
+        # per-field x — spread anchors across the face by field index.
+        # Invariant: same field -> same anchor (two FKs referencing one
+        # column converge on it, an honest fan); distinct fields ->
+        # distinct anchors (two FK columns are two origins, never one
+        # overdrawn stroke). n=1 lands on the face centre.
+        n = max(len(node.fields), 1)
+        x = node.rect.x + node.rect.w * (field_index + 1) / (n + 1)
+        return Point(x, node.rect.y if face == "top" else node.rect.y2)
 
 
 def _pinned_field_anchors(edge, src_node, tgt_node):
