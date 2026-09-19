@@ -81,18 +81,37 @@ def layout_view(diagram, model, select):
     nodes, edges = materialize_instances(select, model)
     sel_ids = set(select.node_ids) if select.node_ids else {n.id for n in nodes}
     # Instanced types: the select names the type id; the materialized
-    # tree contains the stamped instance roots.
-    for spec in select.instances:
-        if spec.type_id in sel_ids:
-            sel_ids.discard(spec.type_id)
-            sel_ids.add(spec.instance_id)
+    # tree contains the stamped instance roots. ALL specs of a selected
+    # type expand — discarding per-spec ate instances 2..n (the
+    # "only application 1 / only cloud_a" corruption).
+    type_ids = {s.type_id for s in select.instances}
+    expanded = {s.instance_id for s in select.instances
+                if s.type_id in sel_ids}
+    sel_ids = (sel_ids - type_ids) | expanded
     types = set(select.edge_types) if select.edge_types else None
-    view_nodes = {n.id: n for n in nodes if n.id in sel_ids}
-    # v1 scope: flat views only. A selected container renders its whole
-    # subtree nested, which the flat ELK graph cannot express — those
-    # views fall back to the built-in synthesizer. Containers that the
-    # view does not select (declared for other views) are irrelevant.
+    # Deep selection: selected nodes may sit anywhere in the tree (the
+    # floor's _find_in_tree is recursive too — unit_agent and charm are
+    # model children of unit_pod yet selected flat when unit_pod is
+    # not).
+    view_nodes: dict = {}
+    parent_of: dict[str, str] = {}
+
+    def _walk(n, parent_id: str) -> None:
+        if n.id in sel_ids:
+            view_nodes[n.id] = n
+            if parent_id:
+                parent_of[n.id] = parent_id
+        for c in n.children:
+            _walk(c, n.id)
+    for n in nodes:
+        _walk(n, "")
+    # v1 scope: flat views only — no selected container (its subtree
+    # renders nested), no selected child under a selected parent
+    # (nested rendering). Those views fall back to the built-in
+    # synthesizer.
     if any(n.children for n in view_nodes.values()):
+        return None
+    if any(p in view_nodes for p in parent_of.values()):
         return None
     view_edges = [e for e in edges
                   if e.source in view_nodes and e.target in view_nodes
