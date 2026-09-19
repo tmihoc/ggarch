@@ -1,34 +1,36 @@
-"""ggarch edge router — obstacle-aware shortest paths over strips (ADR-003).
+"""ggarch edge router — the route vocabulary (ADR-003 as amended 0.26.1).
 
-Routes are found by search, not derived from endpoint geometry: A* over
-a Hanan grid (endpoint and obstacle rect coordinates, duplicates
-collapsed with a tolerance) with 8-neighbour moves, cost = length plus
-a fixed turn penalty K. The search chooses exit and entry faces —
-anchor candidates come from the grid (face centres, grid-line crossings
-on the faces, and centre ± k*SEED_STEP offsets), so closest-opposing-
-face pre-selection and the face-spreading post-pass retire into grid
-seeding and emergent offsets. Declared/field-qualified anchors stay
-pinned — author speech outranks heuristics.
+Routes come from a fixed vocabulary: **straight -> L (one bend) -> U
+(two bends, deliberate)**. No route exceeds two bends — random
+multi-bend polylines are out (user position, 2026-09-18). A route is
+"the shortest arrow that will connect A to B without crossing nodes or
+grazing": candidates are enumerated deterministically (face x ladder
+anchors, cost = length + a fixed per-bend penalty), and the cheapest
+clear route wins. Curved lines are rejected as a general vocabulary:
+clearance on curves is not exactly measurable, and the corpus defects
+never needed them (state-transition bows are a view-kind style, not
+routing).
 
-The collision currency is the strip: path + stroke width + arrowhead +
-the one-sided ADR-002 label extent (ggarch.geometry). Obstacles: node
-rects (inflated by the corridor), the endpoint's own rects (interior
-only), and earlier edges' strips — pairs and meshes route at distinct
-offsets emergent from strip collisions, greedily after independent
-edges. Annotation boxes/regions are meta elements — never obstacles
-(they are not in the layout's node tree).
+Hard obstacles: node rects inflated by the corridor (no crossing, no
+graze), ancestor-or-self of either endpoint exempt — containers their
+edges live in are passable. **Earlier edges' strips are NOT obstacles**
+(the 0.26.0 measured root cause: hard strips in an open canvas let any
+collision-free path win however absurd). Separation is deliberate:
+anchor ladders with a reuse penalty spread shared faces and
+anti-parallel pairs — offsets, not bends — and any residual overlap is
+audited, never routed around. Annotation boxes/regions are meta
+elements — never obstacles (they are not in the layout's node tree).
 
-No box explosion: the arrangement is fixed input. When no collision-free
-path exists the router returns the cheapest-collision path (obstacles
-carry a soft penalty) and reports it — audited, never silent, never
-hidden.
+Field-qualified anchors stay pinned — author speech outranks
+heuristics. No box explosion: the arrangement is fixed input. When no
+clear route exists the router returns the fewest-crossing candidate
+and reports it — audited, never silent, never hidden.
 """
 from __future__ import annotations
 
-import heapq
 import math
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as _dc_replace
 from typing import Sequence
 
 from ggarch.layout import Rect, SolvedLayout, SolvedNode
@@ -53,22 +55,47 @@ from ggarch.geometry import (
 )
 
 # ---------------------------------------------------------------------------
-# Tunables (measured via the audit: turns-per-edge and residual reports)
+# Tunables (measured via the audit: turns-per-edge, ratio, residuals)
 # ---------------------------------------------------------------------------
 
 ROUTE_STROKE_W = 2.0   # px — planning assumption for the corridor width
-TURN_PENALTY   = 40.0  # px per bend — fixed, not scaled by edge length;
-                       # high enough that a path bends only to clear an
-                       # obstacle (ADR-003 Resolved 1)
-GRID_TOL       = 0.5  # px — duplicate grid coordinates collapsed within
-SEED_STEP      = 6.0   # px between emergent face offsets (one corridor
-                       # pair separation, so sibling edges find offsets)
-SEED_INSET     = 4.0   # px — face seeds stay clear of face corners
-BLOCK_PENALTY  = 2000.0 # px — soft cost per obstacle entered when no
-                       # clear path exists (cheapest-collision fallback)
-MAX_POPS       = 20000  # A* expansion cap before the direct fallback
-RELEVANT_MARGIN = 150.0  # px — obstacle-corridor relevance for the grid
-LABEL_RETRIES  = 2     # label-strike nudges before residuals are reported
+TURN_PENALTY   = 40.0  # px per bend — the exchange rate: a bend must
+                       # save more length than it costs (ADR-003
+                       # Resolved 1, kept by the 0.26.1 amendment)
+SEED_STEP      = 6.0   # px between ladder offsets (one corridor pair
+                       # separation, so shared faces find offsets)
+SEED_INSET     = 6.0   # px — anchors stay clear of face corners (the
+                       # near-corner 45° entry fix)
+LADDER_K       = 3     # ladder half-depth: centre ± k*step — deep enough
+                       # that an L dodges an obstacle beside the face
+U_MARGINS      = (14.0, 30.0, 60.0)  # U run distance beyond both rects
+ANCHOR_REUSE_COST = 8.0  # px — prefer unused face anchors (deliberate
+                         # offsets for shared faces / anti-parallel pairs).
+                         # Must exceed the SEED_STEP ladder (6px) so a
+                         # used slot never beats a fresh offset.
+RELEVANT_MARGIN = 150.0  # px — obstacle-corridor relevance pruning
+LABEL_NODE_COST = 80.0   # px — the price of a route whose label strikes
+                         # a node: two bends' worth, so a cheap detour or
+                         # a neighbouring ladder slot beats the strike,
+                         # but a forced strike beats a monster detour
+LABEL_OTHER_COST = 24.0  # px — label overlapping an earlier strip's
+                         # corridor or label: must exceed the ladder step
+                         # (6px) twice over, so a farther anchor slot is
+                         # cheaper than clashing labels (lesser, audited
+                         # defect)
+HINT_MISS_COST = 18.0    # px — ignoring a fan-slot / pair-bias anchor
+                         # hint: hints encode predictable, distributed
+                         # anchor points and parallel pair strokes; a
+                         # clear hinted route beats an unhinted one
+                         # unless the hinted geometry is blocked
+PAIR_BIAS     = 6.0      # px — the first edge of an anti-parallel pair
+                         # biases this far off the face centre; its
+                         # reverse mirrors to −bias: two parallel
+                         # strokes 12px apart, symmetric about the axis
+CENTRE_MISS_COST = 18.0  # px — a deliberate form (L/U) anchoring off
+                         # the face centre: arrows start/end in the
+                         # middle of an edge; offsets are for fans and
+                         # for dodging blocked centres only
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +132,12 @@ class RoutedEdge:
     # {"node", "strip", "label"}; empty when the route is collision-free.
     turns: int = 0
     residuals: list[tuple[str, str]] = field(default_factory=list)
+    # Traceability (0.26.1): direct = border-to-border distance between
+    # the endpoint rects (the shortest arrow that could connect them);
+    # ratio = path length / direct. The metrics that make monster
+    # detours measurable (0.26.0 measured 8.8x with these hidden).
+    direct: float = 0.0
+    ratio: float = 1.0
     # The swept strip this edge occupies — the shared collision currency
     # (the audit measures these; the renderer draws the path).
     strip: Strip | None = None
@@ -176,301 +209,226 @@ def _snap_rect(r: Rect) -> Box:
     return _snap_box((r.x, r.y, r.x + r.w, r.y + r.h))
 
 
-def _dedupe(vals: Sequence[float]) -> list[float]:
-    """Sorted unique coordinates, duplicates collapsed within GRID_TOL."""
-    out: list[float] = []
-    for v in sorted(_snap(v) for v in vals):
-        if not out or v - out[-1] > GRID_TOL:
-            out.append(v)
+# ---------------------------------------------------------------------------
+# The route vocabulary: straight -> L -> U
+# ---------------------------------------------------------------------------
+
+_FACE_ORDER = ("right", "left", "bottom", "top")
+
+
+def _border_distance(sr: Rect, tr: Rect) -> float:
+    """Border-to-border distance between two rects — the shortest
+    arrow that could connect them (the traceability yardstick)."""
+    dx = max(tr.x - (sr.x + sr.w), sr.x - (tr.x + tr.w), 0.0)
+    dy = max(tr.y - (sr.y + sr.h), sr.y - (tr.y + tr.h), 0.0)
+    return math.hypot(dx, dy)
+
+
+def _anchor_ladder(rect: Rect) -> dict[str, list[Point]]:
+    """Anchor candidates per face: the face centre and centre ±
+    k*SEED_STEP along the face, clamped inside the face with a
+    SEED_INSET corner margin (the near-corner 45° entry fix), snapped.
+    Deterministic order: centre first, then alternating offsets."""
+    out: dict[str, list[Point]] = {}
+    for face in _FACE_ORDER:
+        on_width = face in ("top", "bottom")
+        lo, hi = ((rect.x, rect.x + rect.w) if on_width
+                  else (rect.y, rect.y + rect.h))
+        c = (lo + hi) / 2.0
+        vals: list[float] = []
+        if hi - lo < 2 * SEED_INSET:
+            vals = [_snap(c)]
+        else:
+            # Fractional step: proportional to the face's usable span
+            # (min SEED_STEP), so slots sit at predictable marks —
+            # 1/6th of the span apart — on faces of any width, and a
+            # k=3 ladder reaches past obstacles hugging the face.
+            step = max(SEED_STEP, (hi - lo - 2 * SEED_INSET) / 6.0)
+            for k in range(0, LADDER_K + 1):
+                raw = ((c,) if k == 0
+                       else (c - k * step, c + k * step))
+                for v in raw:
+                    v = min(max(_snap(v), lo + SEED_INSET),
+                            hi - SEED_INSET)
+                    if all(abs(v - u) > 1e-9 for u in vals):
+                        vals.append(v)
+        pts: list[Point] = []
+        for v in vals:
+            if face == "right":
+                pts.append(Point(_snap(rect.x + rect.w), v))
+            elif face == "left":
+                pts.append(Point(_snap(rect.x), v))
+            elif face == "top":
+                pts.append(Point(v, _snap(rect.y)))
+            else:
+                pts.append(Point(v, _snap(rect.y + rect.h)))
+        out[face] = pts
     return out
 
 
-# ---------------------------------------------------------------------------
-# Grid seeding — the search chooses exit and entry faces
-# ---------------------------------------------------------------------------
-
-def _face_coords(pool: Sequence[float], lo: float, hi: float) -> list[float]:
-    """Candidate coordinates along one face: grid-line crossings within
-    the face (inset from the corners), the face centre, and centre ±
-    k*SEED_STEP offsets (emergent spreading for edges sharing a face)."""
-    lo2, hi2 = lo + SEED_INSET, hi - SEED_INSET
-    if hi2 < lo2:
-        lo2 = hi2 = (lo + hi) / 2
-    # Centre first: the fast path prefers it on length ties, so the
-    # unobstructed look stays the classic face-centre anchor.
-    c = (lo + hi) / 2
-    vals = [c]
-    vals += [v for v in pool if lo2 <= v <= hi2]
-    for k in range(1, 6):
-        added = False
-        for s in (c - k * SEED_STEP, c + k * SEED_STEP):
-            if lo2 <= s <= hi2:
-                vals.append(s)
-                added = True
-        if not added:
-            break
-    out: list[float] = []
-    for v in vals:
-        if not out or abs(v - out[-1]) > GRID_TOL:
-            out.append(v)
-    return out
-
-
-def _face_seeds(rect: Rect, xs: Sequence[float], ys: Sequence[float]) -> list[Point]:
-    """Anchor candidates on all four faces of a rect (snapped)."""
-    pts: list[Point] = []
-    x0, x1 = _snap(rect.x), _snap(rect.x + rect.w)
-    y0, y1 = _snap(rect.y), _snap(rect.y + rect.h)
-    for v in _face_coords(xs, x0, x1):
-        pts.append(Point(v, y0))
-        pts.append(Point(v, y1))
-    for v in _face_coords(ys, y0, y1):
-        pts.append(Point(x0, v))
-        pts.append(Point(x1, v))
-    return pts
-
-
-def _seed_ok(p: Point, obs_infl: Sequence[Box]) -> bool:
-    """A seed is usable when it is not inside an inflated obstacle."""
-    return not any(b[0] < p.x < b[2] and b[1] < p.y < b[3] for b in obs_infl)
-
-
-# ---------------------------------------------------------------------------
-# Strip clipping — shared-endpoint exemption
-# ---------------------------------------------------------------------------
+def _candidate_routes(
+    src_rect: Rect, tgt_rect: Rect,
+    src_ladder: dict[str, list[Point]],
+    tgt_ladder: dict[str, list[Point]],
+):
+    """Deterministic candidate routes: for every anchor pair, the
+    straight line; for perpendicular faces, both L orientations (one
+    bend); for same-facing faces, the four U families at each U margin
+    (two bends — the deliberate shape for topology that demands it).
+    Yields (points, bends, form_rank, u_mi, src_face, tgt_face,
+    src_i, tgt_i)."""
+    for fs_i, fs in enumerate(_FACE_ORDER):
+        for si, a in enumerate(src_ladder[fs]):
+            for ft_i, ft in enumerate(_FACE_ORDER):
+                for ti, b in enumerate(tgt_ladder[ft]):
+                    # Straight — always a candidate, any angle.
+                    yield ([a, b], 0, 0, -1, fs, ft, si, ti)
+                    perp = ((fs in ("right", "left"))
+                            != (ft in ("right", "left")))
+                    if perp:
+                        # L, both orientations (one bend). The bend is
+                        # determined by the anchor pair; legs that
+                        # re-enter an endpoint's interior are rejected
+                        # by the own-interior check.
+                        yield ([a, Point(b.x, a.y), b], 1, 1, -1,
+                               fs, ft, si, ti)
+                        yield ([a, Point(a.x, b.y), b], 1, 2, -1,
+                               fs, ft, si, ti)
+                    elif fs == ft:
+                        # U families: out along the face normal, run
+                        # parallel beyond both rects, back in.
+                        for mi, m in enumerate(U_MARGINS):
+                            if fs == "right":
+                                run = max(src_rect.x + src_rect.w,
+                                          tgt_rect.x + tgt_rect.w) + m
+                                pts = [a, Point(run, a.y),
+                                       Point(run, b.y), b]
+                            elif fs == "left":
+                                run = min(src_rect.x, tgt_rect.x) - m
+                                pts = [a, Point(run, a.y),
+                                       Point(run, b.y), b]
+                            elif fs == "bottom":
+                                run = max(src_rect.y + src_rect.h,
+                                          tgt_rect.y + tgt_rect.h) + m
+                                pts = [a, Point(a.x, run),
+                                       Point(b.x, run), b]
+                            else:  # top
+                                run = min(src_rect.y, tgt_rect.y) - m
+                                pts = [a, Point(a.x, run),
+                                       Point(b.x, run), b]
+                            yield (pts, 2, 3, mi, fs, ft, si, ti)
 
 
+class _Search:
+    """Per-edge evaluation state: pruned obstacles, own interiors, leg
+    cache, earlier strips (for label-strike scoring), and the label."""
 
-
-
-# ---------------------------------------------------------------------------
-# Search context
-# ---------------------------------------------------------------------------
-
-_DIRS = [(1, 0), (-1, 0), (0, 1), (0, -1),
-         (1, 1), (1, -1), (-1, 1), (-1, -1)]
-_ORTHO_DIRS = _DIRS[:4]
-
-
-class _Ctx:
-    """Per-edge search state: grid pools, obstacle boxes, clipped strips."""
-
-    def __init__(self, starts, goals, obstacles, own_boxes, clips, clear,
-                 dirs=None):
-        self.obs = obstacles               # [(Box, id)] original boxes
-        self.obs_infl = [_inflate(b, clear) for b, _ in obstacles]
-        self.own = own_boxes                # endpoint rects (interior only)
-        self.clips = clips
+    def __init__(self, src_rect, tgt_rect, obstacles, own_boxes,
+                 extra_boxes, clear, label="", clips=()):
+        sb = _snap_rect(src_rect)
+        tb = _snap_rect(tgt_rect)
+        region = (min(sb[0], tb[0]) - RELEVANT_MARGIN,
+                  min(sb[1], tb[1]) - RELEVANT_MARGIN,
+                  max(sb[2], tb[2]) + RELEVANT_MARGIN,
+                  max(sb[3], tb[3]) + RELEVANT_MARGIN)
+        self.obs = [(b, oid) for b, oid in obstacles
+                    if rects_overlap(b, region, eps=0.0)]
+        self.obs += [(_snap_box(b), "") for b in extra_boxes]
+        self.obs_infl = [_inflate(b, clear) for b, _ in self.obs]
         self.clear = clear
-        self.dirs = list(dirs) if dirs is not None else _DIRS
-        xs: list[float] = [p.x for p in starts] + [p.x for p in goals]
-        ys: list[float] = [p.y for p in starts] + [p.y for p in goals]
-        d = clear + 1.0
-        for box, _ in obstacles:
-            xs += [box[0], box[2], box[0] - d, box[2] + d]
-            ys += [box[1], box[3], box[1] - d, box[3] + d]
-        for box in own_boxes:
-            xs += [box[0], box[2]]
-            ys += [box[1], box[3]]
-        self.xs = _dedupe(xs)
-        self.ys = _dedupe(ys)
-        self._blocked: dict[int, bool] = {}
-        self._seg_cache: dict[tuple, tuple[bool, float]] = {}
+        # The audit's interior inset (0.5px): an anchor with float noise
+        # ~1e-13 inside its own box must still be able to leave.
+        self.own_inset = [
+            (box[0] + 0.5, box[1] + 0.5, box[2] - 0.5, box[3] - 0.5)
+            for box in own_boxes]
+        self.label = label
+        self.clips = clips
+        self._legs: dict[tuple, tuple[bool, tuple[str, ...]]] = {}
 
-    # -- node legality ----------------------------------------------------
-    def node_blocked(self, n: int) -> bool:
-        """Inside an inflated obstacle (or an endpoint rect interior) —
-        not a legal path node in hard mode."""
-        v = self._blocked.get(n)
-        if v is None:
-            i, j = divmod(n, len(self.ys))
-            x, y = self.xs[i], self.ys[j]
-            v = any(b[0] < x < b[2] and b[1] < y < b[3]
-                    for b in self.obs_infl) \
-                or any(b[0] < x < b[2] and b[1] < y < b[3] for b in self.own)
-            self._blocked[n] = v
-        return v
-
-    # -- segment legality ---------------------------------------------------
-    # The grid graph is static during one search, so every segment's
-    # legality and penalty is computed once and cached by its endpoints.
-    def seg_eval(self, a, b) -> tuple[bool, float]:
-        """(clear?, penalty) of the segment: clear when it misses every
-        inflated obstacle, own rect interior, and earlier strip
-        corridor; penalty counts the original-box crossings (soft
-        cheapest-collision searches only)."""
-        key = (a[0], a[1], b[0], b[1])
-        hit = self._seg_cache.get(key)
-        if hit is not None:
-            return hit
-        clear = True
-        pen = 0.0
-        for box in self.obs_infl:
-            if seg_enters_rect(a, b, box):
-                clear = False
-                break
-        if clear:
-            for box in self.own:
-                if seg_enters_rect(a, b, box):
+    def leg(self, ax, ay, bx, by):
+        """(clear, crossing ids) of one leg: clear when it keeps the
+        corridor distance from every obstacle (exact segment-box
+        distance — Liang-Barsky on an inflated box misses exact corner
+        tangency) and neither endpoint's interior is entered; crossings
+        count ORIGINAL-box interior entries (the soft fallback's
+        currency)."""
+        key = (_snap(ax), _snap(ay), _snap(bx), _snap(by))
+        hit = self._legs.get(key)
+        if hit is None:
+            a = (key[0], key[1])
+            b = (key[2], key[3])
+            clear = True
+            crossings: list[str] = []
+            for box, oid in self.obs:
+                if seg_box_dist(a, b, box) < self.clear:
                     clear = False
-                    break
-        strip_hit = False
-        if clear:
-            strip_hit = self._strip_hit(a, b)
-            clear = not strip_hit
-        if not clear:
-            for box, _ in self.obs:
-                if seg_enters_rect(a, b, box):
-                    pen += BLOCK_PENALTY
-            for box in self.own:
-                if seg_enters_rect(a, b, box):
-                    pen += BLOCK_PENALTY
-            if strip_hit or self._strip_hit(a, b):
-                pen += BLOCK_PENALTY
-        out = (clear, pen)
-        self._seg_cache[key] = out
-        return out
+                    # Any corridor violation counts against the soft
+                    # candidate: grazes are defects too, so the
+                    # fewest-crossing fallback minimizes them.
+                    if oid:
+                        crossings.append(oid)
+            if clear:
+                for box in self.own_inset:
+                    if seg_enters_rect(a, b, box):
+                        clear = False
+                        break
+            hit = (clear, tuple(crossings))
+            self._legs[key] = hit
+        return hit
 
-    def seg_clear(self, a, b) -> bool:
-        """Is the segment clear of every obstacle (inflated), own rect
-        interior, and earlier strip corridor?"""
-        return self.seg_eval(a, b)[0]
-
-    def _strip_hit(self, a, b) -> bool:
+    def stroke_label_hits(self, pts):
+        """How many earlier edges' LABEL boxes this route's STROKE
+        passes under — the drawn stroke would overprint their text."""
+        if not self.clips:
+            return 0
+        hits = 0
         for c in self.clips:
+            if c.label is None:
+                continue
+            for i in range(len(pts) - 1):
+                if seg_box_dist((pts[i].x, pts[i].y),
+                                (pts[i + 1].x, pts[i + 1].y),
+                                c.label) < c.half_w:
+                    hits += 1
+                    break
+        return hits
+
+    def label_score(self, pts):
+        """(node_hits, other_hits) of the label this route would draw:
+        the label strip vs node rects (weight-heavy — nodes are solid)
+        and vs earlier strips' corridors, labels and caps."""
+        if not self.label:
+            return 0, 0
+        lg = label_geometry([(p.x, p.y) for p in pts], self.label, 0.5)
+        if lg.strip is None:
+            return 0, 0
+        node_hits = 0
+        for box, oid in self.obs:
+            if oid and rects_overlap(lg.strip, box):
+                node_hits += 1
+        other = 0
+        for c in self.clips:
+            hit = False
             for s0, s1 in c.segs:
-                if seg_seg_dist(a, b, s0, s1) < self.clear + c.half_w:
-                    return True
-            if c.label is not None and seg_box_dist(a, b, c.label) < self.clear:
-                return True
-            for cpt, cr in c.caps:
-                if point_seg_dist(cpt, a, b) < cr + self.clear:
-                    return True
-        return False
-
-    def seg_penalty(self, a, b) -> float:
-        """Soft cost of a segment that may cross obstacles (original
-        boxes — crossing the node is the defect)."""
-        return self.seg_eval(a, b)[1]
-
-
-# ---------------------------------------------------------------------------
-# A* over the Hanan grid
-# ---------------------------------------------------------------------------
-
-def _astar(ctx: _Ctx, start_pts, goal_pts, soft: bool):
-    """A* from any start seed to any goal seed. Returns the list of
-    grid points or None (no path / cap exceeded)."""
-    ny = len(ctx.ys)
-    xi = {v: i for i, v in enumerate(ctx.xs)}
-    yi = {v: j for j, v in enumerate(ctx.ys)}
-    goal_nodes: set[int] = set()
-    for p in goal_pts:
-        if p.x in xi and p.y in yi:
-            goal_nodes.add(xi[p.x] * ny + yi[p.y])
-    if not goal_nodes:
-        return None
-    goals_xy = [(p.x, p.y) for p in goal_pts]
-
-    def h_of(n):
-        i, j = divmod(n, ny)
-        x, y = ctx.xs[i], ctx.ys[j]
-        return min(math.hypot(x - gx, y - gy) for gx, gy in goals_xy)
-
-    dirs = ctx.dirs
-    g: dict[tuple[int, int], float] = {}
-    parent: dict[tuple[int, int], tuple[int, int] | None] = {}
-    heap: list = []
-    counter = 0
-    for p in start_pts:
-        if p.x not in xi or p.y not in yi:
-            continue
-        n = xi[p.x] * ny + yi[p.y]
-        if not soft and ctx.node_blocked(n):
-            continue
-        key = (n, -1)
-        g[key] = 0.0
-        parent[key] = None
-        heapq.heappush(heap, (h_of(n), counter, n, -1, 0.0))
-        counter += 1
-
-    closed: set[tuple[int, int]] = set()
-    pops = 0
-    while heap:
-        _, _, n, d, gv = heapq.heappop(heap)
-        key = (n, d)
-        if key in closed or gv > g.get(key, math.inf):
-            continue
-        closed.add(key)
-        pops += 1
-        if pops > MAX_POPS:
-            return None
-        if n in goal_nodes:
-            path = []
-            k = key
-            while k is not None:
-                i, j = divmod(k[0], ny)
-                path.append((ctx.xs[i], ctx.ys[j]))
-                k = parent[k]
-            path.reverse()
-            return path
-        i, j = divmod(n, ny)
-        a = (ctx.xs[i], ctx.ys[j])
-        for d_idx, (di, dj) in enumerate(dirs):
-            i2, j2 = i + di, j + dj
-            if not (0 <= i2 < len(ctx.xs) and 0 <= j2 < len(ctx.ys)):
-                continue
-            n2 = i2 * ny + j2
-            b = (ctx.xs[i2], ctx.ys[j2])
-            seg_len = math.hypot(b[0] - a[0], b[1] - a[1])
-            if seg_len < 1e-9:
-                continue
-            if not soft:
-                if ctx.node_blocked(n2) or not ctx.seg_clear(a, b):
-                    continue
-            turn = TURN_PENALTY if d >= 0 and d != d_idx else 0.0
-            pen = ctx.seg_penalty(a, b) if soft else 0.0
-            ngv = gv + seg_len + turn + pen
-            nkey = (n2, d_idx)
-            if ngv < g.get(nkey, math.inf):
-                g[nkey] = ngv
-                parent[nkey] = key
-                heapq.heappush(
-                    heap, (ngv + h_of(n2), counter, n2, d_idx, ngv))
-                counter += 1
-    return None
+                if seg_box_dist(s0, s1, lg.strip) < c.half_w:
+                    hit = True
+                    break
+            if not hit and c.label is not None \
+                    and rects_overlap(lg.strip, c.label):
+                hit = True
+            if not hit:
+                for cpt, cr in c.caps:
+                    if point_box_dist(cpt, lg.strip) < cr:
+                        hit = True
+                        break
+            if hit:
+                other += 1
+        return node_hits, other
 
 
-def _smooth(points, ctx: _Ctx):
-    """Greedy shortcut smoothing: replace bendy sub-paths by direct
-    segments whenever the direct segment is clear. Restores the
-    diagonals the staircase-free grid search cannot express."""
-    out = [points[0]]
-    i = 0
-    n = len(points)
-    while i < n - 1:
-        j = n - 1
-        while j > i + 1 and not ctx.seg_clear(points[i], points[j]):
-            j -= 1
-        out.append(points[j])
-        i = j
-    return out
-
-
-def _merge_collinear(points):
-    """Drop waypoints that lie on the segment between their neighbours."""
-    if len(points) <= 2:
-        return points
-    out = [points[0]]
-    for k in range(1, len(points) - 1):
-        ax, ay = out[-1]
-        bx, by = points[k]
-        cx, cy = points[k + 1]
-        cross = (bx - ax) * (cy - by) - (by - ay) * (cx - bx)
-        if abs(cross) > 1e-6:
-            out.append(points[k])
-    out.append(points[-1])
-    return out
+def _face_coord(p: Point, face: str) -> float:
+    """The coordinate along the face (y for left/right, x otherwise)."""
+    return p.y if face in ("right", "left") else p.x
 
 
 def _count_turns(points) -> int:
@@ -489,75 +447,168 @@ def _count_turns(points) -> int:
     return turns
 
 
-def _direct_pair(start_pts, goal_pts):
-    """Closest (start, goal) seed pair ignoring obstacles — the
-    cheapest-collision fallback when no clear path exists."""
-    best = None
-    for a in start_pts:
-        for b in goal_pts:
-            d = math.hypot(a.x - b.x, a.y - b.y)
-            if best is None or d < best[0]:
-                best = (d, a, b)
-    if best is None:
-        return None
-    return [best[1], best[2]]
+def _forms(src_rect, tgt_rect, a: Point, b: Point, fs: str, ft: str,
+           bias: float | None = None, orthogonal: bool = False):
+    """The vocabulary forms for one anchor pair, in preference order:
+    straight; both L orientations when the faces are perpendicular;
+    the U family when the faces are the same (one per U margin).
+    bias: the anti-parallel pair's symmetric off-centre bias — the U
+    run shifts by it so the pair's strokes run parallel. orthogonal:
+    declared-orthogonal views reject diagonal legs."""
+    # Declared-orthogonal views reject the DIAGONAL straight; the L and
+    # U legs are axis-aligned by construction.
+    dx, dy = abs(b.x - a.x), abs(b.y - a.y)
+    if not (orthogonal and dx > 1e-6 and dy > 1e-6):
+        yield ([a, b], 0, 0, -1)
+    perp = ((fs in ("right", "left")) != (ft in ("right", "left")))
+    if perp:
+        yield ([a, Point(b.x, a.y), b], 1, 1, -1)
+        yield ([a, Point(a.x, b.y), b], 1, 2, -1)
+    elif fs == ft:
+        shift = bias if bias is not None else 0.0
+        for mi, m in enumerate(U_MARGINS):
+            if fs == "right":
+                run = max(src_rect.x + src_rect.w,
+                          tgt_rect.x + tgt_rect.w) + m + shift
+                yield ([a, Point(run, a.y), Point(run, b.y), b], 2, 3, mi)
+            elif fs == "left":
+                run = min(src_rect.x, tgt_rect.x) - m + shift
+                yield ([a, Point(run, a.y), Point(run, b.y), b], 2, 3, mi)
+            elif fs == "bottom":
+                run = max(src_rect.y + src_rect.h,
+                          tgt_rect.y + tgt_rect.h) + m + shift
+                yield ([a, Point(a.x, run), Point(b.x, run), b], 2, 3, mi)
+            else:  # top
+                run = min(src_rect.y, tgt_rect.y) - m + shift
+                yield ([a, Point(a.x, run), Point(b.x, run), b], 2, 3, mi)
 
 
-def _search_route(
-    starts: list[Point],
-    goals: list[Point],
-    obstacles: Sequence[tuple[Box, str]],
-    own_boxes: Sequence[Box],
-    clips: Sequence[_ClipStrip],
-    clear: float,
-    soft: bool = False,
+
+
+
+def _route_candidates_eval(
+    src_rect: Rect, tgt_rect: Rect,
+    src_ladder: dict[str, list[Point]],
+    tgt_ladder: dict[str, list[Point]],
+    search: _Search,
+    src_key: str = "", tgt_key: str = "",
+    used_anchors: dict | None = None,
+    pinned: bool = False,
+    hints: dict | None = None,
+    pair_bias: float | None = None,
     orthogonal: bool = False,
 ):
-    """Find a route from any start seed to any goal seed.
+    """Evaluate every vocabulary candidate. Returns (best_clear,
+    best_soft): each is (points, bends, cost, order, crossings) or
+    None. cost = length + TURN_PENALTY*bends + anchor reuse + label
+    costs + hint misses; `order` makes selection fully deterministic.
+    Soft = fewest node crossings, then cheapest — reported, never
+    hidden. hints: predictable anchor coordinates per (side, face)
+    (fan slots, mirrored pair strokes); pair_bias: symmetric
+    off-centre bias for the first edge of an anti-parallel pair;
+    orthogonal: reject diagonal legs (declared orthogonal views)."""
+    best_clear = None   # (points, bends, cost, order, ())
+    best_soft = None    # (points, bends, cost, order, crossings)
+    hints = hints or {}
 
-    Returns (points, hard) — points as a list of (x, y) tuples, hard
-    True when collision-free. The fast path returns the best clear
-    direct seed pair (length beats bends at any K); otherwise A*.
-    """
-    ctx = _Ctx(starts, goals, obstacles, own_boxes, clips, clear,
-               dirs=_ORTHO_DIRS if orthogonal else None)
-    return _search_route_inner(ctx, starts, goals, soft)
+    def _center(rect: Rect, face: str) -> float:
+        lo, hi = ((rect.x, rect.x + rect.w) if face in ("top", "bottom")
+                  else (rect.y, rect.y + rect.h))
+        return (lo + hi) / 2.0
 
+    for fs_i, fs in enumerate(_FACE_ORDER):
+        for si, a in enumerate(src_ladder[fs]):
+            for ft_i, ft in enumerate(_FACE_ORDER):
+                for ti, b in enumerate(tgt_ladder[ft]):
+                    direct = math.hypot(b.x - a.x, b.y - a.y)
+                    if best_clear is not None and \
+                            direct >= best_clear[2]:
+                        continue
+                    for (pts, bends, form_rank, u_mi) in _forms(
+                            src_rect, tgt_rect, a, b, fs, ft,
+                            bias=pair_bias, orthogonal=orthogonal):
+                        if best_clear is not None and \
+                                direct + TURN_PENALTY * bends >= \
+                                best_clear[2]:
+                            continue
+                        reuse = 0.0
+                        if used_anchors is not None and not pinned:
+                            # Keyed by (node, face) regardless of edge
+                            # role: an anti-parallel pair's reverse
+                            # edge must see the forward edge's slots.
+                            if _face_coord(a, fs) in used_anchors.get(
+                                    (src_key, fs), ()):
+                                reuse += ANCHOR_REUSE_COST
+                            if _face_coord(b, ft) in used_anchors.get(
+                                    (tgt_key, ft), ()):
+                                reuse += ANCHOR_REUSE_COST
+                        cost = direct + TURN_PENALTY * bends + reuse
+                        # Deliberate forms anchor at face centres
+                        # (review round 2): a U or L reads best
+                        # leaving/entering the middle of an edge —
+                        # ladder offsets are for fan distribution
+                        # (straights) and for dodging blocked centres,
+                        # never for corner-hugging deliberate shapes.
+                        if bends > 0:
+                            if abs(_face_coord(a, fs)
+                                   - _center(src_rect, fs)) > 0.5:
+                                cost += CENTRE_MISS_COST
+                            if abs(_face_coord(b, ft)
+                                   - _center(tgt_rect, ft)) > 0.5:
+                                cost += CENTRE_MISS_COST
+                        # Hint misses: a candidate away from its
+                        # predictable slot (fan distribution, pair
+                        # parallelism) pays, so hinted routes win.
+                        sh = hints.get("src", {}).get(fs)
+                        if sh is not None and \
+                                abs(_face_coord(a, fs) - sh) > 0.5:
+                            cost += HINT_MISS_COST
+                        th = hints.get("tgt", {}).get(ft)
+                        if th is not None and \
+                                abs(_face_coord(b, ft) - th) > 0.5:
+                            cost += HINT_MISS_COST
+                        if pair_bias is not None:
+                            ba = abs(_face_coord(a, fs)
+                                     - (_center(src_rect, fs) + pair_bias))
+                            bb = abs(_face_coord(b, ft)
+                                     - (_center(tgt_rect, ft) + pair_bias))
+                            if ba > 0.5 or bb > 0.5:
+                                cost += HINT_MISS_COST
+                        if best_clear is not None and \
+                                cost >= best_clear[2]:
+                            continue
+                        clear = True
+                        crossings: list[str] = []
+                        for i in range(len(pts) - 1):
+                            ok, hits = search.leg(
+                                pts[i].x, pts[i].y,
+                                pts[i + 1].x, pts[i + 1].y)
+                            if not ok:
+                                clear = False
+                            for h in hits:
+                                if h not in crossings:
+                                    crossings.append(h)
+                        node_hits = other_hits = 0
+                        if search.label:
+                            node_hits, other_hits = search.label_score(pts)
+                        other_hits += search.stroke_label_hits(pts)
+                        cost += (LABEL_NODE_COST * node_hits
+                                 + LABEL_OTHER_COST * other_hits)
+                        order = (fs_i, ft_i, si, ti, form_rank,
+                                 u_mi if u_mi >= 0 else 0)
+                        if clear:
+                            if best_clear is None or \
+                                    (cost, order) < (best_clear[2],
+                                                     best_clear[3]):
+                                best_clear = (pts, bends, cost, order, ())
+                        elif best_soft is None or \
+                                (len(crossings), cost, order) < (
+                                    len(best_soft[4]), best_soft[2],
+                                    best_soft[3]):
+                            best_soft = (pts, bends, cost, order,
+                                         tuple(crossings))
+    return best_clear, best_soft
 
-def _search_route_inner(ctx, starts, goals, soft):
-    # Fast path: best clear direct seed pair (0 turns is unbeatable).
-    best = None
-    for a in starts:
-        for b in goals:
-            if not ctx.seg_clear((a.x, a.y), (b.x, b.y)):
-                continue
-            d = math.hypot(a.x - b.x, a.y - b.y)
-            if d < 1e-9:
-                continue
-            if best is None or d < best[0]:
-                best = (d, a, b)
-    if best is not None:
-        return [(best[1].x, best[1].y), (best[2].x, best[2].y)], True
-
-    path = _astar(ctx, starts, goals, soft=False)
-    if path is not None:
-        pts = _merge_collinear(_smooth(path, ctx))
-        return pts, True
-    if soft:
-        # Cheapest-collision: A* with obstacle penalties; direct pair if
-        # even that fails. Crossings are reported, never hidden.
-        path = _astar(ctx, starts, goals, soft=True)
-        if path is not None:
-            pts = _merge_collinear(_smooth(path, ctx))
-            return pts, False
-        direct = _direct_pair(starts, goals)
-        return ([(p.x, p.y) for p in direct] if direct else None), False
-    return None, False
-
-
-# ---------------------------------------------------------------------------
-# Route entry points
-# ---------------------------------------------------------------------------
 
 def _field_anchor(
     node: SolvedNode,
@@ -609,6 +660,135 @@ def _pinned_field_anchors(edge, src_node, tgt_node):
     return src_pt, tgt_pt
 
 
+def _route_edge_full(
+    src_rect: Rect,
+    tgt_rect: Rect,
+    obstacles: Sequence[tuple[Box, str]] = (),
+    strips: Sequence[Strip] = (),
+    exempt_rects: Sequence[Rect] = (),
+    src_anchor: Point | None = None,
+    tgt_anchor: Point | None = None,
+    extra_boxes: Sequence[Box] = (),
+    soft: bool = True,
+    src_key: str = "",
+    tgt_key: str = "",
+    used_anchors: dict | None = None,
+    label: str = "",
+    hints: dict | None = None,
+    pair_bias: float | None = None,
+    orthogonal: bool = False,
+) -> tuple[list[Point], bool]:
+    """Route between two rects within the vocabulary.
+
+    Returns (points, clear). obstacles: non-exempt node rects
+    (id-carrying, for residuals); strips: earlier routed strips —
+    NOT obstacles under the 0.26.1 amendment, but their clipped
+    corridors score label strikes; exempt_rects: ancestor-or-self
+    rects (passable interiors); src_anchor/tgt_anchor: pinned anchors
+    (field-qualified endpoints); extra_boxes: hard unreported boxes;
+    src_key/tgt_key + used_anchors: deliberate offset bookkeeping for
+    shared faces / anti-parallel pairs; label: the edge label, whose
+    strike cost participates in the candidate cost.
+    """
+    clear = ROUTE_STROKE_W / 2 + STRIP_PAD
+    obs = [(_snap_box(b), oid) for b, oid in obstacles]
+    exempt_infl = [_inflate(_snap_rect(r), clear + 4.0)
+                   for r in exempt_rects]
+    clips = [clip_strip(s, exempt_infl) for s in strips]
+    search = _Search(src_rect, tgt_rect, obs,
+                     [_snap_rect(src_rect), _snap_rect(tgt_rect)],
+                     extra_boxes, clear, label=label, clips=clips)
+
+    if src_anchor is not None or tgt_anchor is not None:
+        # Pinned anchors (field-qualified endpoints stay pinned): one
+        # anchor per side, straight and both L orientations.
+        a = Point(_snap(src_anchor.x), _snap(src_anchor.y)) \
+            if src_anchor is not None else None
+        b = Point(_snap(tgt_anchor.x), _snap(tgt_anchor.y)) \
+            if tgt_anchor is not None else None
+        src_ladder = {f: ([a] if a is not None else _anchor_ladder(src_rect)[f])
+                      for f in _FACE_ORDER}
+        tgt_ladder = {f: ([b] if b is not None else _anchor_ladder(tgt_rect)[f])
+                      for f in _FACE_ORDER}
+        if a is not None and b is not None:
+            best_clear, best_soft = _pinned_candidates(
+                src_rect, tgt_rect, a, b, search, orthogonal=orthogonal)
+        else:
+            best_clear, best_soft = _route_candidates_eval(
+                src_rect, tgt_rect, src_ladder, tgt_ladder, search,
+                src_key, tgt_key, used_anchors,
+                pinned=a is not None or b is not None,
+                hints=hints, pair_bias=pair_bias, orthogonal=orthogonal)
+    else:
+        src_ladder = _anchor_ladder(src_rect)
+        tgt_ladder = _anchor_ladder(tgt_rect)
+        best_clear, best_soft = _route_candidates_eval(
+            src_rect, tgt_rect, src_ladder, tgt_ladder, search,
+            src_key, tgt_key, used_anchors,
+            hints=hints, pair_bias=pair_bias, orthogonal=orthogonal)
+
+    chosen = best_clear if best_clear is not None else \
+        (best_soft if soft else None)
+    if chosen is None:
+        # Degenerate geometry (no candidate at all): dominant-face
+        # pair so the edge still renders.
+        return [_face_point(src_rect, _dominant_face(src_rect, tgt_rect)),
+                _face_point(tgt_rect, _dominant_face(tgt_rect, src_rect))], \
+            False
+    pts, bends = chosen[0], chosen[1]
+    return [Point(p.x, p.y) for p in pts], best_clear is not None
+
+
+def _nearest_face(rect: Rect, p: Point) -> str:
+    """Which face a point lies on (the anchor bookkeeping's key)."""
+    dl = abs(p.x - rect.x)
+    dr = abs(p.x - (rect.x + rect.w))
+    dt = abs(p.y - rect.y)
+    db = abs(p.y - (rect.y + rect.h))
+    return min(("left", dl), ("right", dr), ("top", dt),
+               ("bottom", db), key=lambda kv: kv[1])[0]
+
+
+def _pinned_candidates(src_rect, tgt_rect, a: Point, b: Point, search,
+                       orthogonal: bool = False):
+    """Vocabulary candidates for a pinned anchor pair: the straight
+    line and both L orientations (the bend is free; the anchors are
+    not). U forms need same-facing faces, which a pinned pair does not
+    declare — layout or the un-pinned ladder owns those."""
+    best_clear = None
+    best_soft = None
+    direct = math.hypot(b.x - a.x, b.y - a.y)
+    forms = []
+    if not orthogonal or abs(b.x - a.x) < 1e-6 or abs(b.y - a.y) < 1e-6:
+        forms.append(([a, b], 0))
+    forms.append(([a, Point(b.x, a.y), b], 1))
+    forms.append(([a, Point(a.x, b.y), b], 1))
+    for pts, bends in forms:
+        clear = True
+        crossings: list[str] = []
+        for i in range(len(pts) - 1):
+            ok, hits = search.leg(pts[i].x, pts[i].y,
+                                  pts[i + 1].x, pts[i + 1].y)
+            if not ok:
+                clear = False
+            for h in hits:
+                if h not in crossings:
+                    crossings.append(h)
+        cost = direct + TURN_PENALTY * bends
+        if search.label:
+            node_hits, other_hits = search.label_score(pts)
+            cost += LABEL_NODE_COST * node_hits \
+                + LABEL_OTHER_COST * other_hits
+        order = (bends, len(pts))
+        if clear:
+            if best_clear is None or (cost, order) < best_clear[2:4]:
+                best_clear = (pts, bends, cost, order, ())
+        elif best_soft is None or (len(crossings), cost, order) < \
+                (len(best_soft[4]), best_soft[2], best_soft[3]):
+            best_soft = (pts, bends, cost, order, tuple(crossings))
+    return best_clear, best_soft
+
+
 def _route_edge(
     src_rect: Rect,
     tgt_rect: Rect,
@@ -619,82 +799,24 @@ def _route_edge(
     tgt_anchor: Point | None = None,
     extra_boxes: Sequence[Box] = (),
     soft: bool = True,
+    used_anchors: dict | None = None,
+    src_key: str = "",
+    tgt_key: str = "",
+    hints: dict | None = None,
+    pair_bias: float | None = None,
     orthogonal: bool = False,
 ) -> list[Point]:
-    """Route between two rects with the obstacle-aware search.
-
-    obstacles: non-exempt node rects (id-carrying, for residuals).
-    strips: earlier routed strips (shared endpoints clipped via
-    exempt_rects — ancestor-or-self of this edge's endpoints).
-    src_anchor/tgt_anchor: pinned anchors (field-qualified endpoints).
-    extra_boxes: label-nudge boxes (label-strike retries).
-    Returns waypoints as Points.
-    """
-    clear = ROUTE_STROKE_W / 2 + STRIP_PAD
-    own_boxes = [_snap_rect(src_rect), _snap_rect(tgt_rect)]
-    # Nudge boxes (label-strike retries) block like obstacles but are
-    # never reported as residuals — they are guidance, not geometry.
-    obs = ([(_snap_box(b), oid) for b, oid in obstacles]
-           + [(_snap_box(box), "") for box in extra_boxes])
-    # Grid pruning: only obstacles within the endpoints' corridor
-    # (bbox + RELEVANT_MARGIN) can matter — a route never wanders
-    # beyond it, and the Hanan grid stays small.
-    sb, tb = own_boxes[0], own_boxes[1]
-    region = (min(sb[0], tb[0]) - RELEVANT_MARGIN,
-              min(sb[1], tb[1]) - RELEVANT_MARGIN,
-              max(sb[2], tb[2]) + RELEVANT_MARGIN,
-              max(sb[3], tb[3]) + RELEVANT_MARGIN)
-    obs = [(b, oid) for b, oid in obs
-           if rects_overlap(b, region, eps=0.0)]
-    pool_xs: list[float] = [src_rect.x, src_rect.x2, src_rect.cx,
-                             tgt_rect.x, tgt_rect.x2, tgt_rect.cx]
-    pool_ys: list[float] = [src_rect.y, src_rect.y2, src_rect.cy,
-                             tgt_rect.y, tgt_rect.y2, tgt_rect.cy]
-    d = clear + 1.0
-    for b, _ in obs:
-        pool_xs += [b[0], b[2], b[0] - d, b[2] + d]
-        pool_ys += [b[1], b[3], b[1] - d, b[3] + d]
-    xs0, ys0 = _dedupe(pool_xs), _dedupe(pool_ys)
-
-    if src_anchor is not None:
-        starts = [Point(_snap(src_anchor.x), _snap(src_anchor.y))]
-    else:
-        starts = _face_seeds(src_rect, xs0, ys0)
-    if tgt_anchor is not None:
-        goals = [Point(_snap(tgt_anchor.x), _snap(tgt_anchor.y))]
-    else:
-        goals = _face_seeds(tgt_rect, xs0, ys0)
-
-    seeds_infl = [_inflate(b, clear) for b, _ in obs]
-    starts = [p for p in starts if _seed_ok(p, seeds_infl)]
-    goals = [p for p in goals if _seed_ok(p, seeds_infl)]
-    if not starts or not goals:
-        # Every seed on a face is blocked (a wall hugging the rect):
-        # the cheapest-collision fallback still routes honestly.
-        starts = starts or ([src_anchor] if src_anchor
-                            else [_face_point(src_rect, _dominant_face(src_rect, tgt_rect))])
-        goals = goals or ([tgt_anchor] if tgt_anchor
-                          else [_face_point(tgt_rect, _dominant_face(tgt_rect, src_rect))])
-
-    # Seed offset coordinates join the grid pools (offsets feed back
-    # as crossings on faces).
-    for p in starts + goals:
-        pool_xs.append(p.x)
-        pool_ys.append(p.y)
-    xs, ys = _dedupe(pool_xs), _dedupe(pool_ys)
-    starts = [p for p in starts if p.x in xs and p.y in ys]
-    goals = [p for p in goals if p.x in xs and p.y in ys]
-
-    exempt_infl = [_inflate(_snap_rect(r), clear + 4.0)
-                  for r in exempt_rects]
-    clips = [clip_strip(s, exempt_infl) for s in strips]
-
-    pts, _hard = _search_route(
-        starts, goals, obs, own_boxes, clips, clear,
-        soft=soft, orthogonal=orthogonal)
-    if pts is None:
-        return []
-    return [Point(x, y) for x, y in pts]
+    """Route between two rects within the vocabulary (straight -> L ->
+    U; no route exceeds two bends). `orthogonal` retires the retired
+    flag as a DECLARED view option: when True, diagonal legs are
+    rejected (the snap-to-grid vocabulary). hints/pair_bias: the
+    predictable-anchor and parallel-pair bookkeeping."""
+    pts, _clear = _route_edge_full(
+        src_rect, tgt_rect, obstacles, strips, exempt_rects,
+        src_anchor, tgt_anchor, extra_boxes, soft,
+        src_key=src_key, tgt_key=tgt_key, used_anchors=used_anchors,
+        hints=hints, pair_bias=pair_bias, orthogonal=orthogonal)
+    return pts
 
 
 def _dominant_face(rect: Rect, other: Rect) -> str:
@@ -730,13 +852,14 @@ def _edge_strip(points, edge) -> Strip:
 def _path_residuals(points, obstacles, strips, clear,
                     exempt_rects=()) -> list[tuple[str, str]]:
     """Residual collisions of a cheapest-collision path (edge, obstacle,
-    blocker) — audited, never hidden. Strip residuals are measured
-    against clipped strips: near a shared endpoint the hug is by
-    design, not a collision."""
+    blocker) — audited, never hidden. Node residuals are distance-based:
+    a graze (within the corridor of a node) is a defect exactly like a
+    crossing. Strip residuals are measured against clipped strips: near
+    a shared endpoint the hug is by design, not a collision."""
     out: list[tuple[str, str]] = []
     pts = [(p.x, p.y) for p in points]
     for box, oid in obstacles:
-        if any(seg_enters_rect(pts[i], pts[i + 1], box)
+        if any(seg_box_dist(pts[i], pts[i + 1], box) < clear
                for i in range(len(pts) - 1)):
             out.append(("node", oid))
     me = Strip(points=pts, half_w=clear)
@@ -748,71 +871,8 @@ def _path_residuals(points, obstacles, strips, clear,
     return out
 
 
-def _label_offenders(points, edge, obstacles, strips):
-    """(n_hits, nudge_boxes): regions this path's label strikes — node
-    rects and earlier strips' corridors, labels and caps. Nudge boxes
-    grow the struck region along the label's up direction so a retry
-    path carries its label clear of it."""
-    if not edge.label:
-        return 0, []
-    strip = _edge_strip(points, edge)
-    if strip.label is None:
-        return 0, []
-    lg = label_geometry([(p.x, p.y) for p in points], edge.label, 0.5)
-    nudges: list[Box] = []
-    n = 0
-    for box, oid in obstacles:
-        if rects_overlap(strip.label, box):
-            nudges.append(_grow_box_up(box, lg))
-            n += 1
-    for s in strips:
-        hit = False
-        for k in range(len(s.points) - 1):
-            if seg_box_dist(s.points[k], s.points[k + 1],
-                            strip.label) < s.half_w:
-                hit = True
-                break
-        if not hit and s.label is not None and rects_overlap(strip.label, s.label):
-            hit = True
-        if not hit:
-            for pt, r in _caps(s):
-                if point_box_dist(pt, strip.label) < r:
-                    hit = True
-                    break
-        if hit:
-            nudge = (s.label if s.label is not None
-                     else _bbox_of(s.points))
-            nudges.append(_grow_box_up(nudge, lg))
-            n += 1
-    return n, nudges
 
 
-def _caps(strip: Strip):
-    """(point, cap radius) pairs of a strip's arrowed ends."""
-    out = []
-    if strip.arrow_start:
-        out.append((strip.points[0], strip.arrow_start))
-    if strip.arrow_end:
-        out.append((strip.points[-1], strip.arrow_end))
-    return out
-
-
-def _bbox_of(points) -> Box:
-    xs = [p[0] for p in points]
-    ys = [p[1] for p in points]
-    return (min(xs), min(ys), max(xs), max(ys))
-
-
-def _grow_box_up(box: Box, lg) -> Box:
-    """Grow a box AGAINST the label's up direction (the side the label
-    rides) by ~the label depth, so a path clearing the grown box sits
-    far enough beyond the struck region for its label to clear it:
-    the label extends `up` from the stroke, so the stroke must move
-    away from the struck box on the up side."""
-    d = 30.0
-    dx, dy = -lg.up_x * d, -lg.up_y * d
-    return (min(box[0], box[0] + dx), min(box[1], box[1] + dy),
-            max(box[2], box[2] + dx), max(box[3], box[3] + dy))
 
 
 # ---------------------------------------------------------------------------
@@ -848,8 +908,8 @@ def _ancestors_map(layout: SolvedLayout) -> dict[str, set[str]]:
 
 def _route_order(items):
     """Independent edges first, then endpoint-sharing groups (pairs,
-    fans, meshes) greedily in declaration order — their offsets emerge
-    from strip collisions (ADR-003 decision 8)."""
+    fans, meshes) greedily in declaration order — earlier routed edges'
+    anchor slots inform later edges' deliberate offsets (0.26.1)."""
     parent: dict[str, str] = {}
 
     def find(x):
@@ -882,6 +942,16 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
     # Materialized edges: instanced types are stamped out (subtrees +
     # per-instance edge expansion) so routing sees the same nodes the
     # solver laid out. Shared with the solver via ggarch.instances.
+    # View-level curation: except pairs drop declared edges before
+    # expansion (source, target, type "" = any type).
+    except_pairs = {(s, t, ty) for s, t, ty in
+                    getattr(select, "except_pairs", []) or []}
+    if except_pairs:
+        kept = [e for e in model.edges
+                if not any((e.source == es and e.target == et
+                            and (ty == "" or ty == e.type))
+                           for es, et, ty in except_pairs)]
+        model = _dc_replace(model, edges=kept)
     _, edges = materialize_instances(select, model)
 
     all_rects = _collect_rects(layout)
@@ -900,6 +970,59 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
 
     routed_edges: list[RoutedEdge] = []
     strips_done: list[Strip] = []
+    # Deliberate offsets: chosen anchors' face coordinates, so later
+    # edges sharing a face (fans, anti-parallel pairs) prefer distinct
+    # ladder slots — offsets, not bends (0.26.1).
+    used_anchors: dict = {}
+
+    # Predictable anchor distribution (review round 1): fan members
+    # (same source or same target, same dominant face) get evenly
+    # spread slots across the face — sorted by the far end's position —
+    # and anti-parallel pairs route as parallel strokes symmetric about
+    # the face centres (the first edge biases +δ, its reverse mirrors
+    # −δ, the U run shifts with them).
+    out_fans: dict[str, list] = defaultdict(list)
+    in_fans: dict[str, list] = defaultdict(list)
+    for it in ordered:
+        out_fans[it[0].source].append(it)
+        in_fans[it[0].target].append(it)
+    edge_hints: dict[int, dict] = {}
+    edge_bias: dict[int, float] = {}
+    for node_id, members in list(out_fans.items()) + list(in_fans.items()):
+        side = "src" if out_fans.get(node_id) is members else "tgt"
+        if len(members) < 2:
+            continue
+        node = members[0][1] if side == "src" else members[0][2]
+        rect = node.rect
+        face = _dominant_face(rect, members[0][2].rect if side == "src"
+                              else members[0][1].rect)
+        if any(_dominant_face(m[1].rect if side == "src" else m[2].rect,
+                              m[2].rect if side == "src" else m[1].rect)
+               != face for m in members):
+            continue  # mixed faces: the ladder's own diversity wins
+        lo, hi = ((rect.y, rect.y + rect.h) if face in ("right", "left")
+                  else (rect.x, rect.x + rect.w))
+        usable = hi - lo - 2 * SEED_INSET
+        spacing = min(2 * SEED_STEP, usable / (len(members) - 1)) \
+            if len(members) > 1 else 0.0
+        center = (lo + hi) / 2.0
+        key = (lambda m: m[2].rect.cy if side == "src" and face in
+               ("right", "left") else
+               m[1].rect.cy if face in ("right", "left") else
+               m[2].rect.cx if side == "src" else m[1].rect.cx)
+        for i, m in enumerate(sorted(members, key=key)):
+            delta = (i - (len(members) - 1) / 2.0) * spacing
+            edge_hints.setdefault(id(m), {"src": {}, "tgt": {}})[side][face] \
+                = center + delta
+
+    anti_parallel: dict = {}
+    for it in ordered:
+        anti_parallel.setdefault(frozenset((it[0].source, it[0].target)),
+                                 []).append(it)
+    for group in anti_parallel.values():
+        if len(group) == 2 and group[0][0].source == group[1][0].target:
+            edge_bias[id(group[0])] = PAIR_BIAS
+            edge_bias[id(group[1])] = -PAIR_BIAS
 
     for edge, src_node, tgt_node in ordered:
         src_rect, tgt_rect = src_node.rect, tgt_node.rect
@@ -915,9 +1038,14 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
             src_anchor, tgt_anchor = _pinned_field_anchors(
                 edge, src_node, tgt_node)
 
-        pts = _route_edge(
+        pts, _clear = _route_edge_full(
             src_rect, tgt_rect, obstacles, strips_done, exempt_rects,
-            src_anchor, tgt_anchor)
+            src_anchor, tgt_anchor, src_key=edge.source,
+            tgt_key=edge.target, used_anchors=used_anchors,
+            label=edge.label,
+            hints=edge_hints.get(id((edge, src_node, tgt_node))),
+            pair_bias=edge_bias.get(id((edge, src_node, tgt_node))),
+            orthogonal=(getattr(select, "routing", "") == "orthogonal"))
         if not pts:
             # Complete search failure (degenerate geometry): fall back
             # to the dominant-face pair so the edge still renders.
@@ -926,28 +1054,23 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                 _face_point(tgt_rect, _dominant_face(tgt_rect, src_rect)),
             ]
 
-        # Label retries: nudge the path clear of regions its label
-        # strikes; residuals keep whatever remains (audited).
-        n_hits, nudges = _label_offenders(pts, edge, obstacles, strips_done)
-        for _ in range(LABEL_RETRIES):
-            if n_hits == 0:
-                break
-            retry = _route_edge(
-                src_rect, tgt_rect, obstacles, strips_done, exempt_rects,
-                src_anchor, tgt_anchor, extra_boxes=nudges)
-            if not retry:
-                break
-            r_hits, r_nudges = _label_offenders(
-                retry, edge, obstacles, strips_done)
-            if r_hits < n_hits:
-                pts, n_hits, nudges = retry, r_hits, r_nudges
-            else:
-                break
+        # Record the final anchors' face coordinates so later edges
+        # sharing a face prefer distinct offsets (deliberate, not
+        # emergent-from-collision: offsets are not bends).
+        a, b = pts[0], pts[-1]
+        fs, ft = _nearest_face(src_rect, a), _nearest_face(tgt_rect, b)
+        used_anchors.setdefault((edge.source, fs), set()).add(
+            _face_coord(a, fs))
+        used_anchors.setdefault((edge.target, ft), set()).add(
+            _face_coord(b, ft))
 
         style = _default_style(edge.type)
         strip = _edge_strip(pts, edge)
         residuals = _path_residuals(pts, obstacles, strips_done, clear,
                                    exempt_rects)
+        plen = sum(pts[i].distance_to(pts[i + 1])
+                   for i in range(len(pts) - 1))
+        direct = _border_distance(src_rect, tgt_rect)
         routed_edges.append(RoutedEdge(
             source_id=edge.source,
             target_id=edge.target,
@@ -959,6 +1082,8 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
             points=pts,
             turns=_count_turns([(p.x, p.y) for p in pts]),
             residuals=residuals,
+            direct=direct,
+            ratio=plen / max(direct, 1.0),
             strip=strip,
         ))
         strips_done.append(strip)

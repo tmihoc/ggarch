@@ -23,6 +23,7 @@ drawsvg's own XML escaping before being written into text elements.
 from __future__ import annotations
 
 import math
+import re
 import zlib
 from dataclasses import dataclass
 from typing import Sequence
@@ -55,6 +56,9 @@ from ggarch.router import RoutedEdge, RoutedLayout
 # ---------------------------------------------------------------------------
 
 MARGIN          = 20    # px — white-space margin around the diagram
+TAIL_EPS        = 1e-6  # px — a border crossing within this distance of
+                        # a segment endpoint is the anchor itself, not a
+                        # crossing (the spurious tail-notch fix, 0.26.1)
 
 # Along-path edge labels (ADR-002) and strips (ADR-003) — shared
 # geometry: the single source of measurement lives in ggarch.geometry
@@ -86,7 +90,12 @@ def _seg_intersect_horiz(
     px1: float, py1: float, px2: float, py2: float,
     lx: float, rx: float, y: float,
 ) -> float | None:
-    """X coordinate where segment (p1→p2) crosses horizontal line y, within [lx,rx], or None."""
+    """X coordinate where segment (p1→p2) crosses horizontal line y, within [lx,rx], or None.
+
+    A crossing within epsilon of either segment endpoint is the anchor
+    itself, not a crossing: kiwisolver float noise can put a route's
+    start point ~1e-13 inside its own box, and the first segment then
+    'crosses' the border at t~0 — the spurious tail notch (0.26.1 fix)."""
     dy = py2 - py1
     if abs(dy) < 1e-6:
         return None
@@ -95,6 +104,9 @@ def _seg_intersect_horiz(
         return None
     x = px1 + t * (px2 - px1)
     if lx <= x <= rx:
+        if math.hypot(x - px1, y - py1) < TAIL_EPS \
+                or math.hypot(x - px2, y - py2) < TAIL_EPS:
+            return None
         return x
     return None
 
@@ -103,7 +115,10 @@ def _seg_intersect_vert(
     px1: float, py1: float, px2: float, py2: float,
     ty: float, by: float, x: float,
 ) -> float | None:
-    """Y coordinate where segment (p1→p2) crosses vertical line x, within [ty,by], or None."""
+    """Y coordinate where segment (p1→p2) crosses vertical line x, within [ty,by], or None.
+
+    Endpoint-epsilon crossings are anchors, not crossings (see
+    _seg_intersect_horiz)."""
     dx = px2 - px1
     if abs(dx) < 1e-6:
         return None
@@ -112,6 +127,9 @@ def _seg_intersect_vert(
         return None
     y = py1 + t * (py2 - py1)
     if ty <= y <= by:
+        if math.hypot(x - px1, y - py1) < TAIL_EPS \
+                or math.hypot(x - px2, y - py2) < TAIL_EPS:
+            return None
         return y
     return None
 
@@ -119,6 +137,16 @@ def _seg_intersect_vert(
 # Gap half-width to cut into a box border where an edge crosses it.
 BORDER_GAP = 6  # px each side of the crossing point
 
+
+
+def _strip_zero_dy(svg: str) -> str:
+    """drawsvg wraps textPath text in `<tspan dy="0em">`. The dy
+    attribute is what renderers disagree on over rotated textPath
+    glyphs (Chrome slides the line along the path) — harmless at zero,
+    but there is no reason to emit it at all. Unwrapping leaves the
+    plain text inside the textPath: maximally renderer-compatible
+    (review round 4, the half-printed label class)."""
+    return re.sub(r'<tspan dy="0(?:\.0+)?em">([^<]*)</tspan>', r"\1", svg)
 
 
 def _compute_border_gaps(
@@ -336,6 +364,14 @@ def render(
         box_y1 = br.y - pt
         box_x2 = br.x + br.w + pr
         box_y2 = br.y + br.h + pb
+        # A label OUTSIDE the box (position top/bottom/left/right) renders
+        # past the box border: reserve its extent too, or the label is
+        # clipped by the canvas edge and the box reads as unlabelled
+        # (review round 4: the CMR offering-model label sat at y=-4).
+        if pos == 'top':           box_y1 -= LABEL_H
+        if pos == 'bottom':        box_y2 += LABEL_H
+        if pos == 'left':          box_x1 -= LABEL_H
+        if pos == 'right':         box_x2 += LABEL_H
         # Convert to SVG space and check overflow.
         svg_x1 = box_x1 + ox
         svg_y1 = box_y1 + oy
@@ -376,7 +412,7 @@ def render(
     drawing.append(edges_g)
     drawing.append(ann_g)
 
-    return drawing.as_svg()
+    return _strip_zero_dy(drawing.as_svg())
 
 
 # ---------------------------------------------------------------------------
@@ -402,6 +438,21 @@ def _add_arrowhead_defs(
         close=True,
     ))
     drawing.append_def(marker)
+    # Two-way arrows (arrow: both): the start tip must point INTO the
+    # source — auto-start-reverse mirrors the orientation at the
+    # path's start, so the two tips face each other (review round 2:
+    # both tips pointed the same way along the path).
+    marker_rev = dw.Marker(0, 0, s, s, scale=1,
+                           orient="auto-start-reverse", id="arrow-start",
+                           refX=s, refY=s / 2)
+    marker_rev.append(dw.Lines(
+        0, 0,
+        s, s / 2,
+        0, s,
+        fill=arrow_color,
+        close=True,
+    ))
+    drawing.append_def(marker_rev)
 
 
 # ---------------------------------------------------------------------------
@@ -870,17 +921,25 @@ def draw_path_label(
     fill: str,
 ) -> None:
     """The label follows the arrow (ADR-002): one textPath per wrapped
-    line on the longest leg, above the line in the text's local frame,
-    mirrored on right-to-left legs — no background mask, zero occlusion
-    by construction. Shared by the diagram and state renderers: one
-    label mechanism across view kinds (ADR-003 decision 10).
+    line, each on its own path translated perpendicular to the stroke —
+    mirrored on right-to-left horizontal legs; vertical legs read along
+    the arrow. NO dy stacking: renderers disagree on how a tspan dy
+    applies to rotated textPath glyphs (Chrome slides the line along
+    the path, dropping the glyphs that fall before the path start —
+    the "bad printer" half-printed label, review round 3). Parallel
+    paths are renderer-proof. Shared by the diagram and state
+    renderers: one label mechanism across view kinds (ADR-003
+    decision 10).
     """
     lg = label_geometry(pts, label)
     lx0, ly0, lx1, ly1 = lg.leg
     if lg.mirror:
         # Read left-to-right (or top-to-bottom) on a right-to-left leg.
         lx0, ly0, lx1, ly1 = lx1, ly1, lx0, ly0
-    label_path = dw.Path(d=_path_d([(lx0, ly0), (lx1, ly1)]))
+    dx, dy = lx1 - lx0, ly1 - ly0
+    leg = math.hypot(dx, dy) or 1.0
+    ux, uy = dx / leg, dy / leg          # reading direction
+    px, py = uy, -ux                     # the label's side of the stroke
     # The geometric anchor maps to the mirrored path's own arc length.
     # The midpoint is symmetric under mirroring.
     frac = 0.5
@@ -891,13 +950,15 @@ def draw_path_label(
         # puts the first-read column outermost (rotate-the-block).
         depth = (LABEL_DESCENT + LABEL_CLEARANCE
                 + (len(lg.lines) - 1 - i) * LABEL_LINE_H)
+        ox, oy = px * depth, py * depth
+        line_path = dw.Path(d=_path_d(
+            [(lx0 + ox, ly0 + oy), (lx1 + ox, ly1 + oy)]))
         g.append(dw.Text(
-            line, LABEL_FONT_SIZE, path=label_path,
+            line, LABEL_FONT_SIZE, path=line_path,
             text_anchor="middle",
             start_offset=round(frac * lg.leg_len, 1),
             font_family=LABEL_FONT,
             fill=fill,
-            line_offset=-(depth / LABEL_FONT_SIZE),
         ))
 
 
@@ -941,7 +1002,7 @@ def _render_edge(
     if edge.arrow in ("forward", "both"):
         path_kwargs["marker_end"] = "url(#arrow)"
     if edge.arrow in ("back", "both"):
-        path_kwargs["marker_start"] = "url(#arrow)"
+        path_kwargs["marker_start"] = "url(#arrow-start)"
     g.append(dw.Path(d=_path_d(pts), **path_kwargs))
 
     if not edge.label:

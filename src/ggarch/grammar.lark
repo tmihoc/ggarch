@@ -104,6 +104,12 @@ select_item: "nodes" ":" id_list                         -> select_nodes
            | "instances" ":" ID "[" instance_spec ("," instance_spec)* "]"  -> select_instances
            | "behaviour" ":" STRING                      -> select_behaviour
            | "participants" ":" id_list                  -> select_participants
+           | "routing" ":" ID                            -> select_routing
+           | "except" ":" edge_ref_list                  -> select_except
+           | "sizing" ":" ID                             -> select_sizing
+
+edge_ref_list: edge_ref+
+edge_ref: ID "->" ID [ "[" "type" ":" ID "]" ]               -> edge_ref
 
 instance_spec: "{" "id" ":" ID "," "label" ":" STRING "}"
 

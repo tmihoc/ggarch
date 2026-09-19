@@ -548,7 +548,12 @@ _GGARCH_JS = """\
       var el = inner.querySelector('.' + cls);
       if (el) inner.removeChild(el);
     });
+    document.documentElement.style.overflow = '';
     document.body.style.overflow = '';
+    if (openModal._scrollY != null) {
+      window.scrollTo(0, openModal._scrollY);
+      openModal._scrollY = null;
+    }
   }
   closeBtn.addEventListener('click', closeModal);
   modal.addEventListener('click', function(e) { if (e.target === modal) closeModal(); });
@@ -573,6 +578,11 @@ _GGARCH_JS = """\
       inner.appendChild(cap);
     }
     modal.classList.add('active');
+    // Remember the scroll position: hiding the body overflow reflows
+    // the page and some themes lose the offset — closing then jumped
+    // the reader to the top of the document (review round 2).
+    openModal._scrollY = window.scrollY;
+    document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
   }
 

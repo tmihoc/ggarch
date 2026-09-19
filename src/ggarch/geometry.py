@@ -103,9 +103,13 @@ def label_geometry(points, label: str, anchor_frac: float = 0.5) -> LabelGeometr
         x1, y1 = x0 + 1.0, y0
         leg_len = 1.0
     ux, uy = (x1 - x0) / leg_len, (y1 - y0) / leg_len
-    # Never upside-down: a leg running right-to-left (or bottom-to-top
-    # when vertical) carries mirrored text along a reversed path.
-    mirror = ux < 0 or (abs(ux) < 1e-9 and uy < 0)
+    # Reading direction follows the arrow (review round 1, the
+    # street-name paradigm): vertical legs read along the path
+    # direction — a downward arrow's label reads top-to-bottom, an
+    # upward one bottom-to-top. Horizontal right-to-left legs keep the
+    # LTR mirror: street names always read left-to-right, whatever
+    # direction the street runs.
+    mirror = ux < 0
     if mirror:
         ux, uy = -ux, -uy
     # Text-local "above" (SVG y grows downward): quarter turn

@@ -454,6 +454,9 @@ class _GgarchTransformer(Transformer):
             elif key == "instances":  s.instances.extend(value)
             elif key == "behaviour":  s.behaviour = value
             elif key == "participants":s.participants = value
+            elif key == "routing":    s.routing = value
+            elif key == "except":     s.except_pairs.extend(value)
+            elif key == "sizing":     s.sizing = value
         return s
 
     def select_nodes(self, id_list)        -> tuple: return ("nodes", id_list)
@@ -463,6 +466,18 @@ class _GgarchTransformer(Transformer):
     def select_expand(self, id_list)       -> tuple: return ("expand", id_list)
     def select_behaviour(self, s_token)    -> tuple: return ("behaviour", _str(s_token))
     def select_participants(self, id_list) -> tuple: return ("participants", id_list)
+
+    def select_routing(self, mode_token) -> tuple: return ("routing", _str(mode_token))
+
+    def edge_ref(self, src_token, tgt_token, *typ) -> tuple:
+        t = _str(typ[0]) if typ else ""
+        return (_str(src_token), _str(tgt_token), t)
+
+    def edge_ref_list(self, *refs) -> list: return list(refs)
+
+    def select_except(self, refs) -> tuple: return ("except", refs)
+
+    def select_sizing(self, mode_token) -> tuple: return ("sizing", _str(mode_token))
 
     def select_instances(self, type_id, *specs) -> tuple:
         tid = _str(type_id)

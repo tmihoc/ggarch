@@ -338,6 +338,11 @@ class SelectClause:
     instances: list[InstanceSpec] = field(default_factory=list)
     behaviour: str = ""    # for sequence views: which behaviour to render
     participants: list[str] = field(default_factory=list)  # optional filter
+    routing: str = ""      # "orthogonal" — declared-orthogonal views
+                           # reject diagonal legs (snap-to-grid)
+    except_pairs: list[tuple[str, str, str]] = field(default_factory=list)
+    # (source, target, type) — edges the view curates OUT (type "" = any)
+    sizing: str = ""       # "uniform" — equalize selected leaf nodes
 
 
 @dataclass

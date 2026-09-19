@@ -248,6 +248,25 @@ def _validate_select(select: SelectClause, model: Model, view_name: str) -> None
                 f"view {view_name!r}: instance type {spec.type_id!r} is not declared in model {model.name!r}",
             )
 
+    if select.routing and select.routing != "orthogonal":
+        raise ValidationError(
+            f"view {view_name!r}: unknown routing mode {select.routing!r}",
+            hint="the only declared routing mode is 'orthogonal' "
+                 "(axis-aligned legs; snap-to-grid)",
+        )
+    if select.sizing and select.sizing != "uniform":
+        raise ValidationError(
+            f"view {view_name!r}: unknown sizing mode {select.sizing!r}",
+            hint="the only declared sizing mode is 'uniform'",
+        )
+    for es, et, _ty in select.except_pairs:
+        for nid in (es, et):
+            if nid not in valid_ids:
+                raise ValidationError(
+                    f"view {view_name!r}: except edge references unknown "
+                    f"node {nid!r}",
+                )
+
     if select.behaviour:
         b = model.find_behaviour(select.behaviour)
         if b is None:

@@ -106,10 +106,19 @@ def materialize_instances(
             if pairing == "mesh":
                 # Between copies: every distinct-instance pair, never a
                 # copy with itself (full mesh -- e.g. Raft peers).
+                # `arrow: both` makes direction immaterial: one two-way
+                # arrow per unordered pair (3 Raft arrows, not 6
+                # double-headed ones).
+                seen_pairs: set = set()
                 for s in srcs:
                     for t in tgts:
                         if s.split("/", 1)[0] == t.split("/", 1)[0]:
                             continue
+                        if edge.arrow == "both":
+                            key = frozenset((s, t))
+                            if key in seen_pairs:
+                                continue
+                            seen_pairs.add(key)
                         edges.append(dataclasses.replace(edge, source=s, target=t))
             else:
                 # Both endpoints inside instanced subtrees: per-instance

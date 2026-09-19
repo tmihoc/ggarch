@@ -22,6 +22,7 @@ Constraint strictness:
 from __future__ import annotations
 
 import math
+from collections import defaultdict, deque
 
 from kiwisolver import Solver, Variable, UnsatisfiableConstraint  # type: ignore
 
@@ -155,6 +156,9 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     _add_auto_layout_pass(solver, selected, vars_by_id, diagram.select, direction_map, model)
     # Add user-declared constraints, with label-aware gap expansion.
     _add_user_constraints(solver, expanded_constraints, vars_by_id, diagram.name, model)
+    _add_uniform_sizing(solver, expanded_constraints, vars_by_id)
+    if diagram.select.sizing == "uniform":
+        _add_uniform_leaf_sizing(solver, selected, vars_by_id)
     # Solve.
     try:
         solver.updateVariables()
@@ -257,13 +261,35 @@ def _synthesize_auto_layout(
         et = next((n for n in tc if n not in ts), tc[-1])
         return es, et
 
-    # Depth by longest path along forward edges between top-level
-    # ancestors, declaration order.
+    # Depth by longest path over the whole visible DAG between
+    # top-level ancestors (0.26.1: a declaration-order one-pass collapsed
+    # chains whose head was declared first — the juju4 "Data model"
+    # monster arrangement). Kahn layering: deterministic in declaration
+    # order; cycle members (never dequeued) fall back to their
+    # processed-predecessor depths, so back edges stay floors.
+    indeg: dict[str, int] = {nid: 0 for nid in top_ids}
+    succ: dict[str, list[str]] = {nid: [] for nid in top_ids}
+    preds: dict[str, list[str]] = {nid: [] for nid in top_ids}
+    for _e, s, t in vis_edges:
+        if s == t:
+            continue
+        succ[s].append(t)
+        preds[t].append(s)
+        indeg[t] += 1
     depth: dict[str, int] = {}
-    for nid in top_ids:
-        incoming = [s for (_, s, t) in vis_edges
-                     if t == nid and s in depth]
-        depth[nid] = max((depth[s] for s in incoming), default=-1) + 1
+    queue = deque(nid for nid in top_ids if indeg[nid] == 0)
+    while queue:
+        nid = queue.popleft()
+        depth[nid] = max((depth[p] for p in preds[nid] if p in depth),
+                         default=-1) + 1
+        for t in succ[nid]:
+            indeg[t] -= 1
+            if indeg[t] == 0:
+                queue.append(t)
+    for nid in top_ids:  # cycle members (stalled queue): back-edge floors
+        if nid not in depth:
+            depth[nid] = max((depth[p] for p in preds[nid] if p in depth),
+                             default=-1) + 1
 
     # Compact depths to consecutive columns; slot by declaration order.
     used = sorted(set(depth.values()))
@@ -302,6 +328,80 @@ def _synthesize_auto_layout(
             u, v = members[min(i, j)], members[max(i, j)]
             cons.append(Constraint(kind="above", subject=u, object=v, gap=GAP))
     return cons
+
+
+def _add_uniform_sizing(
+    solver: Solver,
+    constraints: list,
+    vars_by_id: dict[str, _NodeVars],
+) -> None:
+    """Rank uniformity (Mermaid/Structurizr grade, review round 1):
+    fan members share one size (the units of a fanout are the same
+    thing — same box); align-middle rows share one width (a rank reads
+    as a unit). Required equalities at the max of the members' needs;
+    labels always fit (the widest member sets the size)."""
+    parent: dict[str, str] = {}
+
+    def find(x):
+        while parent.get(x, x) != x:
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    fan_roots: set[str] = set()
+    for c in constraints:
+        if isinstance(c, FanConstraint):
+            ms = [m for m in c.members if m in vars_by_id]
+            for i in range(len(ms) - 1):
+                union(ms[i], ms[i + 1])
+            if ms:
+                fan_roots.add(find(ms[0]))
+        elif isinstance(c, Constraint) and c.kind == "align-middle":
+            if c.subject in vars_by_id and c.object in vars_by_id:
+                union(c.subject, c.object)
+
+    groups: dict[str, list[str]] = defaultdict(list)
+    for nid in list(parent):
+        groups[find(nid)].append(nid)
+    for root, members in groups.items():
+        vs = [vars_by_id[n] for n in members]
+        if len(vs) < 2:
+            continue
+        for i in range(len(vs)):
+            for j in range(len(vs)):
+                if i != j:
+                    solver.addConstraint((vs[i].w >= vs[j].w) | "strong")
+        if root in fan_roots:
+            for i in range(len(vs)):
+                for j in range(len(vs)):
+                    if i != j:
+                        solver.addConstraint(
+                            (vs[i].h >= vs[j].h) | "strong")
+
+
+def _add_uniform_leaf_sizing(
+    solver: Solver,
+    selected: list[Node],
+    vars_by_id: dict[str, _NodeVars],
+) -> None:
+    """`sizing: uniform` (review round 2): every selected top-level
+    leaf node renders the same size — no node gets visual emphasis
+    merely because its label is longer. Containers keep their
+    content-driven size."""
+    leaves = [n for n in selected
+              if not n.children and n.id in vars_by_id]
+    for i in range(len(leaves)):
+        for j in range(len(leaves)):
+            if i == j:
+                continue
+            vi = vars_by_id[leaves[i].id]
+            vj = vars_by_id[leaves[j].id]
+            solver.addConstraint((vi.w >= vj.w) | "strong")
+            solver.addConstraint((vi.h >= vj.h) | "strong")
 
 
 # ---------------------------------------------------------------------------
@@ -573,9 +673,16 @@ def _expand_fan_constraints(
             for i in range(n - 1):
                 result.append(Constraint(kind="above", subject=members[i],
                                          object=members[i + 1], gap=spacing))
-            # -- 3. All members on the same vertical column --
+            # -- 3. All members on the same vertical column, aligned
+            # toward the anchor: a right-of fanout hangs its members'
+            # LEFT edges off the anchor's right; a left-of fan mirrors.
+            # (Centre-aligning unequal-width members forced symmetric
+            # container inflation — the empty-container defect.)
+            column_align = ("align-left" if c.direction == "right-of"
+                            else "align-right")
             for m in members:
-                result.append(Constraint(kind="align-centre", subject=m, object=members[0]))
+                result.append(Constraint(kind=column_align,
+                                         subject=m, object=members[0]))
             # -- 4. Centre group on anchor cy --
             if n % 2 == 1:
                 result.append(Constraint(kind="align-middle",
@@ -772,6 +879,17 @@ def _measure_label_reservations(
                 if nv.cx.value() <= sx:
                     continue
                 for eid, ev in ((es, vs), (et, vt)):
+                    # Separability guard: an "h" reservation between
+                    # vertically-stacked nodes (a fan column) is
+                    # unresolvable — kiwi's error minimisation would
+                    # drag the struck container's content sideways and
+                    # inflate it (the u_app2 stretch). The strike is
+                    # audited; the route owns it.
+                    if not (nv.x.value() >= ev.x.value() + ev.w.value()
+                            - _STRIKE_EPS
+                            or nv.x.value() + nv.w.value()
+                            <= ev.x.value() + _STRIKE_EPS):
+                        continue
                     gap = depth - (sx - (ev.x.value() + ev.w.value()))
                     if gap > 0:
                         out.append(("h", eid, nid, gap))
@@ -780,6 +898,13 @@ def _measure_label_reservations(
                 if nv.cy.value() >= sy:
                     continue
                 for eid, ev in ((es, vs), (et, vt)):
+                    # Separability guard (mirror of the rotated case):
+                    # only vertically-separable pairs.
+                    if not (nv.y.value() >= ev.y.value() + ev.h.value()
+                            - _STRIKE_EPS
+                            or nv.y.value() + nv.h.value()
+                            <= ev.y.value() + _STRIKE_EPS):
+                        continue
                     gap = depth - (sy - ev.y.value())
                     if gap > 0:
                         out.append(("v", nid, eid, gap))
@@ -933,25 +1058,38 @@ def _add_one_constraint(
 
     kind = c.kind
 
+    # Cardinal constraints: required inequality (ordering) PLUS a weak
+    # equality pulling the pair to the declared gap — adjacency by
+    # default (the Scrabble grid rule, review round 4). A pure
+    # inequality lets a free node drift arbitrarily far from its
+    # anchor (relation_rec sat 475px from endpoint_rec); a required
+    # equality over-determines fan members that also carry their own
+    # cardinals (kiwi raises). The weak pull holds the authored gap
+    # unless a stronger constraint (label reservations, fan planes)
+    # needs the room.
     if kind == "left-of":
         o = vars_by_id[c.object]
         gap = max(user_gap, h_min)
         solver.addConstraint((s.x2 + gap <= o.x) | "required")
+        solver.addConstraint(((o.x - s.x2) == gap) | "weak")
 
     elif kind == "right-of":
         o = vars_by_id[c.object]
         gap = max(user_gap, h_min)
         solver.addConstraint((s.x >= o.x2 + gap) | "required")
+        solver.addConstraint(((s.x - o.x2) == gap) | "weak")
 
     elif kind == "above":
         o = vars_by_id[c.object]
         gap = max(user_gap, v_min)
         solver.addConstraint((s.y2 + gap <= o.y) | "required")
+        solver.addConstraint(((o.y - s.y2) == gap) | "weak")
 
     elif kind == "below":
         o = vars_by_id[c.object]
         gap = max(user_gap, v_min)
         solver.addConstraint((s.y >= o.y2 + gap) | "required")
+        solver.addConstraint(((s.y - o.y2) == gap) | "weak")
 
     elif kind == "align-left":
         o = vars_by_id[c.object]
