@@ -447,7 +447,30 @@ projection of the structural kind.
 **Two edge families, three truth kinds.** The reader-facing surface of
 the association/interaction split is the channel grammar of ADR-004
 (rhythm = timing, arrowhead = commitment, colour = ownership — ~3
-values per channel). Associations (structural) and
+values per channel).
+
+**What each line says (plain meanings).** Each type is a kind of
+conversation between two parts of the system:
+
+| Type | The software reality | The plain story |
+|---|---|---|
+| `api` | synchronous call | "I ask you to do something and I **wait** for the answer before I continue." |
+| `control` | lifecycle commands | The same waiting conversation, about *existence*: "start", "stop", "reconfigure". Same behaviour as `api`, different subject matter — hence same pixels. |
+| `stream` | a held-open watch | "I open a line and **keep it open**; when something changes on your side, tell me." A subscription; the filled head is the commitment — replies flow. |
+| `event` | fire-and-forget | "Something happened — here is a note." The sender waits for nothing; the open head is the missing commitment. |
+| `ipc` | a local call | The same waiting call as `api`, over a socket *inside one machine* — no network involved. |
+| `data` | where something is stored | Not a conversation: a **pointer**. "The state of this process lives in that table." The arrow points where the database stores the link (FK → PK). |
+
+Multiple types in one diagram are normal and by design — real systems
+talk in several ways at once. The discipline is curation: each view
+selects which conversations its story needs (`select { edges: type ...
+}`, `except:`), not one-type-per-view. No type is sequence-only: the
+sequence's call / return / async / self are *time grammar* over the
+same conversations, and the arrowhead commitment (filled = committed,
+open = fire-and-forget) is shared between both view kinds (ADR-004
+decision 3).
+
+Associations (structural) and
 interactions (behavioral) obey different rules, so they are two
 families. The operational kind is not an edge family at all: it is a
 temporal ordering *over* edges -- behaviours traverse interaction
@@ -466,18 +489,18 @@ whether the split becomes syntactic is a spike question. Spike verdict
 (juju2): no -- the conceptual split plus `data` edges with multiplicity
 labels carried the full record spine; the families stay one syntax.
 
-**Association direction: FK vs semantic.** A foreign key is a column on
-the many side pointing at the one side -- the FK arrow always points
-child -> parent ("is part of"). Speech goes the other way: "an
-application *has* units" (parent -> child). Both are true; they answer
-different questions. A directed, labelled arrow forces a choice the
-underlying fact does not make, so association edges should be read from
-*multiplicity ends*, not arrowheads: the planned crow's-foot arrowheads
-(Phase 9) are what dissolves the direction problem -- the glyph sits on
-the many end, and either reading ("application has * units"
-left-to-right, "unit belongs to one application" right-to-left) is
-valid. Until the glyphs land, the convention is: draw in semantic
-direction, carry multiplicity in the label ("has 1..N").
+**Association direction: FK vs semantic — resolved.** A foreign key is
+a column on the many side pointing at the one side; speech goes the
+other way ("an application *has* units"). Both phrasings are the same
+fact read from opposite ends, and the wording law (SKILL.md, "Label
+wording") resolves the choice: the arrow runs **child → parent
+(FK → PK)** — the only direction the storage layer states — and the
+label reads child-first along it ("belongs to (one)"); counts are
+carried by the field badges (an `fk:` badge is exactly-one) and, where
+the view argues a count, by truth-maker-backed labels. The planned
+crow's-foot glyphs were superseded: they state both halves inline but
+drop direction and cannot locate the FK when the association is 1:1
+(ADR-004 "Data model views" reasoning in SKILL.md).
 
 **The bridge must cover operations, not just entities.** Inspecting
 juju.ggarch's edges against the schema found a middle class:
