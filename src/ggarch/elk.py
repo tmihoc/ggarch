@@ -80,6 +80,12 @@ def layout_view(diagram, model, select):
 
     nodes, edges = materialize_instances(select, model)
     sel_ids = set(select.node_ids) if select.node_ids else {n.id for n in nodes}
+    # Instanced types: the select names the type id; the materialized
+    # tree contains the stamped instance roots.
+    for spec in select.instances:
+        if spec.type_id in sel_ids:
+            sel_ids.discard(spec.type_id)
+            sel_ids.add(spec.instance_id)
     types = set(select.edge_types) if select.edge_types else None
     view_nodes = {n.id: n for n in nodes if n.id in sel_ids}
     # v1 scope: flat views only. A selected container renders its whole
