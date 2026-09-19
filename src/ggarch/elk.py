@@ -79,11 +79,15 @@ def layout_view(diagram, model, select):
     from ggarch.router import Point
 
     nodes, edges = materialize_instances(select, model)
-    if any(n.children for n in nodes):
-        return None
     sel_ids = set(select.node_ids) if select.node_ids else {n.id for n in nodes}
     types = set(select.edge_types) if select.edge_types else None
     view_nodes = {n.id: n for n in nodes if n.id in sel_ids}
+    # v1 scope: flat views only. A selected container renders its whole
+    # subtree nested, which the flat ELK graph cannot express — those
+    # views fall back to the built-in synthesizer. Containers that the
+    # view does not select (declared for other views) are irrelevant.
+    if any(n.children for n in view_nodes.values()):
+        return None
     view_edges = [e for e in edges
                   if e.source in view_nodes and e.target in view_nodes
                   and e.source != e.target
