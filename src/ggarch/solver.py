@@ -277,12 +277,9 @@ def _synthesize_auto_layout(
         et = next((n for n in tc if n not in ts), tc[-1])
         return es, et
 
-    # Depth by longest path over the whole visible DAG between
-    # top-level ancestors (0.26.1: a declaration-order one-pass collapsed
-    # chains whose head was declared first — the juju4 "Data model"
-    # monster arrangement). Kahn layering: deterministic in declaration
-    # order; cycle members (never dequeued) fall back to their
-    # processed-predecessor depths, so back edges stay floors.
+    # Forward Kahn (source depth, 0.26.1): the common scale and the
+    # cycle fallback — declaration-order one-pass for stalled members
+    # (meshes keep their declared left-to-right order).
     indeg: dict[str, int] = {nid: 0 for nid in top_ids}
     succ: dict[str, list[str]] = {nid: [] for nid in top_ids}
     preds: dict[str, list[str]] = {nid: [] for nid in top_ids}
@@ -292,27 +289,138 @@ def _synthesize_auto_layout(
         succ[s].append(t)
         preds[t].append(s)
         indeg[t] += 1
-    depth: dict[str, int] = {}
+    fdepth: dict[str, int] = {}
     queue = deque(nid for nid in top_ids if indeg[nid] == 0)
     while queue:
         nid = queue.popleft()
-        depth[nid] = max((depth[p] for p in preds[nid] if p in depth),
-                         default=-1) + 1
+        fdepth[nid] = max((fdepth[p] for p in preds[nid] if p in fdepth),
+                          default=-1) + 1
         for t in succ[nid]:
             indeg[t] -= 1
             if indeg[t] == 0:
                 queue.append(t)
     for nid in top_ids:  # cycle members (stalled queue): back-edge floors
-        if nid not in depth:
-            depth[nid] = max((depth[p] for p in preds[nid] if p in depth),
-                             default=-1) + 1
+        if nid not in fdepth:
+            fdepth[nid] = max((fdepth[p] for p in preds[nid] if p in fdepth),
+                              default=-1) + 1
+    max_fdepth = max(fdepth.values(), default=0)
 
-    # Compact depths to consecutive columns; slot by declaration order.
-    used = sorted(set(depth.values()))
-    col = {nid: used.index(d) for nid, d in depth.items()}
+    # Sugiyama layering, SINK-ANCHORED (edge-aware floor v2): rdepth is
+    # the longest path from the node to a sink (Kahn over the reversed
+    # edges); col = max_fdepth - rdepth packs dependents AGAINST their
+    # dependencies instead of scattering them into source-depth ranks —
+    # undertaker (whose only edge sweeps two columns to domain
+    # services) lands in the adjacent column, its arrow a clean
+    # horizontal. For DAG nodes this is exact; cycle members (stalled
+    # in the reversed queue — a Raft mesh) keep their declared order on
+    # the forward scale.
+    rindeg: dict[str, int] = {nid: 0 for nid in top_ids}
+    rsucc: dict[str, list[str]] = {nid: [] for nid in top_ids}
+    rpreds: dict[str, list[str]] = {nid: [] for nid in top_ids}
+    for _e, s, t in vis_edges:
+        if s == t:
+            continue
+        rsucc[t].append(s)      # reversed: dependency -> dependent
+        rpreds[s].append(t)
+        rindeg[s] += 1
+    rdepth: dict[str, int] = {}
+    queue = deque(nid for nid in top_ids if rindeg[nid] == 0)
+    while queue:
+        nid = queue.popleft()
+        rdepth[nid] = max((rdepth[p] for p in rpreds[nid] if p in rdepth),
+                          default=-1) + 1
+        for s in rsucc[nid]:
+            rindeg[s] -= 1
+            if rindeg[s] == 0:
+                queue.append(s)
+    col: dict[str, int] = {}
+    for nid in top_ids:
+        if nid in rdepth:
+            col[nid] = max_fdepth - rdepth[nid]
+    for _ in top_ids:       # stalled (cycle) members: pull to targets
+        moved = False
+        for nid in top_ids:
+            if nid in col:
+                continue
+            tcols = [col[t] - 1 for t in rpreds[nid] if t in col]
+            if tcols:
+                col[nid] = min(tcols)
+                moved = True
+        if not moved:
+            break
+    for nid in top_ids:     # still unplaced: forward scale
+        col.setdefault(nid, fdepth[nid])
+
+    # Compact to consecutive columns; then BARYCENTER row ordering
+    # (Sugiyama step 4): rows ordered by the mean position of their
+    # neighbours in the adjacent columns, alternating sweeps — the
+    # standard crossing-minimisation, so arrows stop meeting faces at
+    # arbitrary heights. Nodes without neighbours on a side keep their
+    # current slot (stable).
+    used = sorted(set(col.values()))
+    col = {nid: used.index(d) for nid, d in col.items()}
     columns: dict[int, list[str]] = {}
     for nid in top_ids:
         columns.setdefault(col[nid], []).append(nid)
+    nbrs: dict[str, list[str]] = {nid: [] for nid in top_ids}
+    for _e, s, t in vis_edges:
+        if col.get(s) != col.get(t):
+            nbrs[s].append(t)
+            nbrs[t].append(s)
+    # Boundary edges for the crossing count (adjacent columns only;
+    # multi-column spans contribute the same whatever the rows do).
+    span: dict[int, list[tuple[str, str]]] = {}
+    for _e, s, t in vis_edges:
+        if 0 <= col[s] and col[s] + 1 == col[t]:
+            span.setdefault(col[s], []).append((s, t))
+
+    def _crossings() -> int:
+        total = 0
+        for c, es in span.items():
+            left = columns.get(c, [])
+            right = columns.get(c + 1, [])
+            li = {nid: i for i, nid in enumerate(left)}
+            ri = {nid: i for i, nid in enumerate(right)}
+            pairs = [(li[s], ri[t]) for s, t in es if s in li and t in ri]
+            for i in range(len(pairs)):
+                for j in range(i + 1, len(pairs)):
+                    (a1, b1), (a2, b2) = pairs[i], pairs[j]
+                    if (a1 - a2) * (b1 - b2) < 0:
+                        total += 1
+        return total
+
+    # Alternating sweeps, keeping the FEWEST-CROSSINGS arrangement —
+    # the last sweep would otherwise oscillate (the up-sweep orders by
+    # left neighbours and undoes the down-sweep's right-neighbour
+    # ordering).
+    best_arr: dict[int, list[str]] | None = None
+    best_cross = None
+    for sweep in range(4):
+        order = range(len(used)) if sweep % 2 == 0 \
+            else range(len(used) - 1, -1, -1)
+        for c in order:
+            members = columns.get(c)
+            if not members or len(members) < 2:
+                continue
+            other = c - 1 if sweep % 2 else c + 1
+            pos = {nid: i for i, nid in enumerate(columns.get(other, []))}
+
+            def key(nid: str) -> tuple[float, int]:
+                ns = [pos[t] for t in nbrs[nid]
+                      if col.get(t) == other and t in pos]
+                if ns:
+                    mean: float = sum(ns) / len(ns)
+                else:
+                    mean = float(members.index(nid))
+                return (mean, members.index(nid))
+            columns[c] = sorted(members, key=key)
+        cr = _crossings()
+        if best_cross is None or cr < best_cross:
+            best_cross = cr
+            best_arr = {c: list(v) for c, v in columns.items()}
+    if best_arr is not None:
+        for c in list(columns):
+            columns[c] = best_arr.get(c, columns[c])
 
     GAP = 60
     cons: list[Constraint] = []
