@@ -91,3 +91,30 @@ ADR-002 (labels), ADR-003 (route vocabulary for authored/diagonal
 views), ADR-004 (edge channel grammar), ADR-005 (provenance),
 position-is-content, the audit gate. ELK is a backend behind
 `solve()`, not a new architecture.
+
+## Amendment (same day, review round): labels decide the integration shape
+
+Review round with both pipelines rendered side by side (spike preview vs
+the floor's current state) changed the integration detail:
+
+- **ELK's layering/ordering is acceptable as-is.** The reviewer judged
+  its row assignment "a reasonable option" (lease manager on the top
+  rank with primary election, its feeder, is a legitimate reading). We
+  do NOT need to import our row preferences.
+- **The label overlap the reviewer found between columns is a spacing
+  option, not a defect**: `elk.spacing.edgeNode = 48` (+
+  `edgeEdgeBetweenLayers = 40`) gives parallel routes enough room for
+  the 9px along-path labels — verified on the same view; labels render
+  horizontal on horizontal routes, riding vertical jogs rotated (the
+  ADR-002 layered-reading accepted tension, ~2-3 per view).
+- **Our label system is the keep-side of the integration**: the
+  ecosystem's static-label standard is background masks over edges
+  (banned here — ADR-002: the stroke is content; dash rhythm is
+  semantic). ggarch's contribution to an ELK-backed pipeline is exactly
+  the mask-free along-path label contract plus the semantic channel
+  grammar.
+- The hand-rolled floor remains the node-less fallback and the
+  canonical router for authored/diagonal views. The corner-anchor
+  discipline was reverted after a third measured regression on authored
+  views (1.91 -> 1.95, >1.5x 4 -> 8) — ELK supersedes the orthogonal
+  synthesis path it would have served.
