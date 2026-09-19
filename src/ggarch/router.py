@@ -960,6 +960,21 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
         model = _dc_replace(model, edges=kept)
     _, edges = materialize_instances(select, model)
 
+    # ADR-005: `records: shown` — one bridge edge per recorded node in
+    # the view (runtime → record). Synthetic view edges: the records:
+    # attribute stays model-level; the bridge is its rendering. Amber,
+    # solid, headless — the persistence axis states no call and no
+    # pointer (the pointer is the data-model view's FK→PK argument).
+    if getattr(select, "show_records", False):
+        stack = list(layout.nodes)
+        while stack:
+            n = stack.pop()
+            stack.extend(n.children)
+            if n.records and n.records != n.id \
+                    and layout.find(n.records) is not None:
+                edges.append(Edge(source=n.id, target=n.records,
+                                  type="records", arrow="none"))
+
     all_rects = _collect_rects(layout)
     anc = _ancestors_map(layout)
 

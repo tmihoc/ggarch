@@ -398,7 +398,7 @@ def render(
     nodes_g = dw.Group(id="ggarch-nodes")
     edges_g = dw.Group(id="ggarch-edges")
     ann_g   = dw.Group(id="ggarch-annotations")
-    _render_nodes(nodes_g, layout.nodes, node_styles, ox, oy, view, dark, border_gaps)
+    _render_nodes(nodes_g, layout.nodes, node_styles, ox, oy, view, dark, border_gaps, model)
     for edge in routed.edges:
         _render_edge(edges_g, edge, edge_styles, ox, oy)
 
@@ -490,14 +490,15 @@ def _render_nodes(
     view: DiagramView,
     dark: bool = False,
     border_gaps: dict | None = None,
+    model=None,
 ) -> None:
     border_gaps = border_gaps or {}
     for node in nodes:
         if node.children:
-            _render_node(g, node, node_styles, ox, oy, view, dark, border_gaps)
+            _render_node(g, node, node_styles, ox, oy, view, dark, border_gaps, model)
     for node in nodes:
         if not node.children:
-            _render_node(g, node, node_styles, ox, oy, view, dark, border_gaps)
+            _render_node(g, node, node_styles, ox, oy, view, dark, border_gaps, model)
 
 
 def _render_node(
@@ -509,6 +510,7 @@ def _render_node(
     view: DiagramView,
     dark: bool = False,
     border_gaps: dict | None = None,
+    model=None,
 ) -> None:
     style = node_styles.get(node.type, node_styles.get("default", NodeStyle()))
     r = node.rect
@@ -518,11 +520,11 @@ def _render_node(
         escaped = node.url.replace("&", "&amp;").replace('"', "&quot;")
         g.append(dw.Raw(f'<a href="{escaped}" target="_blank">'))
         _render_node_content(g, node, node_styles, ox, oy, view, dark,
-                             style, x, y, w, h, has_children, border_gaps)
+                             style, x, y, w, h, has_children, border_gaps, model)
         g.append(dw.Raw("</a>"))
     else:
         _render_node_content(g, node, node_styles, ox, oy, view, dark,
-                             style, x, y, w, h, has_children, border_gaps)
+                             style, x, y, w, h, has_children, border_gaps, model)
 
 
 def _render_node_content(
@@ -540,6 +542,7 @@ def _render_node_content(
     h: float,
     has_children: bool,
     border_gaps: dict | None = None,
+    model=None,
 ) -> None:
     """Render the visual content of a node (shape, children, badge) into g."""
     node_gaps = (border_gaps or {}).get(node.id, {})
@@ -553,14 +556,26 @@ def _render_node_content(
         _render_box(g, x, y, w, h, style, node.label, node.lifecycle,
                     is_container=has_children, border_gaps=node_gaps)
     if node.children:
-        _render_nodes(g, node.children, node_styles, ox, oy, view, dark, border_gaps)
+        _render_nodes(g, node.children, node_styles, ox, oy, view, dark, border_gaps, model)
     if node.cardinality:
         _render_cardinality_badge(g, x + w - 4, y + 4, node.cardinality)
     scope = node.properties.get("scope", "")
     if scope:
         _render_scope_chip(g, x, y, w, h, scope, dark)
-    if node.records:
-        _render_records_chip(g, x, y, w, h, node.records, dark)
+    # ADR-005: chips derive and are upward-closed — a container whose
+    # subtree records storage shows the derived chip (a pod is recorded
+    # via its agents; hand-copying chips up, and its omission failure
+    # mode, are abolished).
+    records = node.records
+    if not records:
+        stack = list(node.children)
+        while stack and not records:
+            cur = stack.pop(0)
+            records = cur.records
+            stack.extend(cur.children)
+    if records:
+        text = _derived_records_chip(records, model)
+        _render_records_chip(g, x, y, w, h, text, dark)
 
 
 def _lifecycle_stroke_dash(lifecycle: str) -> str:
@@ -915,22 +930,40 @@ def _render_scope_chip(
                      text_anchor="middle",
                      dominant_baseline="central"))
 
+def _derived_records_chip(records_id: str, model) -> str:
+    """ADR-005: the chip's text derives from the record's storage truth.
+
+    The record's DDL ground (`model:units`) is the honest answer — the
+    same string check-grounding verifies — falling back to the record's
+    label first line when ungrounded. The ggarch node id never reaches
+    the canvas: it was an author-to-author pointer, not a reader
+    signal.
+    """
+    rec = model.find_node(records_id) if records_id else None
+    if rec is None:
+        return ""
+    ground = rec.properties.get("ground", "")
+    if ground:
+        return ground
+    return (rec.label or rec.id).split("\\n", 1)[0].strip()
+
+
 def _render_records_chip(
     g: dw.Group,
     x: float, y: float, w: float, h: float,
-    records: str,
+    text: str,
     dark: bool = False,
 ) -> None:
-    """Render a small amber records pill at the bottom-left of a node."""
+    """Render a small amber records pill at the bottom-left of a node
+    (ADR-005: the text is derived — see _derived_records_chip)."""
     # Amber ties the chip to the record type grammar (amber tables).
     fill = "#D89B3A" if dark else "#C4820F"
-    text = f"rec: {records}"
-    ph, pw = 7, min(len(text) * 4.5 + 6, w * 0.8)
+    ph, pw = 10, min(len(text) * 4.8 + 8, w * 0.85)
     px = x + 3
     py = y + h - ph - 3
     g.append(dw.Rectangle(px, py, pw, ph,
                           fill=fill, stroke="none", rx=3, ry=3))
-    g.append(dw.Text(text, 6, px + pw / 2, py + ph / 2,
+    g.append(dw.Text(text, 7, px + pw / 2, py + ph / 2,
                      font_family=LABEL_FONT,
                      fill="#FFFFFF",
                      text_anchor="middle",

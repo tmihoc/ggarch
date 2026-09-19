@@ -114,6 +114,10 @@ _JUJU_LIGHT_EDGES: dict[str, EdgeStyle] = {
     "data":    EdgeStyle(stroke="#F9A825", stroke_dash=""),
     "control": EdgeStyle(stroke="#555555", stroke_dash=""),
     "ipc":     EdgeStyle(stroke="#888888", stroke_dash="2,2"),
+    # ADR-005: the records bridge (synthetic view edge — not a
+    # declarable model type): the persistence axis. Amber, solid,
+    # headless; direction belongs to the ER view's FK→PK arrows.
+    "records": EdgeStyle(stroke="#F9A825", arrowhead="none"),
 }
 
 # ---------------------------------------------------------------------------
@@ -172,6 +176,8 @@ _JUJU_DARK_EDGES: dict[str, EdgeStyle] = {
     "data":    EdgeStyle(stroke="#F9A825", stroke_dash="",    font_color="#CDD6F4"),
     "control": EdgeStyle(stroke="#AAAAAA", stroke_dash="",    font_color="#CDD6F4"),
     "ipc":     EdgeStyle(stroke="#888888", stroke_dash="2,2", font_color="#CDD6F4"),
+    "records": EdgeStyle(stroke="#F9A825", arrowhead="none",
+                         font_color="#CDD6F4"),
 }
 
 # ---------------------------------------------------------------------------

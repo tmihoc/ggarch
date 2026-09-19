@@ -457,6 +457,7 @@ class _GgarchTransformer(Transformer):
             elif key == "routing":    s.routing = value
             elif key == "except":     s.except_pairs.extend(value)
             elif key == "sizing":     s.sizing = value
+            elif key == "records":    s.show_records = value == "shown"
         return s
 
     def select_nodes(self, id_list)        -> tuple: return ("nodes", id_list)
@@ -478,6 +479,8 @@ class _GgarchTransformer(Transformer):
     def select_except(self, refs) -> tuple: return ("except", refs)
 
     def select_sizing(self, mode_token) -> tuple: return ("sizing", _str(mode_token))
+
+    def select_records(self, mode_token) -> tuple: return ("records", _str(mode_token))
 
     def select_instances(self, type_id, *specs) -> tuple:
         tid = _str(type_id)

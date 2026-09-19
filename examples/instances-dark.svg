@@ -8,6 +8,12 @@
 <marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto-start-reverse" id="arrow-start" refX="8" refY="4.0">
 <path d="M0,0 L8,4.0 L0,8 Z" fill="#AAAAAA" />
 </marker>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="arrow-open" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8" fill="none" stroke="#AAAAAA" stroke-width="1.5" />
+</marker>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto-start-reverse" id="arrow-open-start" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8" fill="none" stroke="#AAAAAA" stroke-width="1.5" />
+</marker>
 </defs>
 <rect x="0" y="0" width="761.2" height="208.0" fill="#1E1E2E" />
 <g id="ggarch-nodes">

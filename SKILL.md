@@ -139,6 +139,9 @@ id [type: TYPE, label: "Label", cardinality: one-per-unit]
 id [type: TYPE, label: "Label", scope: "cloud1/model1"]  // scope chip
 id [type: TYPE, label: "Label", abstracts: "abstract_id"]
 id [type: TYPE, label: "Label", records: "unit_rec"]  // record backing this node
+                                                      // (chip derives: DDL ground or
+                                                      // record label — never the id;
+                                                      // upward-closed to containers)
 ```
 
 Multi-line labels use `\n`:
@@ -356,6 +359,7 @@ select {
   routing: orthogonal        # axis-aligned legs only (snap-to-grid)
   sizing: uniform            # all selected leaf nodes render one size
   except: client -> cloud app -> charm [type: api]   # curate edges out
+  records: shown             # render the runtime->record bridges
 }
 ```
 
@@ -369,6 +373,12 @@ select {
   (source/target pairs, optional `[type: x]` qualifier). The model stays
   complete; each view tells the story it exists to tell. Multiple refs,
   space-separated.
+- `records: shown` — render the runtime→record **bridges** (ADR-005):
+  one synthetic edge per recorded node, amber, solid, headless (the
+  persistence axis states no call and no pointer; the pointer is the
+  data-model view's FK→PK argument). Record nodes auto-include.
+  `records:` itself stays a model attribute; the bridge is its
+  rendering.
 
 **Node selection:**
 

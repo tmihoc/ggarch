@@ -610,7 +610,10 @@ diagram "D" from "M" {
         d = f.diagrams[0]
         m = f.get_model(d.model_name)
         svg = render(route(solve(d, m), m, d.select), m, d)
-        assert "rec: unit_rec" in svg
+        # ADR-005: the chip derives from the record's storage truth —
+        # label first line when ungrounded; the node id never renders.
+        assert ">unit<" in svg
+        assert "unit_rec" not in svg
 
 
 class TestCustomEdgeTypeValidation:

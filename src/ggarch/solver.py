@@ -439,6 +439,24 @@ def _selected_nodes(
         node = _find_in_tree(mat_nodes, concrete_id)
         if node is not None:
             result.append(node)
+
+    # ADR-005: `records: shown` — a view drawing the persistence bridge
+    # needs the record node laid out too. Auto-include from the
+    # selected subtrees (the record is the bridge's far endpoint, not
+    # an editorial choice).
+    if getattr(select, "show_records", False):
+        present = {n.id for n in result}
+        for n in result:
+            stack = [n]
+            while stack:
+                cur = stack.pop()
+                stack.extend(cur.children)
+                rec = cur.records
+                if rec and rec not in present:
+                    rec_node = _find_in_tree(mat_nodes, rec)
+                    if rec_node is not None:
+                        result.append(rec_node)
+                        present.add(rec)
     return result
 
 

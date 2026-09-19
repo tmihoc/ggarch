@@ -107,6 +107,7 @@ select_item: "nodes" ":" id_list                         -> select_nodes
            | "routing" ":" ID                            -> select_routing
            | "except" ":" edge_ref_list                  -> select_except
            | "sizing" ":" ID                             -> select_sizing
+           | "records" ":" ID                            -> select_records
 
 edge_ref_list: edge_ref+
 edge_ref: ID "->" ID [ "[" "type" ":" ID "]" ]               -> edge_ref

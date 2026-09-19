@@ -347,6 +347,8 @@ class SelectClause:
     except_pairs: list[tuple[str, str, str]] = field(default_factory=list)
     # (source, target, type) — edges the view curates OUT (type "" = any)
     sizing: str = ""       # "uniform" — equalize selected leaf nodes
+    show_records: bool = False  # "records: shown" — render the runtime↔record
+                                # bridges (ADR-005; synthetic, view-level)
 
 
 @dataclass
