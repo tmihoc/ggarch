@@ -967,11 +967,16 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
     # ADR-006: an ELK-laid-out view carries its edge geometry from the
     # backend — wrap it (strips for the label contract, audit metrics
     # computed the same way as built-in routes) and skip the router.
+    # Routes are matched against the MATERIALIZED edges: instance
+    # expansion rewires endpoints (user -> bare_application becomes
+    # user -> app1/2/3), so the raw model edges don't carry the
+    # expanded endpoint ids.
     if getattr(layout, "edge_routes", None):
+        _, mat_edges = materialize_instances(select, model)
         by_id = {n.id: n for n in layout.nodes}
         routed_edges = []
         for src, tgt, pts in layout.edge_routes:
-            e = next((x for x in model.edges
+            e = next((x for x in mat_edges
                       if x.source == src and x.target == tgt), None)
             if e is None or src not in by_id or tgt not in by_id:
                 continue
