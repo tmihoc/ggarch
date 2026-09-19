@@ -344,6 +344,36 @@ def render(
     ox = MARGIN - bounds.x + left_extra
     oy = MARGIN - bounds.y + top_extra
 
+    # Routed edges extend past the node bounds — a U runs below the
+    # bottom row, a corridor-shifted leg beside its column, a label
+    # rides above the stroke. Include every routed point and label
+    # extent, or the canvas clips them (2026-09-19 review: the
+    # primary->lease U lost its bottom to the viewport).
+    for e in routed.edges:
+        for p in e.points:
+            if p.x < bounds.x:
+                expand = bounds.x - p.x
+                vw += expand; ox += expand
+            if p.y < bounds.y:
+                expand = bounds.y - p.y
+                vh += expand; oy += expand
+            if p.x > bounds.x + bounds.w:
+                vw = max(vw, p.x - bounds.x + MARGIN + left_extra)
+            if p.y > bounds.y + bounds.h:
+                vh = max(vh, p.y - bounds.y + MARGIN + top_extra)
+        if e.strip is not None and e.strip.label is not None:
+            lx, ly, lx2, ly2 = e.strip.label
+            if lx < bounds.x:
+                expand = bounds.x - lx
+                vw += expand; ox += expand
+            if ly < bounds.y:
+                expand = bounds.y - ly
+                vh += expand; oy += expand
+            if lx2 > bounds.x + bounds.w:
+                vw = max(vw, lx2 - bounds.x + MARGIN + left_extra)
+            if ly2 > bounds.y + bounds.h:
+                vh = max(vh, ly2 - bounds.y + MARGIN + top_extra)
+
     # Expand canvas so annotation boxes that extend beyond node bounds are not clipped.
     for ann in view.annotations:
         if not isinstance(ann, AnnotationBox):
