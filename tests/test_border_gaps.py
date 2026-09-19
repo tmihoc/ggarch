@@ -111,3 +111,37 @@ class TestAnnotationBoxes:
             "annotation border missing")
         assert not re.findall(r'<path[^>]*stroke="#E95420"', svg), (
             "annotation border was drawn as gap-cut segments")
+
+
+class TestTailEpsilon:
+    def test_epsilon_inside_seed_does_not_notch_the_tail(self):
+        """The 0.26.0 review defect: kiwisolver float noise puts a
+        route's start point ~1e-13 inside its own box, so the first
+        segment 'crosses' the border at t~0 and a notch is cut where no
+        port exists (endpoint_rec's spurious tail notch). A crossing
+        within epsilon of a segment endpoint is the anchor itself, not
+        a crossing."""
+        layout = SolvedLayout(nodes=[
+            SolvedNode(id="a", rect=Rect(0, 0, 100, 42)),
+            SolvedNode(id="b", rect=Rect(150, 0, 100, 42)),
+        ])
+        # Start point 1e-9 INSIDE a's right border (float noise), then
+        # out to b. The only border touch is at the tail itself.
+        e = edge("a", "b", [(99.9999999, 21), (150, 21)])
+        gaps = _compute_border_gaps(layout.nodes, [e], 0, 0)
+        assert not any(gaps.get("a", {}).values()), gaps
+
+    def test_real_port_notch_survives_the_epsilon(self):
+        """A genuine mid-segment entry still notches: the epsilon must
+        not eat real ports."""
+        layout2 = SolvedLayout(nodes=[
+            SolvedNode(id="a", rect=Rect(0, 0, 40, 30)),
+            SolvedNode(id="c", rect=Rect(100, 0, 200, 100),
+                       children=[
+                           SolvedNode(id="ch", rect=Rect(160, 30, 80, 40)),
+                       ]),
+        ])
+        e = edge("a", "ch", [(40, 15), (120, 15), (120, 50), (160, 50)])
+        gaps = _compute_border_gaps(layout2.nodes, [e], 0, 0)
+        # c's left border is crossed at y=15 (mid-segment): a port.
+        assert 15.0 in gaps.get("c", {}).get("left", []), gaps

@@ -185,3 +185,23 @@ class TestMeshPairing:
         f = parse(src)
         with pytest.raises(ValidationError):
             validate(f)
+
+    def test_mesh_with_arrow_both_collapses_to_unordered_pairs(self):
+        """`arrow: both` makes direction immaterial, so a mesh expands
+        to one two-way arrow per unordered pair (the user's HA
+        candidate: 3 two-way Raft arrows, not 6 double-headed ones)."""
+        from ggarch import solve
+        src = SRC_MESH.replace('[type: stream, label: "Raft sync", pairing: mesh]',
+                               '[type: stream, label: "Raft sync", '
+                               'pairing: mesh, arrow: both]')
+        f = parse(src); validate(f)
+        d = f.diagrams[0]
+        m = f.get_model(d.model_name)
+        rl = route(solve(d, m), m, d.select)
+        pairs = {(e.source_id, e.target_id) for e in rl.edges}
+        expected = {("c1/dql", "c2/dql"), ("c2/dql", "c3/dql"),
+                    ("c1/dql", "c3/dql")}
+        assert pairs == expected
+        assert len(pairs) == 3
+        for e in rl.edges:
+            assert e.arrow == "both"

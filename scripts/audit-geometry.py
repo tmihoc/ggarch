@@ -240,6 +240,62 @@ def audit_file(path):
                                   + (f" [{e.label}]" if e.label else ""),
                                   kind, target))
 
+        # Annotation boxes are meta elements — but their rectangles are
+        # still geometry: a box whose bounding rect overlaps a node that
+        # is not one of its members is a drawing defect (review round 2,
+        # the CMR "cross-model machinery" box swallowing endpoint_rec).
+        ann_overlaps = []
+        for ann in getattr(d, "annotations", []):
+            if not hasattr(ann, "nodes") or not hasattr(ann, "padding"):
+                continue
+            members = [nid for nid in ann.nodes if nid in rmap]
+            if not members:
+                continue
+            # Descendants of members are inside the box by containment,
+            # not by accident.
+            member_tree = set(members)
+            for m in members:
+                for nd in rects:
+                    if m in ancestors_map(solved).get(nd.id, ()):
+                        member_tree.add(nd.id)
+            pt = ann.padding_top if ann.padding_top is not None \
+                else ann.padding
+            pr = ann.padding_right if ann.padding_right is not None \
+                else ann.padding
+            pb = ann.padding_bottom if ann.padding_bottom is not None \
+                else ann.padding
+            pl = ann.padding_left if ann.padding_left is not None \
+                else ann.padding
+            bx0 = min(rmap[m].x for m in members) - pl
+            by0 = min(rmap[m].y for m in members) - pt
+            bx1 = max(rmap[m].x2 for m in members) + pr
+            by1 = max(rmap[m].y2 for m in members) + pb
+            for nd in rects:
+                if nd.id in member_tree:
+                    continue
+                r = nd.rect
+                if not (r.x2 <= bx0 + WALL_EPS or bx1 <= r.x + WALL_EPS
+                        or r.y2 <= by0 + WALL_EPS or by1 <= r.y + WALL_EPS):
+                    ann_overlaps.append(
+                        (ann.label or "<unlabelled box>", nd.id))
+
+        # Node-node overlaps: two solved rects overlapping is always a
+        # defect (authored arrangements with undeclared pairs, or floor
+        # packing) — measured so it can never hide either.
+        node_overlaps = []
+        for i in range(len(rects)):
+            for j in range(i + 1, len(rects)):
+                ra, rb = rects[i].rect, rects[j].rect
+                if not (ra.x2 <= rb.x + WALL_EPS or rb.x2 <= ra.x + WALL_EPS
+                        or ra.y2 <= rb.y + WALL_EPS or rb.y2 <= ra.y + WALL_EPS):
+                    if ra.x <= rb.x + WALL_EPS and rb.x2 <= ra.x2 + WALL_EPS \
+                            and ra.y <= rb.y + WALL_EPS and rb.y2 <= ra.y2 + WALL_EPS:
+                        continue  # containment (parent/child) is not overlap
+                    if rb.x <= ra.x + WALL_EPS and ra.x2 <= rb.x2 + WALL_EPS \
+                            and rb.y <= ra.y + WALL_EPS and ra.y2 <= rb.y2 + WALL_EPS:
+                        continue
+                    node_overlaps.append((rects[i].id, rects[j].id))
+
         report[d.name] = dict(
             n_edges=len(routed.edges),
             crossings=crossings,
@@ -252,6 +308,13 @@ def audit_file(path):
             strip_crossings=strip_crossings,
             residuals=residuals,
             turns=turns,
+            # Traceability (0.26.1): per-edge path/direct ratio and bend
+            # count — the metric class the 0.26.0 review found hiding
+            # behind green crossing metrics.
+            ratios=[e.ratio for e in routed.edges],
+            turns_list=[e.turns for e in routed.edges],
+            ann_overlaps=ann_overlaps,
+            node_overlaps=node_overlaps,
         )
     return report
 
@@ -262,6 +325,8 @@ def main():
         print(f"\n{'=' * 70}\n{path}\n{'=' * 70}")
         tc = td = tr = tns = twc = tl = tsc = tres = tt = 0
         te = tlab = 0
+        ratios_all = []
+        turns_all = []
         for view, r in report.items():
             nc = len(set(c[0] for c in r["crossings"]))
             nd = len(r["diagonals"])
@@ -276,6 +341,14 @@ def main():
             tc += nc; td += nd; tr += nr
             tns += nns; twc += nwc; tl += nl
             tsc += nsc; tres += nres; tt += r["turns"]
+            ratios_all += r["ratios"]
+            turns_all += r["turns_list"]
+            ratios = sorted(r["ratios"], reverse=True)
+            over15 = sum(1 for x in ratios if x > 1.5)
+            over2 = sum(1 for x in ratios if x > 2.0)
+            hist: dict[int, int] = {}
+            for t in r["turns_list"]:
+                hist[t] = hist.get(t, 0) + 1
             flag = "  <-- DEFECTS" if (nc or nsc or nres or nd or nns
                                        or nwc or nl) else ""
             print(f"{view}: edges={r['n_edges']} "
@@ -284,13 +357,28 @@ def main():
                   f"rotated-labels={nr}/{r['labelled']} "
                   f"node-strikes={nns} wall-crossings={nwc} "
                   f"label-clashes={nl} turns/edge="
-                  f"{r['turns'] / max(r['n_edges'], 1):.2f}{flag}")
+                  f"{r['turns'] / max(r['n_edges'], 1):.2f} "
+                  f"max-ratio={max(ratios, default=0):.2f} "
+                  f">1.5x={over15} >2x={over2} "
+                  f">2-bend={sum(1 for t in r['turns_list'] if t > 2)}"
+                  f"{flag}")
+        ratios_all.sort(reverse=True)
+        turn_hist: dict[int, int] = {}
+        for t in turns_all:
+            turn_hist[t] = turn_hist.get(t, 0) + 1
         print(f"\nTOTAL {path}: edges={te} crossing-edges={tc} "
               f"strip-crossings={tsc} residuals={tres} "
               f"diagonals={td} rotated-labels={tr}/{tlab} "
               f"node-strikes={tns} wall-crossings={twc} "
               f"label-clashes={tl} turns/edge="
               f"{tt / max(te, 1):.2f}")
+        print(f"  traceability: max-ratio="
+              f"{max(ratios_all, default=0):.2f} "
+              f"p90={ratios_all[max(0, len(ratios_all) // 10)]:.2f} "
+              f">1.5x={sum(1 for x in ratios_all if x > 1.5)} "
+              f">2x={sum(1 for x in ratios_all if x > 2)} "
+              f"turns-hist={dict(sorted(turn_hist.items()))} "
+              f">2-bend={sum(1 for t in turns_all if t > 2)}")
 
         print("\n--- detail ---")
         for view, r in report.items():
@@ -306,6 +394,10 @@ def main():
                 print(f"  LCLASH {view}: {a}  <->  {b}")
             for s0, s1, owner in r["strip_crossings"]:
                 print(f"  SCROSS {view}: {s0} -> {s1}  overlaps {owner}")
+            for a, b in r.get("node_overlaps", []):
+                print(f"  NOVER  {view}: {a}  overlaps {b}")
+            for label, nid in r.get("ann_overlaps", []):
+                print(f"  ANNOVER {view}: box [{label}]  overlaps node {nid}")
             for edge, kind, target in r["residuals"]:
                 print(f"  RESID  {view}: {edge}  through {kind} {target}")
 

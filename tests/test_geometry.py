@@ -169,3 +169,19 @@ class TestStripVsStrip:
         a = strip_for_edge([(0, 0), (100, 0)], stroke_width=1.5, arrow="forward")
         b = strip_for_edge([(100, 0), (0, 0)], stroke_width=1.5, arrow="forward")
         assert strips_overlap(a, b)
+
+
+class TestLabelDirection:
+    def test_vertical_labels_follow_the_arrow_direction(self):
+        """The street-name paradigm (review round 1): a vertical leg's
+        label reads along the arrow — a downward arrow's label reads
+        top-to-bottom (unmirrored), an upward one bottom-to-top. The
+        old rule mirrored every downward leg, so its label always read
+        against the arrow."""
+        from ggarch.geometry import label_geometry
+        down = label_geometry([(100, 40), (100, 200)], "uses (one)")
+        assert down.mirror is False
+        assert down.uy > 0  # reads top-to-bottom, with the arrow
+        up = label_geometry([(100, 200), (100, 40)], "uses (one)")
+        assert up.mirror is False
+        assert up.uy < 0    # reads bottom-to-top, with the arrow

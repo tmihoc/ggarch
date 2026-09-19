@@ -257,18 +257,31 @@ diagram "D" from "M" {
 
 
 class TestResiduals:
-    def test_detour_around_wall_is_clear(self):
-        """A wall between the endpoints: the router detours around it
-        honestly (no box explosion, no crossing) and reports no
-        residuals — a clear path always wins over a cheaper crossing."""
+    def test_wall_demands_the_u_shape(self):
+        """A wall spanning the corridor between the endpoints: straight
+        and every L are blocked, so the deliberate U (two bends, the
+        topology demanding it) routes around the wall's end — clear,
+        still within the vocabulary."""
+        src_rect = Rect(0, 0, 40, 20)
+        tgt_rect = Rect(200, 0, 40, 20)
+        wall_box = (100.0, -30.0, 140.0, 30.0)   # short wall
+        pts = route_between(src_rect, tgt_rect, [(wall_box, "wall")])
+        pts_t = [(p.x, p.y) for p in pts]
+        assert not any(seg_enters_rect(pts_t[i], pts_t[i + 1], wall_box)
+                       for i in range(len(pts_t) - 1))
+        assert len(pts_t) <= 4   # straight / L / U — never more
+
+    def test_unavoidable_wall_reports_residual_never_detours(self):
+        """A wall too tall to go around: no clear vocabulary candidate
+        exists, so the router draws the fewest-crossing route and
+        reports the residual — audited, never hidden. It does NOT
+        wander 400px for a collision-free path (the 0.26.0 defect:
+        'any collision-free path wins however absurd')."""
         src_rect = Rect(0, 0, 40, 20)
         tgt_rect = Rect(200, 0, 40, 20)
         wall_box = (100.0, -400.0, 140.0, 400.0)   # 800px tall wall
         pts = route_between(src_rect, tgt_rect, [(wall_box, "wall")])
-        assert len(pts) >= 2
-        pts_t = [(p.x, p.y) for p in pts]
-        assert not any(seg_enters_rect(pts_t[i], pts_t[i + 1], wall_box)
-                       for i in range(len(pts_t) - 1))
+        assert len(pts) == 2   # the straight pair, honest about the hit
 
     def test_clear_route_has_no_residuals(self):
         rl, _, _ = solve_and_route(SIMPLE_TWO)

@@ -807,3 +807,74 @@ diagram "D" from "M" {
         # tightly-hugging container leaves 28px top pad + half the
         # 42px child height = 49px -- a 10px wall strike.
         assert (ua.y + ua.h / 2) - pod.y >= 58, (ua.y + ua.h / 2) - pod.y
+
+
+# ---------------------------------------------------------------------------
+# Synthesized floor: longest-path layering (0.26.1, dagre-grade)
+# ---------------------------------------------------------------------------
+
+class TestAutoLayoutLayering:
+    def test_chain_layers_by_longest_path_not_declaration_order(self):
+        """The floor's depth must be the longest path over the whole
+        visible DAG, not a declaration-order one-pass: a chain whose
+        head is declared last (x -> y -> z, declared z, a... first)
+        still layers x < y < z left-to-right. Declaration-order
+        processing collapsed x and z into one column (the juju4
+        "Data model" monster-detour arrangement)."""
+        src = """\
+model "M" {
+  nodes {
+    z [type: t, label: "Z"]
+    x [type: t, label: "X"]
+    y [type: t, label: "Y"]
+  }
+  edges {
+    x -> y [type: api, label: "1"]
+    y -> z [type: api, label: "2"]
+  }
+}
+diagram "D" from "M" {
+  select { nodes: z x y }
+}
+"""
+        layout = solve_src(src)
+        rx, ry, rz = (layout.find(n).rect for n in ("x", "y", "z"))
+        assert rx.x2 <= ry.x, f"x not left of y: {rx.x2} > {ry.x}"
+        assert ry.x2 <= rz.x, f"y not left of z: {ry.x2} > {rz.x}"
+
+
+class TestFanAlignment:
+    def test_right_of_fan_left_aligns_the_column(self):
+        """A right-of fan is a fanout column hanging off the anchor's
+        right side: members share their LEFT edge (the edge facing the
+        anchor). Centre-aligning unequal-width members forced symmetric
+        container inflation — 660px of empty container in the juju3
+        "Intro: Juju unpacked" fan (0.26.1)."""
+        src = """\
+model "M" {
+  nodes {
+    ctrl [type: t, label: "Ctrl"]
+    pod [type: container, label: "B"] {
+      inner1 [type: t, label: "I1"]
+      inner2 [type: t, label: "Inner Two Long"]
+    }
+    wide [type: container, label: "W"] {
+      w1 [type: t, label: "W1"]
+      w2 [type: t, label: "W2"]
+      w3 [type: t, label: "W3"]
+    }
+  }
+  edges {
+    ctrl -> pod [type: api, label: "a"]
+    ctrl -> wide [type: api, label: "b"]
+  }
+}
+diagram "D" from "M" {
+  select { nodes: ctrl pod wide }
+  positions { fan [pod wide] right-of ctrl gap: 20 }
+}
+"""
+        layout = solve_src(src)
+        rb, rw = layout.find("pod").rect, layout.find("wide").rect
+        assert abs(rb.x - rw.x) <= 0.5, (
+            f"fan column not left-aligned: {rb.x} vs {rw.x}")

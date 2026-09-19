@@ -504,19 +504,30 @@ class TestAlongPathLabels:
         # is the topmost (furthest above the stroke), the last line
         # nearest. 0.25.4 shipped this inverted — line 0 nearest the
         # stroke, growing outward — so every multi-line label read
-        # bottom-to-top (worst in "Cross-model integration (records)",
-        # where all wrapped labels read backwards). For rotated labels
-        # the same formula gives the first-read column outermost
-        # (rotate-the-block convention).
+        # bottom-to-top. For rotated labels the same formula gives the
+        # first-read column outermost (rotate-the-block convention).
+        # Round 3: stacking is per-line PATHS translated perpendicular
+        # to the stroke, NOT tspan dy — renderers disagree on dy over
+        # rotated textPath glyphs (Chrome slides the line along the
+        # path, dropping glyphs before the path start: the half-printed
+        # "bad printer" label). The outermost line's path is offset
+        # FURTHER against the reading direction's normal than the
+        # inner one's.
         svg = pipeline(ALONG_PATH_SRC)
-        pairs = re.findall(
-            r'<tspan dy="(-?[\d.]+)em">([^<]*)</tspan>', svg)
-        assert len(pairs) == 2
-        dys = [float(p[0]) for p in pairs]
-        assert all(d < 0 for d in dys), dys
-        assert pairs[0][1] == "one two"
-        assert pairs[1][1] == "three"
-        assert dys[0] < dys[1], "first line must be the topmost"
+        texts = [t.strip() for t in re.findall(
+            r'<text[^>]*>\s*<textPath[^>]*startOffset="[\d.]+">'
+            r'(?:<tspan[^>]*>)?([^<]*?)(?:</tspan>)?\s*</textPath>', svg)]
+        assert texts[:2] == ["one two", "three"], texts
+        # Each line carries its own defs path; the first line's path
+        # sits further from the stroke by one line height (13.5px).
+        paths = re.findall(
+            r'<path d="M ([\d.-]+) ([\d.-]+) L ([\d.-]+) ([\d.-]+)" id="(d\d+)"',
+            svg)
+        assert len(paths) >= 2, paths
+        ys = sorted({float(p[1]) for p in paths
+                     if p[1] == p[3]})  # horizontal label paths (y equal)
+        assert len(ys) >= 2
+        assert abs((ys[1] - ys[0]) - 13.5) < 0.2, ys
 
     def test_right_to_left_leg_gets_mirrored_label_path(self):
         # The stroke runs right-to-left; the textPath must run
