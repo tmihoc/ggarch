@@ -464,6 +464,23 @@ def _forms(src_rect, tgt_rect, a: Point, b: Point, fs: str, ft: str,
     if perp:
         yield ([a, Point(b.x, a.y), b], 1, 1, -1)
         yield ([a, Point(a.x, b.y), b], 1, 2, -1)
+        if orthogonal:
+            # Corridor-shifted L (2026-09-19, edge-aware floor): when
+            # rows are aligned across columns (the weak align-middle),
+            # a row-diagonal edge's plain L runs along a face line and
+            # clips the intervening node's corner. Shifting the long
+            # leg into the inter-row corridor (14) — or past a same-row
+            # blocker (30, 60) — keeps it clear at the cost of the
+            # second bend, inside the vocabulary's two-bend budget.
+            for m in U_MARGINS:
+                if fs in ("top", "bottom"):
+                    sgn = 1 if fs == "bottom" else -1
+                    y = a.y + sgn * m
+                    yield ([a, Point(a.x, y), Point(b.x, y), b], 2, 4, -1)
+                else:
+                    sgn = 1 if fs == "right" else -1
+                    x = a.x + sgn * m
+                    yield ([a, Point(x, a.y), Point(x, b.y), b], 2, 4, -1)
     elif fs == ft:
         shift = bias if bias is not None else 0.0
         for mi, m in enumerate(U_MARGINS):

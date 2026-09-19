@@ -146,7 +146,7 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     # synthesize a layered layout (SPEC, "Position is content" -- the
     # floor, not the ceiling). Merged into the constraint set so the
     # label-gap pass sees the declared pairs.
-    auto_cons = _synthesize_auto_layout(diagram, selected, mat_edges)
+    auto_cons, weak_align = _synthesize_auto_layout(diagram, selected, mat_edges)
     expanded_constraints = _expand_fan_constraints(
         list(diagram.constraints) + auto_cons, solver, vars_by_id)
 
@@ -157,8 +157,24 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     # Add user-declared constraints, with label-aware gap expansion.
     _add_user_constraints(solver, expanded_constraints, vars_by_id, diagram.name, model)
     _add_uniform_sizing(solver, expanded_constraints, vars_by_id)
-    if diagram.select.sizing == "uniform":
+    if diagram.select.sizing == "uniform" or not diagram.constraints:
+        # Synthesized views get uniform leaf sizing by default — the
+        # user's standing rule (same-rank nodes render the same size;
+        # emphasis by label length is never a reason) and the floor's
+        # tidiness precondition: uniform boxes give every column
+        # aligned faces and uniform corridors.
         _add_uniform_leaf_sizing(solver, selected, vars_by_id)
+
+    # Edge-aware floor: weak cross-column alignments for the primary
+    # edges (a matching — at most one per node). Weak, added after the
+    # structural constraints, so they pull the connected ranks
+    # horizontal without ever fighting the stacking (a required
+    # align-middle here would make stacked multi-fan layouts
+    # unsatisfiable).
+    for a_id, b_id in weak_align:
+        if a_id in vars_by_id and b_id in vars_by_id:
+            va, vb = vars_by_id[a_id], vars_by_id[b_id]
+            solver.addConstraint((va.cy == vb.cy) | "weak")
     # Solve.
     try:
         solver.updateVariables()
@@ -212,7 +228,7 @@ def _synthesize_auto_layout(
     container auto-layout pass lays them out inside their parents.
     """
     if diagram.constraints:
-        return []
+        return [], []
 
     top_ids = [n.id for n in selected]
     top_set = set(top_ids)
@@ -306,28 +322,62 @@ def _synthesize_auto_layout(
             u, v = members[i], members[i + 1]
             cons.append(Constraint(kind="above", subject=u, object=v, gap=GAP))
             cons.append(Constraint(kind="align-centre", subject=u, object=v))
+
+    # Corridor budget (the edge-aware floor): a column boundary must be
+    # wide enough for every edge whose label rides through it — the
+    # label's longest line plus side pads and arrowhead clearance. A
+    # fixed 60px gap starves any corridor carrying a labelled edge
+    # (the juju4 forced strike: a 57px label in a 60px gap).
+    def _label_w(label: str) -> float:
+        if not label:
+            return 0.0
+        return max(len(ln) for ln in label.split("\\n")) * LABEL_CHAR_W
+
+    boundary_budget: dict[int, float] = {}
+    for e, ts, tt in vis_edges:
+        cs, ct = col[ts], col[tt]
+        if cs == ct:
+            continue
+        need = _label_w(e.label) + 2 * LABEL_SIDE_PAD + 24
+        lo, hi = min(cs, ct), max(cs, ct)
+        for b in range(lo, hi):
+            boundary_budget[b] = max(boundary_budget.get(b, GAP), need)
+
     # Between adjacent columns: every left-column member is left of
-    # every right-column member.
+    # every right-column member, at the boundary's budgeted corridor.
     for c in range(len(used) - 1):
+        gap = int(boundary_budget.get(c, GAP))
         for u in columns.get(c, []):
             for v in columns.get(c + 1, []):
-                cons.append(Constraint(kind="left-of", subject=u, object=v, gap=GAP))
+                cons.append(Constraint(kind="left-of", subject=u, object=v, gap=gap))
     # Every visible edge gets a directly declared pair, at its effective
     # endpoints (child-to-child edges declare their children, which the
     # containment constraints then translate into container separation).
+    weak_align: list[tuple[str, str]] = []
+    aligned: set[str] = set()
     for e, ts, tt in vis_edges:
         cs, ct = col[ts], col[tt]
         es, et = _effective(e.source, e.target)
         if cs < ct:
-            cons.append(Constraint(kind="left-of", subject=es, object=et, gap=GAP))
+            gap = int(boundary_budget.get(cs, GAP))
+            cons.append(Constraint(kind="left-of", subject=es, object=et, gap=gap))
+            if ct == cs + 1 and es not in aligned and et not in aligned:
+                # Primary-edge matching: each node carries at most one
+                # cross-column alignment, so the weak pulls never fight
+                # each other (and never the column stacking — they are
+                # weak, added after the structural constraints).
+                weak_align.append((es, et))
+                aligned.add(es)
+                aligned.add(et)
         elif cs > ct:
-            cons.append(Constraint(kind="left-of", subject=et, object=es, gap=GAP))
+            gap = int(boundary_budget.get(ct, GAP))
+            cons.append(Constraint(kind="left-of", subject=et, object=es, gap=gap))
         else:
             members = columns[cs]
             i, j = members.index(ts), members.index(tt)
             u, v = members[min(i, j)], members[max(i, j)]
             cons.append(Constraint(kind="above", subject=u, object=v, gap=GAP))
-    return cons
+    return cons, weak_align
 
 
 def _add_uniform_sizing(

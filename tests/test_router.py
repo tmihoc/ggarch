@@ -369,3 +369,51 @@ diagram "D" from "M" {
         for e in rl.edges:
             assert len(e.points) >= 2
             assert e.strip is not None
+
+
+class TestShiftedLOrthogonal:
+    """Corridor-shifted L (edge-aware floor): in declared-orthogonal
+    views with aligned rows, a row-diagonal edge's plain L runs along a
+    face line and clips the intervening node. The shifted form moves
+    the long leg into the inter-row corridor."""
+
+    SRC = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+    c [type: t, label: "C"]
+  }
+  edges {
+    a -> b [type: api, label: "one"]
+    a -> c [type: api, label: "two"]
+  }
+}
+diagram "D" from "M" {
+  select {
+    nodes: a b c
+    routing: orthogonal
+  }
+  positions {
+    a left-of b gap: 60
+    b left-of c gap: 60
+    a align-middle b
+    b align-middle c
+  }
+}
+"""
+
+    def test_blocked_plain_l_gets_shifted_form(self):
+        """With b between a and c on the same rows, a->c's plain L runs
+        along b's face line; the shifted form clears it."""
+        rl, _, _ = solve_and_route(self.SRC)
+        e = next(x for x in rl.edges if x.source_id == "a"
+                 and x.target_id == "c")
+        pts = [(round(p.x), round(p.y)) for p in e.points]
+        # the horizontal leg must not run at b's face line level
+        assert len(pts) == 4, f"expected the shifted L (2 bends), got {pts}"
+        b_node = rl.layout.find("b").rect
+        ys = [y for _, y in pts[1:3]]
+        assert all(y < b_node.y or y > b_node.y2 for y in ys), \
+            f"long leg collides with b's band: {pts}"
+        assert not e.residuals, f"residuals: {e.residuals}"
