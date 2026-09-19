@@ -37,6 +37,7 @@ class EdgeStyle:
     stroke: str = "#666666"
     stroke_width: int = 1
     stroke_dash: str = ""      # "" | "6,3" | "2,2"
+    arrowhead: str = "filled"  # filled | open | none (ADR-004 commitment)
     font_color: str = "#444444"
     font_size: int = 11
 
@@ -109,7 +110,7 @@ _JUJU_LIGHT_EDGES: dict[str, EdgeStyle] = {
     "default": EdgeStyle(stroke="#888888", stroke_dash=""),
     "api":     EdgeStyle(stroke="#555555", stroke_dash=""),
     "stream":  EdgeStyle(stroke="#555555", stroke_dash="6,3"),
-    "event":   EdgeStyle(stroke="#888888", stroke_dash="6,3"),
+    "event":   EdgeStyle(stroke="#888888", stroke_dash="6,3", arrowhead="open"),
     "data":    EdgeStyle(stroke="#F9A825", stroke_dash=""),
     "control": EdgeStyle(stroke="#555555", stroke_dash=""),
     "ipc":     EdgeStyle(stroke="#888888", stroke_dash="2,2"),
@@ -166,7 +167,8 @@ _JUJU_DARK_EDGES: dict[str, EdgeStyle] = {
     "default": EdgeStyle(stroke="#888888", stroke_dash="",    font_color="#CDD6F4"),
     "api":     EdgeStyle(stroke="#AAAAAA", stroke_dash="",    font_color="#CDD6F4"),
     "stream":  EdgeStyle(stroke="#AAAAAA", stroke_dash="6,3", font_color="#CDD6F4"),
-    "event":   EdgeStyle(stroke="#888888", stroke_dash="6,3", font_color="#CDD6F4"),
+    "event":   EdgeStyle(stroke="#888888", stroke_dash="6,3", arrowhead="open",
+                         font_color="#CDD6F4"),
     "data":    EdgeStyle(stroke="#F9A825", stroke_dash="",    font_color="#CDD6F4"),
     "control": EdgeStyle(stroke="#AAAAAA", stroke_dash="",    font_color="#CDD6F4"),
     "ipc":     EdgeStyle(stroke="#888888", stroke_dash="2,2", font_color="#CDD6F4"),
@@ -225,6 +227,7 @@ def resolve_edge_style(model_style, dark: bool = False) -> dict[str, EdgeStyle]:
             stroke=rule.stroke or existing.stroke,
             stroke_width=rule.stroke_width or existing.stroke_width,
             stroke_dash=rule.stroke_dash or existing.stroke_dash,
+            arrowhead=rule.arrowhead or existing.arrowhead,
             font_color=rule.font_color or existing.font_color,
             font_size=rule.font_size or existing.font_size,
         )

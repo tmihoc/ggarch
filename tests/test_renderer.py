@@ -585,3 +585,88 @@ class TestRoundedJoins:
         assert edge_paths
         for p in edge_paths:
             assert 'stroke-linejoin="round"' in p, p
+
+
+# ---------------------------------------------------------------------------
+# ADR-004 — the arrowhead channel (commitment)
+# ---------------------------------------------------------------------------
+
+ARROW_SRC = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+  }
+  edges {
+    a -> b [type: event, label: "notifies"]
+  }
+  style { extends: juju }
+}
+diagram "D" from "M" {
+  select { nodes: a b  edges: type event }
+  positions { a left-of b gap: 60 }
+}
+"""
+
+
+class TestArrowheadChannel:
+    """ADR-004: the terminal glyph is the commitment channel — filled
+    (committed), open (fire-and-forget), none (headless). Direction
+    (edge.arrow) is orthogonal to shape."""
+
+    def test_event_edges_render_open_heads(self):
+        """The built-in async-notification type carries the open head."""
+        svg = pipeline(ARROW_SRC)
+        assert 'marker-end="url(#arrow-open)"' in svg
+
+    def test_api_edges_keep_filled_heads(self):
+        svg = pipeline(ARROW_SRC.replace("event", "api"))
+        assert 'marker-end="url(#arrow)"' in svg
+        assert 'marker-end="url(#arrow-open)"' not in svg
+
+    def test_arrow_both_composes_with_open_head(self):
+        """Direction composes with shape: two open heads on a both-edge."""
+        svg = pipeline(ARROW_SRC.replace(
+            '[type: event, label: "notifies"]',
+            "[type: event, arrow: both]"))
+        assert 'marker-end="url(#arrow-open)"' in svg
+        assert 'marker-start="url(#arrow-open-start)"' in svg
+
+    def test_custom_type_composes_channels(self):
+        """A custom type picks its channels in the style block."""
+        src = ARROW_SRC.replace(
+            "style { extends: juju }",
+            "style {\n"
+            "    extends: juju\n"
+            '    edge notify { stroke-dash: "6,3" arrowhead: none }\n'
+            "  }").replace("type: event", "type: notify").replace(
+                "edges: type event", "edges: type notify")
+        svg = pipeline(src)
+        assert "marker-end" not in svg  # headless
+        assert 'stroke-dasharray="6,3"' in svg
+
+    def test_unknown_arrowhead_value_rejected(self):
+        """The channel is a closed enum — the preattentive limit is
+        enforced by construction."""
+        from ggarch.errors import ValidationError
+        src = ARROW_SRC.replace(
+            "style { extends: juju }",
+            "style {\n"
+            "    extends: juju\n"
+            "    edge weird { arrowhead: curly }\n"
+            "  }")
+        f = parse(src)
+        with pytest.raises(ValidationError, match="unknown\n?arrowhead|arrowhead"):
+            validate(f)
+
+    def test_dark_mode_open_head(self):
+        dark = pipeline(ARROW_SRC, dark=True)
+        assert 'marker-end="url(#arrow-open)"' in dark
+
+    def test_open_head_marker_def_drawn_unfilled(self):
+        """The open head is an unfilled chevron (shape, not fill, carries
+        the commitment distinction)."""
+        svg = pipeline(ARROW_SRC)
+        assert re.search(
+            r'<marker[^>]*id="arrow-open"[^>]*>.*?fill="none"', svg,
+            re.DOTALL)

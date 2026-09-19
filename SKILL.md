@@ -164,19 +164,37 @@ unit_pod [type: container, label: "Unit pod"] {
 
 ## Edge types
 
-| Type | Dash pattern | Meaning |
-|---|---|---|
-| `api` | solid | RPC or REST call |
-| `control` | solid | process lifecycle / drives |
-| `data` | solid | database read/write |
-| `stream` | `6,3` dashed | long-lived connection, watch |
-| `event` | `6,3` dashed | one-way async notification |
-| `ipc` | `2,2` dotted | Unix socket / in-process |
+Edge identity is three channels (ADR-004): **rhythm** (dash = timing),
+**arrowhead** (commitment: filled = the end commits, open =
+fire-and-forget, none = headless), **colour** (ownership). A reader
+learns the three channels once and reads every diagram.
+
+| Type | Rhythm | Head | Colour | Meaning |
+|---|---|---|---|---|
+| `api` | solid | filled | `#555555` | RPC or REST call |
+| `control` | solid | filled | `#555555` | process lifecycle / drives (visually = `api`, ratified) |
+| `data` | solid | filled | amber | pointer / persistence (see **Data model views**) |
+| `stream` | `6,3` | filled | `#555555` | long-lived connection, watch |
+| `event` | `6,3` | open | `#888888` | one-way async notification |
+| `ipc` | `2,2` | filled | `#888888` | Unix socket / in-process |
 
 `stream` is the most load-bearing: dashed communicates "this is a watch, not
 a direct call" to readers who would otherwise read a solid arrow as synchronous.
+`event` carries the open head: a notification commits nothing.
+
 Any other type name is custom: declare it in the style block
 (`edge <name> { ... }`, see **Node types** above) or validation fails.
+Custom types compose the declared channels:
+
+```
+edge notify { stroke-dash: "6,3" arrowhead: open }   // async family
+edge memo   { arrowhead: none }                      // headless
+```
+
+`arrowhead` is a closed enum — `filled | open | none`; anything else is
+a validation error. The per-edge `arrow:` attribute (forward / back /
+both / none) says *which ends* state the fact and composes with the
+head shape.
 
 ```
 a -> b [type: stream, label: "watches for changes on"]

@@ -453,6 +453,28 @@ def _add_arrowhead_defs(
         close=True,
     ))
     drawing.append_def(marker_rev)
+    # ADR-004: the open head — fire-and-forget (no commitment). Same
+    # size and neutral colour as the filled head; the SHAPE is the
+    # commitment channel.
+    marker_open = dw.Marker(0, 0, s, s, scale=1, orient="auto",
+                            id="arrow-open", refX=s, refY=s / 2)
+    marker_open.append(dw.Lines(
+        0, 0,
+        s, s / 2,
+        0, s,
+        fill="none", stroke=arrow_color, stroke_width=1.5, close=False,
+    ))
+    drawing.append_def(marker_open)
+    marker_open_rev = dw.Marker(0, 0, s, s, scale=1,
+                                orient="auto-start-reverse",
+                                id="arrow-open-start", refX=s, refY=s / 2)
+    marker_open_rev.append(dw.Lines(
+        0, 0,
+        s, s / 2,
+        0, s,
+        fill="none", stroke=arrow_color, stroke_width=1.5, close=False,
+    ))
+    drawing.append_def(marker_open_rev)
 
 
 # ---------------------------------------------------------------------------
@@ -999,10 +1021,14 @@ def _render_edge(
     # ADR-002: the stroke is content — one unbroken path, never split,
     # never interrupted. Dash rhythm and every edge style stay legible
     # under labelling by construction.
-    if edge.arrow in ("forward", "both"):
-        path_kwargs["marker_end"] = "url(#arrow)"
-    if edge.arrow in ("back", "both"):
-        path_kwargs["marker_start"] = "url(#arrow-start)"
+    # ADR-004: the head shape is the commitment channel, resolved per
+    # edge style; direction (edge.arrow) is orthogonal to shape.
+    suffix = "" if es.arrowhead != "open" else "-open"
+    if es.arrowhead != "none":
+        if edge.arrow in ("forward", "both"):
+            path_kwargs["marker_end"] = f"url(#arrow{suffix})"
+        if edge.arrow in ("back", "both"):
+            path_kwargs["marker_start"] = f"url(#arrow{suffix}-start)"
     g.append(dw.Path(d=_path_d(pts), **path_kwargs))
 
     if not edge.label:
