@@ -248,6 +248,29 @@ Labels are optional on `return` and on steps inside blocks.
 A `diagram` view selects nodes and edges, positions them, and optionally
 annotates. Start with a minimal select and add constraints one at a time.
 
+**View options (0.26.1):**
+
+```
+select {
+  nodes: id1 id2
+  edges: type api type control
+  routing: orthogonal        # axis-aligned legs only (snap-to-grid)
+  sizing: uniform            # all selected leaf nodes render one size
+  except: client -> cloud app -> charm [type: api]   # curate edges out
+}
+```
+
+- `routing: orthogonal` — the router rejects diagonal legs; every route
+  is straight-axis-aligned, an L, or a U. For worker-tree / dependency
+  views that read better on a grid.
+- `sizing: uniform` — no node gets visual emphasis merely because its
+  label is longer: all selected top-level leaf nodes render the same
+  size. Containers keep their content-driven size.
+- `except:` — view-level curation: drop declared edges from this view
+  (source/target pairs, optional `[type: x]` qualifier). The model stays
+  complete; each view tells the story it exists to tell. Multiple refs,
+  space-separated.
+
 **Node selection:**
 
 ```

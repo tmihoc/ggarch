@@ -1646,32 +1646,76 @@ directional, never multiplicity-bearing. Custom association types are
 declared in the style block like any other type; family membership is
 by convention, not grammar.
 
-Routing strategy (ADR-003, implemented 0.26.0): routes are
-obstacle-aware shortest paths over strips, found by search, not
-derived from endpoint geometry. A* runs over a Hanan grid (endpoint and
-obstacle rect coordinates, duplicates collapsed with a tolerance) with
-8-neighbour moves; cost = length + a fixed turn penalty K (40 px, tuned
-on the corpus through the audit's turns-per-edge report: 0.40 (juju3) /
-0.99 (juju4) bends per edge — a path bends only to clear an obstacle).
-The search chooses exit and entry faces: anchor candidates are the face
-centres, grid-line crossings on the faces, and centre +/- 6 px offsets,
-so pairs and meshes find distinct offsets emergently; field-qualified
-endpoints stay pinned — author speech outranks heuristics. The
-collision currency is the strip: path + stroke width + arrowhead caps +
-the one-sided ADR-002 label extent, measured by the shared geometry
-module (ggarch.geometry) that the router, solver, renderer and audit
-all import. Obstacles: node rects inflated by the corridor (ancestor-
-or-self of either endpoint exempt — containers their edges live in are
-passable), and earlier edges' strips (clipped near shared endpoints);
-endpoint-sharing groups route greedily after independent edges.
-Annotation boxes and regions are meta elements — never obstacles,
-never notched. No box explosion: the arrangement is fixed input; when
-no collision-free path exists the router returns the cheapest-collision
-path and reports it, and the audit prints every residual (edge,
-obstacle, blocker) — audited, never hidden. Diagonals are preserved by
-default (cost keeps them without special-casing); declared orthogonal
-routing becomes a 4-neighbour search with the same strip currency.
-Rounded joins ship as stroke-linejoin="round" (v1; fillets deferred).
+Routing strategy (ADR-003 as amended 0.26.1 — the route vocabulary):
+routes come from a fixed vocabulary — **straight -> L (one bend) -> U
+(two bends, deliberate)**. No route ever exceeds two bends; random
+multi-bend polylines are out (user position, 2026-09-18: the 0.26.0
+search wove up to 7 bends). Candidates are enumerated deterministically
+— face x ladder anchors (centre ± k*SEED_STEP, corner-inset), the
+straight line per anchor pair, both L orientations for perpendicular
+faces, the four U families for same-facing faces — and the cheapest
+clear candidate wins: cost = length + TURN_PENALTY (40 px) per bend +
+deliberate-offset anchor-reuse costs + label-strike costs. Curved lines
+are rejected as a general vocabulary: clearance on curves is not
+exactly measurable under the no-graze mandate, and the corpus defects
+never needed them (state-transition bows are a view-kind style, not
+routing; the U renders as a polyline with round joins).
+
+Hard obstacles: node rects, measured by exact segment-box distance
+(Liang-Barsky on an inflated box misses exact corner tangency) — no
+crossing, no graze; ancestor-or-self of either endpoint exempt, and
+endpoint interiors carry the audit's 0.5 px inset so a float-noise
+anchor can leave its own box. **Earlier edges' strips are NOT
+obstacles** — the 0.26.0 measured root cause was hard strips in an open
+canvas letting any collision-free path win however absurd (ratios up to
+8.8x, weaves up to 7 bends). Separation is deliberate: a reused face
+anchor costs more than a fresh ladder offset (offsets are not bends),
+so fans, meshes and anti-parallel pairs spread along shared faces
+deterministically; label strikes against nodes weigh ~two bends (a
+cheap detour or a neighbouring ladder slot beats a strike, a forced
+strike beats a monster detour) and label-vs-label overlaps weigh less
+(lesser, audited defect). Residual overlaps between unrelated edges
+are audited, never routed around — their honest fix is layout.
+Field-qualified anchors stay pinned (straight + both L orientations).
+Annotation boxes/regions are meta elements — never obstacles, never
+notched. No box explosion: the arrangement is fixed input; when no
+clear candidate exists the router draws the fewest-violation candidate
+and reports it — audited, never silent, never hidden.
+
+Legibility over space-efficiency (user, 0.26.1 review round 4): a
+layout that reads beats one that packs — the CMR grid is deliberately
+airier than a tight arrangement because the reading wins. The Scrabble
+grid discipline: rows/columns are contiguous runs; satellites stack in
+their anchor's column; fan leaves assimilate into the anchor's band;
+arrows prefer top-down and left-right; every edge should be a one-cell
+straight (a U or long L is the signal the cells are wrong).
+
+Layout-first (the 0.26.1 lesson, promoted by the auto-layout steer):
+the shortest honest arrow usually comes from the arrangement, not the
+router. The synthesized floor layers by longest-path depth over the
+whole visible DAG (Kahn, deterministic; cycle members stall into
+back-edge floors) — a declaration-order one-pass had collapsed chains
+whose head was declared first and manufactured the juju4 "Data model"
+5.36x monster. Fan columns align toward their anchor (a right-of fan
+shares its LEFT edge; centre-aligning unequal members inflated
+containers symmetrically). Auto-layout quality targets dagre/Mermaid
+grade; position stays content and always overrides it.
+
+View options (0.26.1, review-driven): `routing: orthogonal` rejects
+diagonal legs for views that read on a grid (worker trees); `sizing:
+uniform` renders every selected top-level leaf node at one size (no
+emphasis by label length — whether uniform sizing should be the DEFAULT
+is an open question); `except: a -> b [type: x]` curates edges out of a
+view — the model stays complete, each view tells the story it exists to
+tell (the corollary: multiple arrow kinds on one path are sequence
+material, not topology material). Anchor policy: straight edges take
+fan-distributed or pair-offset anchors; deliberate forms (L/U) anchor
+at face centres, offsets only for dodging blocked centres; two-way
+arrows carry mirrored tips (auto-start-reverse); vertical labels read
+along the arrow's direction, horizontal ones always left-to-right (the
+street-name paradigm). Audit channels ANNOVER (annotation bounding box
+overlapping a non-member node) and NOVER (two node rects overlapping)
+keep both defect classes visible.
 
 Label placement: ADR-002, implemented 0.25.4 — labels ride the longest
   leg on an SVG textPath, above the line in the text's local frame,
@@ -1753,13 +1797,49 @@ defect rates by hand-compensating for the same root causes:
    node strikes 3/4 -> 1/3. New audit metrics: strip crossings
    (8/16, mostly chain/fan wedges just beyond the shared-endpoint hug
    allowance), router-reported residuals (2/14) and turns per edge.
-   Known issue, recorded: juju3 rotated 31 vs the 30 baseline — the
-   +2 rotated labels are the direct price of zero crossings (the
-   u_app3 "watches" detour over the app columns) and emergent pair
-   offsets (object_store's offset entry onto lease_manager); one
-   rotated label was recovered elsewhere (endpoint_rec "belongs to").
-   The staged auto-flip decision (rotated as its metric) and the
-   edge-aware floor own the follow-up.
+
+   **0.26.0 POST-RELEASE USER REVIEW (same day):** the audit was green
+   and the routing still wrong — a TRACEABILITY regression the crossing
+   metrics could not see: monster detours (path/direct up to 8.8x:
+   juju3 relation_rec->endpoint_rec 525 px for a 60 px direct), weaves
+   up to 7 bends, a spurious tail notch (kiwisolver float noise put a
+   seed ~1e-13 inside its box so the tail segment "crossed" its own
+   border), near-corner 45° grazing entries. Root cause (measured):
+   strips as HARD obstacles in an open canvas — any collision-free path
+   wins however absurd. User verdict: short, straight, traceable arrows
+   beat a zero strip-graze count; node crossings must STAY at zero;
+   soft strips (penalized grazes) REJECTED. Owned by the 0.26.1
+   amendment.
+
+   **0.26.1 verdict (route vocabulary):** the vocabulary replaced the
+   search. Measured: juju3 crossing-edges 0, node-strikes 0,
+   max-ratio 1.86 (was 8.76), >2x 0 (was 5), >2-bend 0 (was 5),
+   turns/edge 0.17; juju4 crossing-edges 0 (was 1), node-strikes 1
+   (was 3, the forced strike in the tightest auto-layout corridor —
+   audited), max-ratio 2.06 (was 5.36), >2x 1 (was 8), >2-bend 0 (was
+   15), turns/edge 0.39. The audit gained the traceability block
+   (per-edge path/direct ratio distribution, max/p90, >1.5x, >2x,
+   turns histogram, >2-bend count) so this class can never hide again.
+   Known recorded tensions, not hidden: strip crossings (15/26) and
+   residuals (14/26) are now edge-over-edge overlaps — the honest cost
+   of retiring hard strips; their fix is layout, not bends. juju3
+   rotated labels 36 vs the 31 of 0.26.0 and the 30 baseline: the
+   labels now ride short steep fan diagonals the old detour legs hid;
+   that is the auto-flip metric firing on content geometry (step 3
+   owns it). juju4 strikes 1: the floor's 60 px column gap cannot
+   carry a 57 px diagonal label — the corridor-budget floor item owns
+   it. Tail notch: fixed (endpoint-epsilon crossings are anchors, not
+   crossings). Model edits (user-reviewed): juju3 "Data model (full
+   spine)" credential_rec moved below controller_rec (the top row
+   could not hold it left of charm_rec — the undeclared pair
+   overlapped ~100 px); HA view reworked per the user's example —
+   controllers TB, 3 two-way arrows (arrow: both collapses the mesh
+   to unordered pairs; grounded: every replica calls every other via
+   elections and leader->follower replication; ground: pointer cites
+   controller_node's dqlite registration), c1<->c3 the deliberate U
+   around the stack; juju3 "Intro: Juju unpacked" fan left-aligned
+   (fan columns align toward their anchor). Sequences byte-identical
+   (sequence_renderer.py untouched; no shared inputs changed).
 
 ---
 

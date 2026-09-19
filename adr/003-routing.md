@@ -272,3 +272,57 @@ not guessed.
    (recommendation, adopted). One attribute, zero geometry,
    sub-pixel corners; true fillets only if the corpus still reads
    harsh after the acceptance bar. Recorded as decision 9.
+
+---
+
+## Amendment 0.26.1 (2026-09-18, same day) — the route vocabulary
+
+The post-release user review measured a TRACEABILITY regression the
+acceptance bar could not see: monster detours (path/direct up to 8.8x),
+weaves up to 7 bends, a spurious tail notch, near-corner grazing
+entries. Root cause (measured, per edge, both twins): **decisions 1-2
+made earlier edges' strips HARD obstacles in an open canvas, so any
+collision-free path won however absurd.** The user's positions
+supersede parts of this ADR:
+
+1. **The route vocabulary replaces the search** (supersedes decisions
+   1, 2 and 5's mechanism; keeps the K=40 exchange rate and decision
+   6's diagonal stance): straight -> L (one bend) -> U (two bends,
+   deliberate). No route exceeds two bends. Candidates are enumerated
+   deterministically (face x ladder anchors with corner insets); the
+   cheapest CLEAR candidate wins: cost = length + 40/bend + anchor
+   reuse + label-strike costs. Curved lines are rejected as the
+   general vocabulary (clearance on curves is not exactly measurable;
+   the corpus defects never needed them). A U exists only where
+   straight and L are node-blocked — "a deliberate shape where
+   topology demands it" (e.g. node 1 -> node 3 around a TB stack).
+2. **Node rects are the only hard obstacle** (supersedes the strip
+   currency of decision 3): no crossing, no graze — exact segment-box
+   distance, corner-tangency-safe. Annotation boxes/regions stay meta
+   (decision 4 stands). Field-qualified anchors stay pinned.
+3. **Soft strips / penalized grazes are REJECTED** (user position).
+   Separation is deliberate offsets: reused face anchors cost more
+   than a fresh ladder slot ("offsets are not bends"), so fans, meshes
+   and anti-parallel pairs spread deterministically. Residual
+   edge-over-edge overlaps are audited, never routed around; their fix
+   is layout.
+4. **No grazes and no node crossings** (user position): the audit's
+   traceability block (per-edge path/direct ratio, turns histogram,
+   >2-bend count) makes the class measurable; crossing-edges stayed at
+   zero and node strikes fell to 0/1.
+5. **Layout-first**: the shortest honest arrow usually comes from the
+   arrangement. The floor now layers by longest-path depth over the
+   whole visible DAG (dagre-grade; a declaration-order one-pass had
+   manufactured the juju4 "Data model" 5.36x monster), and fan columns
+   align toward their anchor (centre-aligning unequal members inflated
+   containers symmetrically). Auto-layout targets dagre/Mermaid
+   quality; position stays content.
+6. **Tail-notch epsilon**: a border crossing within epsilon of a
+   segment endpoint is the anchor itself, not a crossing (the
+   kiwisolver ~1e-13-inside seed no longer cuts a spurious notch).
+
+Measured (0.26.1): juju3 max-ratio 8.76 -> 1.86, >2-bend 5 -> 0,
+strikes 1 -> 0; juju4 max-ratio 5.36 -> 2.06, >2-bend 15 -> 0, strikes
+3 -> 1 (forced, audited); crossing-edges 0/0; sequences byte-identical.
+The strip-crossing/residual counts are now edge-over-edge overlaps —
+audited facts of retiring hard strips, owned by layout.
