@@ -89,8 +89,21 @@ class _NodeVars:
 def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     """Solve layout for diagram view and return a SolvedLayout.
 
+    When GGARCH_LAYOUT=elk and the ELK runtime is available, views
+    without declared positions lay out with ELK Layered (ADR-006) —
+    positions and edge routes from the backend; the built-in floor
+    below is the fallback (and serves every authored view).
+
     Raises ValidationError if user constraints are unsatisfiable.
     """
+    from ggarch import elk as _elk
+    if not diagram.constraints and _elk.available():
+        result = _elk.layout_view(diagram, model, diagram.select)
+        if result is not None:
+            layout, routes = result
+            layout.edge_routes = routes
+            return layout
+
     # Materialize instances (stamped subtrees) before selection; the
     # router performs the same expansion via ggarch.instances.
     mat_nodes, mat_edges = materialize_instances(diagram.select, model)

@@ -964,6 +964,29 @@ def _route_order(items):
 
 def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
     """Compute routed edges for all model edges whose endpoints are in layout."""
+    # ADR-006: an ELK-laid-out view carries its edge geometry from the
+    # backend — wrap it (strips for the label contract, audit metrics
+    # computed the same way as built-in routes) and skip the router.
+    if getattr(layout, "edge_routes", None):
+        by_id = {n.id: n for n in layout.nodes}
+        routed_edges = []
+        for src, tgt, pts in layout.edge_routes:
+            e = next((x for x in model.edges
+                      if x.source == src and x.target == tgt), None)
+            if e is None or src not in by_id or tgt not in by_id:
+                continue
+            strip = _edge_strip(pts, e)
+            plen = sum(pts[i].distance_to(pts[i + 1])
+                       for i in range(len(pts) - 1))
+            direct = _border_distance(by_id[src].rect, by_id[tgt].rect)
+            routed_edges.append(RoutedEdge(
+                source_id=src, target_id=tgt, label=e.label,
+                edge_type=e.type, style=e.style if e.style else _default_style(e.type),
+                arrow=e.arrow, url=e.url, points=pts,
+                turns=_count_turns([(p.x, p.y) for p in pts]), residuals=[],
+                direct=direct, ratio=plen / max(direct, 1.0), strip=strip))
+        return RoutedLayout(layout=layout, edges=routed_edges)
+
     clear = ROUTE_STROKE_W / 2 + STRIP_PAD
 
     # Materialized edges: instanced types are stamped out (subtrees +
