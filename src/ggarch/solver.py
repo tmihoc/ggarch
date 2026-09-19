@@ -462,21 +462,24 @@ def _synthesize_auto_layout(
     # endpoints (child-to-child edges declare their children, which the
     # containment constraints then translate into container separation).
     weak_align: list[tuple[str, str]] = []
-    aligned: set[str] = set()
+    seen_pairs: set[tuple[str, str]] = set()
     for e, ts, tt in vis_edges:
         cs, ct = col[ts], col[tt]
         es, et = _effective(e.source, e.target)
         if cs < ct:
             gap = int(boundary_budget.get(cs, GAP))
             cons.append(Constraint(kind="left-of", subject=es, object=et, gap=gap))
-            if ct == cs + 1 and es not in aligned and et not in aligned:
-                # Primary-edge matching: each node carries at most one
-                # cross-column alignment, so the weak pulls never fight
-                # each other (and never the column stacking — they are
-                # weak, added after the structural constraints).
+            if ct == cs + 1 and (es, et) not in seen_pairs:
+                # Sugiyama coordinate assignment: EVERY adjacent-column
+                # edge weakly pulls its two endpoints to the same
+                # height. Weak constraints cannot conflict-raise, so a
+                # node with several feeders settles at their mean — the
+                # solver computes the barycenter coordinates (the phase
+                # we skipped: db_accessor floated to the top row while
+                # its feeders sat in rows 2-3; http_server->api_server
+                # bent around a one-row offset with nothing blocking).
                 weak_align.append((es, et))
-                aligned.add(es)
-                aligned.add(et)
+                seen_pairs.add((es, et))
         elif cs > ct:
             gap = int(boundary_budget.get(ct, GAP))
             cons.append(Constraint(kind="left-of", subject=et, object=es, gap=gap))
