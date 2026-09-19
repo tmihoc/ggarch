@@ -444,7 +444,10 @@ semantic footing: each view kind is the canonical home of one truth
 kind. A data-model view is not a rival drawing of the system; it is the
 projection of the structural kind.
 
-**Two edge families, three truth kinds.** Associations (structural) and
+**Two edge families, three truth kinds.** The reader-facing surface of
+the association/interaction split is the channel grammar of ADR-004
+(rhythm = timing, arrowhead = commitment, colour = ownership — ~3
+values per channel). Associations (structural) and
 interactions (behavioral) obey different rules, so they are two
 families. The operational kind is not an edge family at all: it is a
 temporal ordering *over* edges -- behaviours traverse interaction
@@ -1558,8 +1561,13 @@ Node attributes:
   id while the concrete node is declared. See capability 10.
 - `records: "unit_rec"` -- id of the record node that backs this runtime
   node (its persistence face). Validated: the target must be a declared
-  `record`-type node. Rendered as an amber `rec: <id>` chip at the node's
-  bottom-left. Implemented in 0.21.0; see "Runtime/persistence duality".
+  `record`-type node. Rendered as an amber chip carrying the record's
+  DDL ground (check-grounding-verified; the record's label when
+  ungrounded) at the node's bottom-left -- derived, never the ggarch
+  id (ADR-005). Upward-closed: containers inherit the chip from their
+  subtree. A view can draw the runtime→record bridge with
+  `records: shown` (amber, headless). Implemented in 0.21.0; chips
+  derived per ADR-005; see "Runtime/persistence duality".
 
 Nodes are pure model declarations -- no position, no edges. Containment is a
 visual grouping hint; it does not imply edges or constraint priority.
