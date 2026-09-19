@@ -13,3 +13,4 @@ _build/
 assets/*.svg
 !assets/ggarch-demo.gif
 HANDOFF.md
+SESSIONS.md
