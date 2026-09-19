@@ -88,6 +88,10 @@ HINT_MISS_COST = 18.0    # px — ignoring a fan-slot / pair-bias anchor
                          # anchor points and parallel pair strokes; a
                          # clear hinted route beats an unhinted one
                          # unless the hinted geometry is blocked
+PORT_GAP      = 24.0   # px — max spacing between fan ports on one
+                         # face: wide enough that multiple
+                         # arrowheads read as deliberate ports,
+                         # not jitter (2026-09-19 review)
 PAIR_BIAS     = 6.0      # px — the first edge of an anti-parallel pair
                          # biases this far off the face centre; its
                          # reverse mirrors to −bias: two parallel
@@ -1041,7 +1045,7 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
         lo, hi = ((rect.y, rect.y + rect.h) if face in ("right", "left")
                   else (rect.x, rect.x + rect.w))
         usable = hi - lo - 2 * SEED_INSET
-        spacing = min(2 * SEED_STEP, usable / (len(members) - 1)) \
+        spacing = min(PORT_GAP, usable / (len(members) - 1)) \
             if len(members) > 1 else 0.0
         center = (lo + hi) / 2.0
         key = (lambda m: m[2].rect.cy if side == "src" and face in
