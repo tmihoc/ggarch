@@ -5,6 +5,9 @@
 <marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="arrow" refX="8" refY="4.0">
 <path d="M0,0 L8,4.0 L0,8 Z" fill="#555555" />
 </marker>
+<marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto-start-reverse" id="arrow-start" refX="8" refY="4.0">
+<path d="M0,0 L8,4.0 L0,8 Z" fill="#555555" />
+</marker>
 </defs>
 <rect x="0" y="0" width="698.4000000000001" height="126.0" fill="#FFFFFF" />
 <g id="ggarch-nodes">
@@ -22,19 +25,15 @@
 <text x="86.4" y="63.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#5A2800" text-anchor="middle" dominant-baseline="central">Controller pod</text>
 </g>
 <g id="ggarch-edges">
-<path d="M 152.8 63.0 L 232.8 63.0" fill="none" stroke="#555555" stroke-width="1" stroke-dasharray="6,3" marker-end="url(#arrow)" />
-<path d="M 352.8 69.0 L 372.8 69.0" fill="none" stroke="#555555" stroke-width="1" marker-end="url(#arrow)" />
-<path d="M 372.8 69.0 L 352.8 69.0" fill="none" stroke="#888888" stroke-width="1" stroke-dasharray="2,2" marker-end="url(#arrow)" />
-<path d="M 452.8 69.0 L 472.8 69.0" fill="none" stroke="#555555" stroke-width="1" marker-end="url(#arrow)" />
-<path d="M 552.8 69.0 L 572.8 69.0" fill="none" stroke="#555555" stroke-width="1" marker-end="url(#arrow)" />
+<path d="M 152.8 63.0 L 232.8 63.0" fill="none" stroke="#555555" stroke-width="1" stroke-linejoin="round" stroke-dasharray="6,3" marker-end="url(#arrow)" />
+<path d="M 352.8 69.0 L 372.8 69.0" fill="none" stroke="#555555" stroke-width="1" stroke-linejoin="round" marker-end="url(#arrow)" />
+<path d="M 372.8 63.0 L 352.8 63.0" fill="none" stroke="#888888" stroke-width="1" stroke-linejoin="round" stroke-dasharray="2,2" marker-end="url(#arrow)" />
+<path d="M 452.8 69.0 L 472.8 69.0" fill="none" stroke="#555555" stroke-width="1" stroke-linejoin="round" marker-end="url(#arrow)" />
+<path d="M 552.8 69.0 L 572.8 69.0" fill="none" stroke="#555555" stroke-width="1" stroke-linejoin="round" marker-end="url(#arrow)" />
 </g>
 <g id="ggarch-annotations">
 <text x="86.4" y="4.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#555555" text-anchor="middle" dominant-baseline="auto">collapsed — context only</text>
-<path d="M238.8,38.0 L462.8,38.0" stroke="#E95420" stroke-width="1" fill="none" stroke-dasharray="6,4" />
-<path d="M238.8,100.0 L462.8,100.0" stroke="#E95420" stroke-width="1" fill="none" stroke-dasharray="6,4" />
-<path d="M238.8,38.0 L238.8,100.0" stroke="#E95420" stroke-width="1" fill="none" stroke-dasharray="6,4" />
-<path d="M462.8,38.0 L462.8,63.0" stroke="#E95420" stroke-width="1" fill="none" stroke-dasharray="6,4" />
-<path d="M462.8,75.0 L462.8,100.0" stroke="#E95420" stroke-width="1" fill="none" stroke-dasharray="6,4" />
-<text x="350.8" y="52.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="middle" dominant-baseline="central">charm control loop</text>
+<rect x="238.8" y="38.0" width="224.0" height="62.0" fill="none" stroke="#E95420" stroke-width="1" rx="6" ry="6" stroke-dasharray="6,4" />
+<text x="350.8" y="24.0" font-size="11" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#E95420" text-anchor="middle" dominant-baseline="central">charm control loop</text>
 </g>
 </svg>
