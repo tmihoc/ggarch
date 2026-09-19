@@ -188,6 +188,87 @@ between-copies wiring. See **Instances** below.
 
 ---
 
+## Label wording
+
+An edge label has two flows to respect: the arrow's (geometry) and the
+sentence's (semantics). Both follow one taste: **flip the least thing
+that restores flow; never let two channels argue.**
+
+1. **Alignment.** The label's subject is the arrow's source; its
+   object is the target. `unit -> application: "belongs to"` reads
+   with the arrowhead. The same fact phrased against an unchanged
+   arrow ("application has units" on a unit->application edge) is the
+   passive voice -- the reading sense runs counter to the arrow. Fix
+   the wording, not the arrow: converse phrasing *with* a flipped
+   arrow is a different fact, not a paraphrase.
+2. **Composition.** Where a view argues a chain, keep it one directed
+   path; each label's object becomes the next label's subject
+   ("a relation has 2 endpoints; each belongs to one application").
+   Chain direction is the view's argument.
+3. **Menu honesty.** Prefer idiomatic aligned verbs. When the verb
+   menu has no idiomatic aligned phrase ("belongs to"), the awkward
+   aligned one beats the natural counter-flowing one.
+4. **Counts don't travel.** A multiplicity quantifies the target set
+   per subject ("each application has 0..N units"). Rephrase to the
+   converse and you change the quantifier's domain: swap the count to
+   the other half or drop it -- never carry it across. One half per
+   label by default; a full-ratio parenthetical (subject-side first:
+   "1..N" becomes "N..1" when the phrase flips) only when the view
+   needs both halves, the verb underdetermines, or the count is the
+   message.
+5. **Truth-makers.** Every number carries a witness: the FK-stored
+   half where a schema governs; `0..N` as the unwitnessed honest
+   default; a positive minimum requires a named invariant
+   (subordinate applications have zero units until a relation acquires
+   one -- `1..N` on application->unit is false, not merely unproven).
+6. **Directionless phrasing.** The arrowhead carries all direction;
+   the label names the relationship ("api", "watch", "belongs to").
+   Direction-bearing wording is a smell: it usually means you wanted
+   two edges, or the arrow points the wrong way.
+
+Two sub-policies:
+
+- The parenthetical doubles as the collective/distributive marker.
+  Counts read distributively over the subject ("each application
+  has..."); a total over internal structure says so:
+  `"has 2 (one per side)"`.
+- Mixing exact words and ranges is policy, not drift: exact small
+  counts as words ("(one)", "2"), unbounded as ranges ("0..N").
+
+On labels and length: **labels name, annotations explain.** If edge
+text stops fitting its leg, the model wants an annotation (box,
+callout), not a longer label.
+
+### Data model views: where the pointers live
+
+An association is non-directional; a relational schema is not. The DDL
+stores exactly one directed fact per association: **which column holds
+the pointer** (child table's FK column → parent table's PK). A Data
+model view is a portrait of that fact -- nothing more, nothing less.
+
+- Arrows run FK → PK: the only direction the storage layer states.
+  Labels align to that arrow, child-first ("belongs to").
+- **Field badges are the count witnesses.** `fk:` (non-null) asserts
+  "exactly one" on the child half; `?` widens it to 0..1. The parent
+  half (0..N) is derivable and is never drawn. Edge-label counts
+  appear only when the view argues a count (a junction chain, say) --
+  bare verbs are the default and are compliant.
+- **Every FK column is drawn exactly once.** One column has one FK
+  target; two arrows from one column assert a schema-impossible
+  reference. The validator enforces this (see Troubleshooting:
+  "originates N data edges"). An M:N is drawn as its junction: both
+  FK columns, each with its own arrow.
+- Full truth is the model's job (grounded to the DDL), never one
+  view's. A view asserts the half its angle argues; the shared model
+  holds the association itself.
+
+Crow's-foot notation states both halves inline but drops direction
+and cannot locate the FK when the association is 1:1. Drawing the
+pointer wins for a grounded tool: it is the only half with a
+truth-maker.
+
+---
+
 ## Writing a diagram: step by step
 
 ### 1. Identify the nodes
@@ -725,6 +806,16 @@ node declared in the model. Check for typos; ids are case-sensitive.
 
 **"Duplicate id"** -- two nodes share the same id. Each id must be unique
 within a model.
+
+**"fk field ... originates N data edges; exactly 1 expected"** -- a
+record's `fk:` column has no arrow (N=0: the pointer is hidden) or
+several (N>1: one column cannot have two FK targets). Every FK column
+is drawn exactly once; see **Data model views** above.
+
+**"data edge ... starts at field ... not marked fk"** -- a data edge is
+anchored at a plain field, asserting a pointer with no storage. Mark
+the column `fk: true`, or anchor the edge at the node (unqualified) if
+no column stores it.
 
 **Constraint conflict / solver error** -- two position constraints contradict
 each other (e.g. `a left-of b` and `b left-of a` with no room to satisfy
