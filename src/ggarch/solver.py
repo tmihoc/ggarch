@@ -208,7 +208,8 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     _apply_label_contract(solver, diagram, selected, mat_edges, vars_by_id)
 
     # Read results back.
-    return _build_layout(selected, vars_by_id, model, diagram.select)
+    return _build_layout(selected, vars_by_id, model, diagram.select,
+                         diagram.constraints)
 
 # ---------------------------------------------------------------------------
 # View auto-layout
@@ -1477,6 +1478,7 @@ def _build_layout(
     vars_by_id: dict[str, _NodeVars],
     model: Model,
     select: SelectClause,
+    constraints: list | None = None,
 ) -> SolvedLayout:
     solved_nodes = [
         _build_solved_node(node, vars_by_id, model, select)
@@ -1493,7 +1495,26 @@ def _build_layout(
     else:
         bounds = Rect(0, 0, 0, 0)
 
-    return SolvedLayout(nodes=solved_nodes, bounds=bounds)
+    # Declared fan faces: for each materialized edge under a
+    # FanConstraint, the (source_face, target_face) the fan's direction
+    # declares — "above" means the anchor's arrows leave north and
+    # arrive on the members' south faces, whatever the fan's spread
+    # does to the centre-to-centre geometry. The router honours these
+    # over its geometric class (measured: a wide uniform fan above
+    # misread as inter-column flow and the arrows left west/east).
+    fan_faces: dict[tuple[str, str], tuple[str, str]] = {}
+    _FACE_OF = {"above": ("top", "bottom"), "below": ("bottom", "top"),
+                "left-of": ("left", "right"), "right-of": ("right", "left")}
+    for c in constraints or []:
+        if not isinstance(c, FanConstraint):
+            continue
+        anchor_face, member_face = _FACE_OF[c.direction]
+        for m in c.members:
+            fan_faces[(c.anchor, m)] = (anchor_face, member_face)
+            fan_faces[(m, c.anchor)] = (member_face, anchor_face)
+
+    return SolvedLayout(nodes=solved_nodes, bounds=bounds,
+                        fan_faces=fan_faces)
 
 
 def _build_solved_node(

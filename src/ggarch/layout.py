@@ -77,6 +77,15 @@ class SolvedLayout:
     nodes: list[SolvedNode] = field(default_factory=list)
     # Total bounding box of the diagram (for SVG viewBox).
     bounds: Rect = field(default_factory=lambda: Rect(0, 0, 0, 0))
+    # Declared fan faces (ADR-007 salience of arrangement): for each
+    # materialized edge under a FanConstraint, (source_face,
+    # target_face) from the fan's declared direction — "fan above"
+    # means the anchor's arrows leave NORTH and arrive on the members'
+    # south faces, however wide the fan spreads. The router honours
+    # this over its centre-delta geometry class, which misreads a wide
+    # fan as inter-column flow (measured on the Juju enters fan).
+    fan_faces: dict[tuple[str, str], tuple[str, str]] = field(
+        default_factory=dict)
 
     def find(self, node_id: str) -> SolvedNode | None:
         for n in self.nodes:
