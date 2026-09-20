@@ -319,8 +319,9 @@ def audit_file(path):
     return report
 
 
-def main():
-    for path in sys.argv[1:]:
+def main(paths=None, gate=False):
+    violations: list[str] = []
+    for path in (paths if paths is not None else sys.argv[1:]):
         report = audit_file(path)
         print(f"\n{'=' * 70}\n{path}\n{'=' * 70}")
         tc = td = tr = tns = twc = tl = tsc = tres = tt = 0
@@ -349,6 +350,10 @@ def main():
             hist: dict[int, int] = {}
             for t in r["turns_list"]:
                 hist[t] = hist.get(t, 0) + 1
+            if gate and (nc or nns or nwc):
+                violations.append(
+                    f"{path}:{view}: crossing-edges={nc} "
+                    f"node-strikes={nns} wall-crossings={nwc}")
             flag = "  <-- DEFECTS" if (nc or nsc or nres or nd or nns
                                        or nwc or nl) else ""
             print(f"{view}: edges={r['n_edges']} "
@@ -400,7 +405,22 @@ def main():
                 print(f"  ANNOVER {view}: box [{label}]  overlaps node {nid}")
             for edge, kind, target in r["residuals"]:
                 print(f"  RESID  {view}: {edge}  through {kind} {target}")
+            for t in r["turns_list"]:
+                if gate and t > 2:
+                    violations.append(f"{path}:{view}: >2-bend route "
+                                      f"({t} bends)")
+        if gate:
+            for x in ratios_all:
+                if x > 2.0:
+                    violations.append(f"{path}: ratio {x:.2f} > 2x")
+            if violations:
+                print("\nGATE FAILURES:")
+                for v in violations:
+                    print(f"  {v}")
+                sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    args = [a for a in sys.argv[1:]]
+    gate = "--gate" in args
+    main([a for a in args if a != "--gate"], gate=gate)
