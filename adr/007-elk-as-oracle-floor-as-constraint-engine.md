@@ -40,11 +40,13 @@ it is what makes them *visible*; spreading anchors hides them by
 scattering.
 
 **The diagonal half-question** rides here: ELK's polyline routing
-produces diagonals in non-orthogonal views. The route vocabulary
-(ADR-003 amended 0.26.1) is straight/L/U with the audit gate counting
-diagonals as defects. Whether a per-view "diagonal: allowed"
-declaration should exist stays a reviewer's call (ADR-003 amendment
-candidate); nothing in this ADR depends on it.
+produces diagonals in non-orthogonal views — on juju4 "Worker tree
+(machine cloud)" its routes are predominantly straight diagonals
+(bends=0, the typical-graph-visualizer look, live in the corpus). The
+route vocabulary (ADR-003 amended 0.26.1) is straight/L/U with the
+audit gate counting diagonals as defects. Whether a per-view
+"diagonal: allowed" declaration should exist stays a reviewer's call
+(ADR-003 amendment candidate); nothing in this ADR depends on it.
 
 ## Decision
 
@@ -79,17 +81,30 @@ the synthesized base. A view declares as much or as little
 arrangement as it needs. The degradation ladder collapses to "how
 many constraints did the author declare."
 
-**3. Port discipline is a first-class floor rule** (from the reviewer's
-observation):
+**3. Port discipline is a preference inside the bend budget, not a
+binding rule** (from the reviewer's observation, refined by their
+chain-skip objection):
 
-- inter-column edges bind source EAST, target WEST;
-- intra-column edges bind NORTH/SOUTH (the fan above/below case);
-- ports along a face are ordered to minimize crossings
-  (barycentric order of the far endpoint), which is what produces the
-  hub fan the ELK render shows;
-- label budgets and the corridor machinery absorb the concentration
-  (the known accepted tension: corridors fill; edges overlap, never
-  bend to hide it — ADR-003).
+- The route vocabulary (ADR-003: straight → L → U, ≤ 2 bends, node
+  rects the only hard obstacle) is the hard law; port discipline
+  yields to it.
+- Where EAST→WEST binding costs no bends (pure leftward flow — the
+  common case), bind and face-order the ports (barycentric): that is
+  the hub fan, and it is what made the ELK render read sharp.
+- Where binding would force a detour it may not take: the chain-skip
+  (A→C over an align-middle B) — forced WEST entry needs four bends
+  around B; the U-shape via NORTH/SOUTH keeps two. The router takes
+  the U-shape and enters C from the top. Face order along NORTH/SOUTH
+  faces follows the same barycentric rule.
+- Measured precedent: ELK behaves this way itself — default
+  `portConstraints: UNDEFINED` picks faces per edge. On juju4
+  "Worker tree (machine cloud)" 3/9 edges enter EAST when that saves
+  bends (charm→unit_agent, machine_agent→unit_agent); on
+  "Worker tree (controller)" 17/17 bind EAST→WEST because there it
+  costs nothing. The discipline is what the geometry permits, never a
+  rule imposed against the bend budget.
+- Corpus assertions encode the preference accordingly: ≤2 bends
+  everywhere (the vocabulary law), EAST→WEST *where bend-neutral*.
 
 **4. The ELK backend (ADR-006) stays as the zero-constraint fast
 path** — today's 8/11 flat views keep serving exactly as now. The
