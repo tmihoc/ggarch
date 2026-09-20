@@ -2409,3 +2409,29 @@ ratification is still owed (the stack arm's dim = group opacity 0.35,
 which covers stroke, arrowhead glyphs and the riding label together).
 Corridor budgeting for the weight-3 strokes is deferred: planned at
 2px, drawn at 3, the 0.5px risk is below the accepted tensions.
+
+**Design refinement (2026-09-20): the facet-definition grammar, for
+when the trigger fires.** The derivation needs a declared WALK, not a
+free-form string. Proposed: the model declares facet definitions next
+to the relationships they walk —
+
+```
+facets {
+  model: records: then application -> model
+  cloud: model -> cloud
+}
+```
+
+— each definition names a chain of relationships (records: hop, then
+data edges); a node's facet value is computed by following the chain
+from its record. The view then selects which facet renders as chips:
+`chips: scope.model` (rendering decision, not classification). Chip
+colour comes from a declared scale (the current hash-colour property
+is deleted — unstable across builds and factless). Where the walk ends
+at a many-valued relationship, the facet is a set and the chip lists
+the set. **Trigger**: a view that needs per-node provenance tags
+where bounding boxes would nest or intersect (the Dewey failure).
+The current corpus has no such view — juju3 deliberately draws
+provenance as declared regions. Build when a view needs it; the
+validator should reject a facet definition whose chain does not
+resolve over the model's records:/data edges (a facet that lies).
