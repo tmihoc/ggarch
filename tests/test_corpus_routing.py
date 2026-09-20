@@ -32,10 +32,10 @@ CORPUS = os.path.join(os.path.expanduser("~"), "git", "juju", "docs")
 CLEAR = ROUTE_STROKE_W / 2 + STRIP_PAD
 
 requires_corpus = pytest.mark.skipif(
-    not os.path.exists(os.path.join(CORPUS, "juju3.ggarch")),
+    not os.path.exists(os.path.join(CORPUS, "juju.ggarch")),
     reason="juju docs corpus not present")
 
-CORPUS_FILES = ("juju3.ggarch", "principles.ggarch")
+CORPUS_FILES = ("juju.ggarch", "principles.ggarch")
 
 
 def _load(fname):
@@ -92,7 +92,7 @@ class TestDefectEdges:
         near-corner 45° anchor). The floor layers endpoint LEFT of
         application (longest-path: relation -> endpoint -> application),
         so the route is a short straight."""
-        rl = corpus["juju3.ggarch"]["Data model (synthesized)"]
+        rl = corpus["juju.ggarch"]["Data model (synthesized)"]
         e = _find_edge(rl, "endpoint_rec", "application_rec")
         sr = rl.layout.find("endpoint_rec").rect
         tr = rl.layout.find("application_rec").rect
@@ -106,7 +106,7 @@ class TestDefectEdges:
         edge's strip and the old router detoured around the whole
         canvas. Strips are not obstacles: the route is the 60 px direct
         line (any overlap is audited, not routed around)."""
-        rl = corpus["juju3.ggarch"]["Cross-model relation (CMR)"]
+        rl = corpus["juju.ggarch"]["Cross-model relation (CMR)"]
         e = _find_edge(rl, "relation_rec", "endpoint_rec")
         sr = rl.layout.find("relation_rec").rect
         tr = rl.layout.find("endpoint_rec").rect
@@ -120,7 +120,7 @@ class TestDefectEdges:
         straight from the controller's face. Edge flipped to
         apps -> controller ("converges toward", reconciliation) 2026-09-20;
         the defect geometry is symmetric in the flip."""
-        rl = corpus["juju3.ggarch"]["Intro: Juju enters (synthesized)"]
+        rl = corpus["juju.ggarch"]["Intro: Juju enters (synthesized)"]
         for tgt in ("app1", "app2"):
             e = _find_edge(rl, tgt, "controller")
             assert e.turns <= 1, f"{tgt}->controller: {e.turns} turns"
@@ -130,14 +130,14 @@ class TestDefectEdges:
         its LEFT edge (the edge facing the anchor). Centre-aligning the
         unequal members forced symmetric container inflation — u_app1/u_app3
         rendered 1359px wide with ~660px of empty container."""
-        rl = corpus["juju3.ggarch"]["Intro: Juju unpacked"]
+        rl = corpus["juju.ggarch"]["Intro: Juju unpacked"]
         xs = [rl.layout.find(f"u_app{i}_0").rect.x for i in (1, 2, 3)]
         assert max(xs) - min(xs) <= 0.5, f"fan column not aligned: {xs}"
 
     def test_juju3_juju_enters_app3_has_no_weave(self, corpus):
         """controller -> app3 measured 7 turns (juju3 twin). Flipped to
         app3 -> controller with the reconciliation direction."""
-        rl = corpus["juju3.ggarch"]["Intro: Juju enters"]
+        rl = corpus["juju.ggarch"]["Intro: Juju enters"]
         e = _find_edge(rl, "app3", "controller")
         assert e.turns <= 1, f"{e.turns} turns"
 
@@ -220,7 +220,7 @@ class TestVocabulary:
         """Every routed edge carries its direct border distance and
         path/direct ratio — the audit metrics that make this defect
         class measurable."""
-        rl = corpus["juju3.ggarch"]["Data model (synthesized)"]
+        rl = corpus["juju.ggarch"]["Data model (synthesized)"]
         e = _find_edge(rl, "endpoint_rec", "application_rec")
         sr = rl.layout.find("endpoint_rec").rect
         tr = rl.layout.find("application_rec").rect
@@ -318,7 +318,7 @@ class TestGridAdjacency:
         absorbs its satellite): vertical adjacency at the declared gap.
         The floor must also keep it OFF credential's cell — node
         overlap is the NOVER defect."""
-        rl = corpus["juju3.ggarch"]["Data model (full spine)"]
+        rl = corpus["juju.ggarch"]["Data model (full spine)"]
         r = rl.layout.find("relation_rec").rect
         e = rl.layout.find("endpoint_rec").rect
         c = rl.layout.find("credential_rec").rect
