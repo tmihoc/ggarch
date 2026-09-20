@@ -35,7 +35,7 @@ requires_corpus = pytest.mark.skipif(
     not os.path.exists(os.path.join(CORPUS, "juju3.ggarch")),
     reason="juju docs corpus not present")
 
-CORPUS_FILES = ("juju3.ggarch", "juju4.ggarch")
+CORPUS_FILES = ("juju3.ggarch", "principles.ggarch")
 
 
 def _load(fname):
@@ -92,7 +92,7 @@ class TestDefectEdges:
         near-corner 45° anchor). The floor layers endpoint LEFT of
         application (longest-path: relation -> endpoint -> application),
         so the route is a short straight."""
-        rl = corpus["juju4.ggarch"]["Data model"]
+        rl = corpus["juju3.ggarch"]["Data model (synthesized)"]
         e = _find_edge(rl, "endpoint_rec", "application_rec")
         sr = rl.layout.find("endpoint_rec").rect
         tr = rl.layout.find("application_rec").rect
@@ -120,7 +120,7 @@ class TestDefectEdges:
         straight from the controller's face. Edge flipped to
         apps -> controller ("converges toward", reconciliation) 2026-09-20;
         the defect geometry is symmetric in the flip."""
-        rl = corpus["juju4.ggarch"]["Intro: Juju enters"]
+        rl = corpus["juju3.ggarch"]["Intro: Juju enters (synthesized)"]
         for tgt in ("app1", "app2"):
             e = _find_edge(rl, tgt, "controller")
             assert e.turns <= 1, f"{tgt}->controller: {e.turns} turns"
@@ -220,7 +220,7 @@ class TestVocabulary:
         """Every routed edge carries its direct border distance and
         path/direct ratio — the audit metrics that make this defect
         class measurable."""
-        rl = corpus["juju4.ggarch"]["Data model"]
+        rl = corpus["juju3.ggarch"]["Data model (synthesized)"]
         e = _find_edge(rl, "endpoint_rec", "application_rec")
         sr = rl.layout.find("endpoint_rec").rect
         tr = rl.layout.find("application_rec").rect
