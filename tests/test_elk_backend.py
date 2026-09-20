@@ -90,6 +90,24 @@ class TestElkBackend:
         routes2 = solve(d, m).edge_routes
         assert routes1 == routes2
 
+    def test_elk_honors_view_curation(self, with_elk):
+        """except pairs are excluded from the backend's input graph, not
+        merely dropped at render: ELK must layer around the edges the
+        view curated out (route() filters them, but the layering must
+        never see them)."""
+        src = (SRC
+               .replace("  select { nodes: a b c }",
+                        "  select { nodes: a b c\n"
+                        "    except: a -> b }")
+               .replace("  positions { a left-of b gap: 60\n"
+                        "              a align-middle b }\n", ""))
+        f = parse(src); validate(f)
+        d = f.diagrams[0]; m = f.get_model(d.model_name)
+        lay = solve(d, m)
+        assert lay.edge_routes is not None
+        assert all((s, t) != ("a", "b") for s, t, _p in lay.edge_routes)
+        assert any((s, t) == ("b", "c") for s, t, _p in lay.edge_routes)
+
     def test_floor_serves_when_backend_off(self, monkeypatch):
         """Without GGARCH_LAYOUT=elk the built-in synthesizer serves:
         the fallback path is the default."""

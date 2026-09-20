@@ -19,6 +19,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from dataclasses import replace as _dc_replace
 from pathlib import Path
 
 from ggarch.layout import SolvedLayout, SolvedNode, Rect
@@ -77,6 +78,20 @@ def layout_view(diagram, model, select):
     """
     from ggarch.instances import materialize_instances
     from ggarch.router import Point
+
+    # View-level curation: except pairs drop declared edges before
+    # materialization (source, target, type "" = any), mirroring
+    # router.py — without this, ELK layers the graph around edges the
+    # view curated out (the "Juju enters" bootstrap arrows corrupted
+    # the column assignment even though route() later dropped them).
+    except_pairs = {(s, t, ty) for s, t, ty
+                    in getattr(select, "except_pairs", []) or []}
+    if except_pairs:
+        model = _dc_replace(model, edges=[
+            e for e in model.edges
+            if not any((e.source == es and e.target == et
+                        and (ty == "" or ty == e.type))
+                       for es, et, ty in except_pairs)])
 
     nodes, edges = materialize_instances(select, model)
     sel_ids = set(select.node_ids) if select.node_ids else {n.id for n in nodes}
