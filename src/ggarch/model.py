@@ -363,6 +363,12 @@ class Constraint:
     object: str = ""     # node id (not needed for direction/grid)
     gap: int = 0
     value: str = ""      # for direction (left|right|up|down) and grid
+    strength: str = ""   # kiwi solver priority; "" = "required".
+                         # Synthesized (auto-layout) terms carry
+                         # "strong" in refinement mode (ADR-007): a
+                         # declared constraint outranks the synthesized
+                         # base it refines, and kiwi resolves the
+                         # conflict by yielding the strong term.
 
 
 @dataclass

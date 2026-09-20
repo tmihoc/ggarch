@@ -159,7 +159,8 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     # synthesize a layered layout (SPEC, "Position is content" -- the
     # floor, not the ceiling). Merged into the constraint set so the
     # label-gap pass sees the declared pairs.
-    auto_cons, weak_align = _synthesize_auto_layout(diagram, selected, mat_edges)
+    auto_cons, weak_align = _synthesize_auto_layout(
+        diagram, selected, mat_edges, refine=bool(diagram.constraints))
     expanded_constraints = _expand_fan_constraints(
         list(diagram.constraints) + auto_cons, solver, vars_by_id)
 
@@ -168,7 +169,9 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     direction_map = _collect_directions(expanded_constraints)
     _add_auto_layout_pass(solver, selected, vars_by_id, diagram.select, direction_map, model)
     # Add user-declared constraints, with label-aware gap expansion.
-    _add_user_constraints(solver, expanded_constraints, vars_by_id, diagram.name, model)
+    _add_user_constraints(solver, expanded_constraints, vars_by_id,
+                          diagram.name, model,
+                          refine=bool(diagram.constraints))
     _add_uniform_sizing(solver, expanded_constraints, vars_by_id)
     if diagram.select.sizing == "uniform" or not diagram.constraints:
         # Synthesized views get uniform leaf sizing by default — the
@@ -215,6 +218,7 @@ def _synthesize_auto_layout(
     diagram: DiagramView,
     selected: list,
     mat_edges: list,
+    refine: bool = False,
 ) -> list[Constraint]:
     """Constraints for a view that declares no positions block.
 
@@ -235,13 +239,60 @@ def _synthesize_auto_layout(
       label-gap pass's pair-local resolution), so its label gap resolves
       directionally.
 
+    Refinement mode (ADR-007): when the view declares constraints, the
+    synthesized base is emitted at "medium" strength instead of being
+    skipped. The priority ladder is doctrine: declared arrangement is
+    required (the author's word), the label contract's reservations are
+    strong (ADR-002: labels are content), and the synthesized base is
+    medium — synthesis fills the geometry the author left undeclared,
+    yields to the label contract, and never outranks a declaration.
+    Pure synthesis (no declared constraints) is unchanged: terms at
+    required strength, byte-identical layouts.
+
     Cycles are handled by processing nodes in declaration order and
     ignoring not-yet-seen sources, which turns back edges into floors.
     Container children are otherwise unaffected -- the existing
     container auto-layout pass lays them out inside their parents.
     """
-    if diagram.constraints:
-        return [], []
+    strength = "medium" if refine else ""
+
+    # Refinement: synthesis must not re-declare what the author
+    # declared. A synthesized term on a pair the author already
+    # constrained on the same axis would fight the declaration at
+    # medium-vs-required (harmless) — or, worse, its corridor-budget
+    # gap would silently WIDEN a declared adjacency: the budget
+    # inequality is satisfied by any gap >= budget, so it drags the
+    # declared pair's weak adjacency equality to the budget width and
+    # the declared gap is lost (measured: the strike-avoidance contract
+    # then mis-predicts and a labelled edge strikes). Declared pairs
+    # are the author's; synthesis fills only the undeclared ones.
+    declared_x: set[frozenset] = set()
+    declared_y: set[frozenset] = set()
+    declared_xalign: set[frozenset] = set()
+    if refine:
+        x_kinds = {"left-of", "right-of", "align-centre", "align-left",
+                   "align-right"}
+        y_kinds = {"above", "below", "align-middle", "align-top",
+                   "align-bottom"}
+        for c in diagram.constraints:
+            if isinstance(c, Constraint) and c.object:
+                pair = frozenset((c.subject, c.object))
+                if c.kind in x_kinds:
+                    declared_x.add(pair)
+                    if c.kind in ("align-centre", "align-left",
+                                  "align-right"):
+                        declared_xalign.add(pair)
+                elif c.kind in y_kinds:
+                    declared_y.add(pair)
+            elif isinstance(c, FanConstraint):
+                anchor_pair = {frozenset((m, c.anchor)) for m in c.members}
+                member_pairs = {frozenset((c.members[i], c.members[i + 1]))
+                                for i in range(len(c.members) - 1)}
+                if c.direction in ("above", "below"):
+                    declared_y |= anchor_pair | member_pairs
+                else:
+                    declared_x |= anchor_pair | member_pairs
+                    declared_xalign |= member_pairs
 
     top_ids = [n.id for n in selected]
     top_set = set(top_ids)
@@ -441,8 +492,13 @@ def _synthesize_auto_layout(
     for members in columns.values():
         for i in range(len(members) - 1):
             u, v = members[i], members[i + 1]
-            cons.append(Constraint(kind="above", subject=u, object=v, gap=GAP))
-            cons.append(Constraint(kind="align-centre", subject=u, object=v))
+            pair = frozenset((u, v))
+            if pair not in declared_y:
+                cons.append(Constraint(kind="above", subject=u, object=v,
+                                       gap=GAP, strength=strength))
+            if pair not in declared_x:
+                cons.append(Constraint(kind="align-centre", subject=u,
+                                       object=v, strength=strength))
 
     # Corridor budget (the edge-aware floor): a column boundary must be
     # wide enough for every edge whose label rides through it — the
@@ -459,6 +515,12 @@ def _synthesize_auto_layout(
         cs, ct = col[ts], col[tt]
         if cs == ct:
             continue
+        # Refinement: a corridor whose labelled edge the author
+        # declared a gap for is budgeted the author's way (they chose
+        # the wrap); re-budgeting it at the un-wrapped label width
+        # would drag neighbouring undeclared pairs out to that width.
+        if refine and frozenset((ts, tt)) in declared_x:
+            continue
         need = _label_w(e.label) + 2 * LABEL_SIDE_PAD + 24
         lo, hi = min(cs, ct), max(cs, ct)
         for b in range(lo, hi):
@@ -470,7 +532,11 @@ def _synthesize_auto_layout(
         gap = int(boundary_budget.get(c, GAP))
         for u in columns.get(c, []):
             for v in columns.get(c + 1, []):
-                cons.append(Constraint(kind="left-of", subject=u, object=v, gap=gap))
+                if frozenset((u, v)) in declared_x:
+                    continue
+                cons.append(Constraint(kind="left-of", subject=u,
+                                       object=v, gap=gap,
+                                       strength=strength))
     # Every visible edge gets a directly declared pair, at its effective
     # endpoints (child-to-child edges declare their children, which the
     # containment constraints then translate into container separation).
@@ -481,7 +547,10 @@ def _synthesize_auto_layout(
         es, et = _effective(e.source, e.target)
         if cs < ct:
             gap = int(boundary_budget.get(cs, GAP))
-            cons.append(Constraint(kind="left-of", subject=es, object=et, gap=gap))
+            if frozenset((es, et)) not in declared_x:
+                cons.append(Constraint(kind="left-of", subject=es,
+                                       object=et, gap=gap,
+                                       strength=strength))
             if ct == cs + 1 and (es, et) not in seen_pairs:
                 # Sugiyama coordinate assignment: EVERY adjacent-column
                 # edge weakly pulls its two endpoints to the same
@@ -495,12 +564,16 @@ def _synthesize_auto_layout(
                 seen_pairs.add((es, et))
         elif cs > ct:
             gap = int(boundary_budget.get(ct, GAP))
-            cons.append(Constraint(kind="left-of", subject=et, object=es, gap=gap))
+            if frozenset((es, et)) not in declared_x:
+                cons.append(Constraint(kind="left-of", subject=et, object=es,
+                                       gap=gap, strength=strength))
         else:
             members = columns[cs]
             i, j = members.index(ts), members.index(tt)
             u, v = members[min(i, j)], members[max(i, j)]
-            cons.append(Constraint(kind="above", subject=u, object=v, gap=GAP))
+            if frozenset((u, v)) not in declared_y:
+                cons.append(Constraint(kind="above", subject=u, object=v,
+                                       gap=GAP, strength=strength))
     return cons, weak_align
 
 
@@ -1190,6 +1263,7 @@ def _add_user_constraints(
     vars_by_id: dict[str, _NodeVars],
     view_name: str,
     model: Model | None = None,
+    refine: bool = False,
 ) -> None:
     """Apply user position constraints."""
     # Build maps from node pair → min gap, separated by axis.
@@ -1222,7 +1296,8 @@ def _add_user_constraints(
 
     for c in constraints:
         try:
-            _add_one_constraint(solver, c, vars_by_id, h_label_gaps, v_label_gaps)
+            _add_one_constraint(solver, c, vars_by_id, h_label_gaps,
+                                v_label_gaps, refine=refine)
         except UnsatisfiableConstraint as exc:
             raise ValidationError(
                 f"diagram {view_name!r}: constraint {c.kind!r} on "
@@ -1241,8 +1316,21 @@ def _add_one_constraint(
     vars_by_id: dict[str, _NodeVars],
     h_label_gaps: dict | None = None,
     v_label_gaps: dict | None = None,
+    refine: bool = False,
 ) -> None:
     s = vars_by_id[c.subject]
+    # Refinement mode (ADR-007): synthesized terms arrive at "medium";
+    # declared arrangement is required. kiwi yields the medium term
+    # where a required declaration disagrees with the synthesized base.
+    st = c.strength or "required"
+    # The declared adjacency pull (the pair's gap equality) is part of
+    # the author's word: at weak it loses to synthesized medium terms
+    # coupled through align-* chains, and a declared 98px gap silently
+    # inflates to the synthesized corridor budget (measured: the
+    # strike-avoidance contract then predicts on the wrong geometry).
+    # In refinement mode it holds at strong — still below the required
+    # declarations and the label contract's reservations.
+    pull = "strong" if (refine and not c.strength) else "weak"
     user_gap = c.gap if c.gap else _GAP_DEFAULT
     pair = frozenset([c.subject, c.object]) if hasattr(c, "object") and c.object else None
     h_min = (h_label_gaps or {}).get(pair, 0) if pair else 0
@@ -1262,69 +1350,69 @@ def _add_one_constraint(
     if kind == "left-of":
         o = vars_by_id[c.object]
         gap = max(user_gap, h_min)
-        solver.addConstraint((s.x2 + gap <= o.x) | "required")
-        solver.addConstraint(((o.x - s.x2) == gap) | "weak")
+        solver.addConstraint((s.x2 + gap <= o.x) | st)
+        solver.addConstraint(((o.x - s.x2) == gap) | pull)
 
     elif kind == "right-of":
         o = vars_by_id[c.object]
         gap = max(user_gap, h_min)
-        solver.addConstraint((s.x >= o.x2 + gap) | "required")
-        solver.addConstraint(((s.x - o.x2) == gap) | "weak")
+        solver.addConstraint((s.x >= o.x2 + gap) | st)
+        solver.addConstraint(((s.x - o.x2) == gap) | pull)
 
     elif kind == "above":
         o = vars_by_id[c.object]
         gap = max(user_gap, v_min)
-        solver.addConstraint((s.y2 + gap <= o.y) | "required")
-        solver.addConstraint(((o.y - s.y2) == gap) | "weak")
+        solver.addConstraint((s.y2 + gap <= o.y) | st)
+        solver.addConstraint(((o.y - s.y2) == gap) | pull)
 
     elif kind == "below":
         o = vars_by_id[c.object]
         gap = max(user_gap, v_min)
-        solver.addConstraint((s.y >= o.y2 + gap) | "required")
-        solver.addConstraint(((s.y - o.y2) == gap) | "weak")
+        solver.addConstraint((s.y >= o.y2 + gap) | st)
+        solver.addConstraint(((s.y - o.y2) == gap) | pull)
 
     elif kind == "align-left":
         o = vars_by_id[c.object]
-        solver.addConstraint((s.x == o.x) | "required")
+        solver.addConstraint((s.x == o.x) | st)
 
     elif kind == "align-right":
         o = vars_by_id[c.object]
-        solver.addConstraint((s.x2 == o.x2) | "required")
+        solver.addConstraint((s.x2 == o.x2) | st)
 
     elif kind == "align-top":
         o = vars_by_id[c.object]
-        solver.addConstraint((s.y == o.y) | "required")
+        solver.addConstraint((s.y == o.y) | st)
 
     elif kind == "align-bottom":
         o = vars_by_id[c.object]
-        solver.addConstraint((s.y2 == o.y2) | "required")
+        solver.addConstraint((s.y2 == o.y2) | st)
 
     elif kind == "align-middle":
         o = vars_by_id[c.object]
-        solver.addConstraint((s.cy == o.cy) | "required")
+        solver.addConstraint((s.cy == o.cy) | st)
 
     elif kind == "align-centre":
         o = vars_by_id[c.object]
-        solver.addConstraint((s.cx == o.cx) | "required")
+        solver.addConstraint((s.cx == o.cx) | st)
 
     elif kind == "same-width":
         o = vars_by_id[c.object]
-        solver.addConstraint((s.w == o.w) | "required")
+        solver.addConstraint((s.w == o.w) | st)
 
     elif kind == "same-height":
         o = vars_by_id[c.object]
-        solver.addConstraint((s.h == o.h) | "required")
+        solver.addConstraint((s.h == o.h) | st)
 
     elif kind == "same-size":
         o = vars_by_id[c.object]
-        solver.addConstraint((s.w == o.w) | "required")
-        solver.addConstraint((s.h == o.h) | "required")
+        solver.addConstraint((s.w == o.w) | st)
+        solver.addConstraint((s.h == o.h) | st)
 
     elif kind == "min-width":
-        solver.addConstraint((s.w >= c.gap) | "required")
+        solver.addConstraint((s.w >= c.gap) | st)
 
     elif kind == "min-height":
-        solver.addConstraint((s.h >= c.gap) | "required")
+        solver.addConstraint((s.h >= c.gap) | st)
 
     elif kind in ("direction", "grid"):
         pass
