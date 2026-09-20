@@ -51,16 +51,15 @@ diagram "Juju enters (refined)" from "M" {
     user   align-middle client
     client left-of controller
     client align-middle controller
-    // The vertical plane: clouds stacked above, charmhub below,
-    // all on the controller's x.
-    cloud_b  above controller gap: 40
-    cloud_a  above cloud_b  gap: 40
-    cloud_a  align-centre controller
-    cloud_b  align-centre controller
+    // The vertical plane: clouds fanned above (arrows out of the
+    // controller's mid-north), charmhub below on the same axis.
+    fan [cloud_a cloud_b] above controller gap: 40 spacing: 120
     charmhub below controller gap: 40
     charmhub align-centre controller
-    // The app fan right of controller, centred on the spine.
-    fan [app1 app2 app3] right-of controller gap: 60
+    // The app fan right of controller: gap sized for the labels —
+    // three "converges toward" strokes into the mid-east face need
+    // the run for their labels to separate.
+    fan [app1 app2 app3] right-of controller gap: 140
   }
 }
 """
@@ -83,19 +82,38 @@ class TestJujuEntersRefined:
               ("user", "client", "controller")]
         assert max(ys) - min(ys) <= 0.5, f"spine not y-aligned: {ys}"
 
-    def test_vertical_plane_column(self, refined):
-        """clouds and charmhub share the controller's centre x (the
-        align-centre axis), clouds above, charmhub below."""
+    def test_vertical_plane(self, refined):
+        """clouds fanned above the controller (one row, centred on its
+        axis, arrows from the mid-north face), charmhub below on the
+        same axis."""
         d, m, rl = refined
-        cxs = [rl.layout.find(nid).rect.cx for nid in
-               ("cloud_a", "cloud_b", "controller", "charmhub")]
-        assert max(cxs) - min(cxs) <= 0.5, f"plane not centre-aligned: {cxs}"
         cy = rl.layout.find("controller").rect
         ca = rl.layout.find("cloud_a").rect
         cb = rl.layout.find("cloud_b").rect
         ch = rl.layout.find("charmhub").rect
-        assert ca.y2 <= cb.y <= cy.y
+        # fan row: same y, centred on the controller's x
+        assert abs(ca.y - cb.y) <= 0.5, f"fan row broken: {ca.y}, {cb.y}"
+        centre = (ca.cx + cb.cx) / 2
+        assert abs(centre - cy.cx) <= 0.5, \
+            f"fan not centred on the controller: {centre} vs {cy.cx}"
+        assert ca.y2 <= cy.y and cb.y2 <= cy.y
+        assert abs(ch.cx - cy.cx) <= 0.5, \
+            f"charmhub off the axis: {ch.cx} vs {cy.cx}"
         assert cy.y2 <= ch.y
+        # both cloud edges leave the controller's mid-north face and
+        # enter the clouds' south faces
+        rects = {n.id: n.rect for n in rl.layout.nodes}
+        for e in rl.edges:
+            if e.source_id != "controller" \
+                    or not e.target_id.startswith("cloud"):
+                continue
+            ex, en = e.points[0], e.points[-1]
+            sr, tr = rects["controller"], rects[e.target_id]
+            assert abs(ex.x - sr.cx) <= 24, \
+                f"{e.target_id} edge not from mid-north: {ex.x} vs {sr.cx}"
+            assert abs(ex.y - sr.y) < 1, f"exit not on north face: {ex}"
+            assert abs(en.y - (tr.y + tr.h)) < 1, \
+                f"entry not on south face: {en}"
 
     def test_app_fan_right_of_controller(self, refined):
         """The app fan is a column right of the controller, members
@@ -154,6 +172,10 @@ class TestJujuEntersRefined:
                       and abs(en.x - (tr.x + tr.w)) < 1)
             else:
                 continue  # same column: NORTH/SOUTH vocabulary
+            if e.source_id == "controller" \
+                    and e.target_id.startswith("cloud"):
+                continue  # vertical plane: the mid-north fan is
+                          # asserted in test_vertical_plane
             if e.turns <= 1:
                 checked += 1
                 bound += ok
@@ -170,7 +192,42 @@ class TestJujuEntersRefined:
             assert abs(e.points[0].x - (sr.x + sr.w)) < 1
             assert abs(e.points[-1].x - tr.x) < 1
 
-    def test_byte_stable(self, d_and_m=None):
+    def test_fan_labels_separated(self, refined):
+        """The three app labels neither overlap one another nor ride
+        another edge's stroke — the reason the fan gap is sized."""
+        d, m, rl = refined
+        from ggarch.renderer import label_geometry
+        strips = {}
+        segs = {}
+        for e in rl.edges:
+            if not e.label:
+                continue
+            lg = label_geometry([(p.x, p.y) for p in e.points],
+                                e.label, 0.5)
+            if lg.strip is not None:
+                strips[(e.source_id, e.target_id)] = lg.strip
+            segs[(e.source_id, e.target_id)] = [
+                ((p.x, p.y), (q.x, q.y)) for p, q in zip(e.points, e.points[1:])]
+        from ggarch.geometry import rects_overlap, seg_box_dist
+        app_keys = [k for k in strips if k[0].startswith("app")]
+        assert len(app_keys) == 3, f"labels missing: {app_keys}"
+        for i, k1 in enumerate(app_keys):
+            for k2 in app_keys[i + 1:]:
+                s1, s2 = strips[k1], strips[k2]
+                assert not rects_overlap(s1, s2, eps=0.0), \
+                    f"labels overlap: {k1} vs {k2}"
+        for k, strip in strips.items():
+            if not k[0].startswith("app"):
+                continue
+            half_w = 1.0 + 2.0  # ROUTE_STROKE_W/2 + clearance
+            for other, other_segs in segs.items():
+                if other == k:
+                    continue
+                for a, b in other_segs:
+                    assert seg_box_dist(a, b, strip) >= half_w, \
+                        f"{other} rides {k}'s label"
+
+    def test_byte_stable(self):
         """Two solves, identical geometry — the refinement solve is
         deterministic."""
         f = parse(SRC)

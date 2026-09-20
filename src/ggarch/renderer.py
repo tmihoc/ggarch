@@ -603,7 +603,7 @@ def _render_node_content(
             cur = stack.pop(0)
             records = cur.records
             stack.extend(cur.children)
-    if records:
+    if records and not view.select.hide_records:
         text = _derived_records_chip(records, model)
         _render_records_chip(g, x, y, w, h, text, dark)
 

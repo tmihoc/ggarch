@@ -650,6 +650,7 @@ def _route_candidates_eval(
                         if search.label:
                             node_hits, other_hits = search.label_score(pts)
                         other_hits += search.stroke_label_hits(pts)
+
                         cost += (LABEL_NODE_COST * node_hits
                                  + LABEL_OTHER_COST * other_hits)
                         order = (fs_i, ft_i, si, ti, form_rank,
@@ -1101,26 +1102,51 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
             continue
         node = members[0][1] if side == "src" else members[0][2]
         rect = node.rect
-        face = _dominant_face(rect, members[0][2].rect if side == "src"
-                              else members[0][1].rect)
-        if any(_dominant_face(m[1].rect if side == "src" else m[2].rect,
-                              m[2].rect if side == "src" else m[1].rect)
-               != face for m in members):
-            continue  # mixed faces: the ladder's own diversity wins
-        lo, hi = ((rect.y, rect.y + rect.h) if face in ("right", "left")
-                  else (rect.x, rect.x + rect.w))
-        usable = hi - lo - 2 * SEED_INSET
-        spacing = min(PORT_GAP, usable / (len(members) - 1)) \
-            if len(members) > 1 else 0.0
-        center = (lo + hi) / 2.0
-        key = (lambda m: m[2].rect.cy if side == "src" and face in
-               ("right", "left") else
-               m[1].rect.cy if face in ("right", "left") else
-               m[2].rect.cx if side == "src" else m[1].rect.cx)
-        for i, m in enumerate(sorted(members, key=key)):
-            delta = (i - (len(members) - 1) / 2.0) * spacing
-            edge_hints.setdefault(id(m), {"src": {}, "tgt": {}})[side][face] \
-                = center + delta
+        # Group the fan by dominant face, then distribute each
+        # same-face group across that face. (Mixed-face fans used to
+        # skip hinting entirely — "the ladder's own diversity wins" —
+        # which threw away the same-face subgroup's slots: the Juju
+        # enters controller fans two edges out of mid-north and one
+        # out of mid-south; a fan from mid-north is the vocabulary's
+        # own statement, not a ladder accident.)
+        by_face: dict = defaultdict(list)
+        for m in members:
+            other = m[2].rect if side == "src" else m[1].rect
+            mine = m[1].rect if side == "src" else m[2].rect
+            by_face[_dominant_face(mine, other)].append(m)
+        for face, ms in by_face.items():
+            if len(ms) < 2:
+                continue
+            lo, hi = ((rect.y, rect.y + rect.h)
+                      if face in ("right", "left")
+                      else (rect.x, rect.x + rect.w))
+            usable = hi - lo - 2 * SEED_INSET
+            spacing = min(PORT_GAP, usable / (len(ms) - 1)) \
+                if len(ms) > 1 else 0.0
+            center = (lo + hi) / 2.0
+            key = (lambda m: m[2].rect.cy if side == "src" and face in
+                   ("right", "left") else
+                   m[1].rect.cy if face in ("right", "left") else
+                   m[2].rect.cx if side == "src" else m[1].rect.cx)
+            # Hints must sit ON the ladder grid: a hinted coordinate
+            # between slots is missed by every slot equally (each pays
+            # HINT_MISS_COST) and the hint is a no-op. Snap the ideal
+            # delta to the nearest ladder slot, clamped to the ladder's
+            # reach — same step formula as _anchor_ladder.
+            step = max(SEED_STEP, usable / 6.0)
+            for i, m in enumerate(sorted(ms, key=key)):
+                ideal = (i - (len(ms) - 1) / 2.0) * spacing
+                k = max(-LADDER_K, min(LADDER_K, round(ideal / step)))
+                delta = k * step
+                # Key by the edge object's identity, not id() of the
+                # (edge, src, tgt) tuple: the lookup rebuilds that
+                # tuple, and a fresh tuple's id never matches the
+                # stored one — the fan slots were dead code (fans
+                # distributed via anchor reuse instead, which is why
+                # nobody noticed).
+                edge_hints.setdefault(
+                    id(m[0]), {"src": {}, "tgt": {}})[side][face] \
+                    = center + delta
 
     anti_parallel: dict = {}
     for it in ordered:
@@ -1128,8 +1154,8 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                                  []).append(it)
     for group in anti_parallel.values():
         if len(group) == 2 and group[0][0].source == group[1][0].target:
-            edge_bias[id(group[0])] = PAIR_BIAS
-            edge_bias[id(group[1])] = -PAIR_BIAS
+            edge_bias[id(group[0][0])] = PAIR_BIAS
+            edge_bias[id(group[1][0])] = -PAIR_BIAS
 
     for edge, src_node, tgt_node in ordered:
         src_rect, tgt_rect = src_node.rect, tgt_node.rect
@@ -1150,8 +1176,8 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
             src_anchor, tgt_anchor, src_key=edge.source,
             tgt_key=edge.target, used_anchors=used_anchors,
             label=edge.label,
-            hints=edge_hints.get(id((edge, src_node, tgt_node))),
-            pair_bias=edge_bias.get(id((edge, src_node, tgt_node))),
+            hints=edge_hints.get(id(edge)),
+            pair_bias=edge_bias.get(id(edge)),
             orthogonal=(getattr(select, "routing", "") == "orthogonal"))
         if not pts:
             # Complete search failure (degenerate geometry): fall back

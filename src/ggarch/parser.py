@@ -457,7 +457,15 @@ class _GgarchTransformer(Transformer):
             elif key == "routing":    s.routing = value
             elif key == "except":     s.except_pairs.extend(value)
             elif key == "sizing":     s.sizing = value
-            elif key == "records":    s.show_records = value == "shown"
+            elif key == "records":
+                if value == "shown":
+                    s.show_records = True
+                elif value == "hidden":
+                    s.hide_records = True
+                else:
+                    raise ParseError(
+                        f"unknown records mode {value!r}; "
+                        "expected shown | hidden")
         return s
 
     def select_nodes(self, id_list)        -> tuple: return ("nodes", id_list)

@@ -349,6 +349,10 @@ class SelectClause:
     sizing: str = ""       # "uniform" — equalize selected leaf nodes
     show_records: bool = False  # "records: shown" — render the runtime↔record
                                 # bridges (ADR-005; synthetic, view-level)
+    hide_records: bool = False  # "records: hidden" — suppress the derived
+                                # chips even on nodes carrying records:
+                                # (the chips' label/crowding design is
+                                # under review; 2026-09-20 reviewer call)
 
 
 @dataclass
