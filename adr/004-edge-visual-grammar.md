@@ -203,3 +203,18 @@ its review round; each is a staging rule, not new rendering.
   (ELK) is benchmarked only when a corpus view shows a residual no
   listed floor mechanism owns; (3) Cassowary badge placement only if
   LCLASH-class clashes prove the cheaper label contract insufficient.
+
+## Amendment (2026-09-20): the salience channel — designed, not built
+
+The channel grammar (colour = ownership, dash = rhythm, arrowhead =
+commitment) had no salience variable: nothing said "find this first."
+The focus+context requirement comes from the agent-authored-diagram
+goal state; the design item lives in SPEC ("Design item: the salience
+channel") with the grammar sketch (`emphasize { path [...] }`,
+validator-checked adjacency) and the open question — stack on the
+semantic channels vs override them — posed with a working preference
+(stack, one shared dim factor) to be ratified by a rendered A/B
+before implementation. This amendment records the intent: the
+salience channel is ADR-004's fourth variable, and it must respect
+the ~3-values-per-channel discipline (emphasis is binary per view:
+the emphasized subgraph and the dimmed remainder — not a new scale).
