@@ -28,5 +28,11 @@ ggarch = "ggarch.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# grammar.lark ships inside the package — the parser loads it via
+# importlib.resources; without this, a non-editable install (CI) has
+# no grammar and every parse fails (caught by the CI dry-run).
+[tool.setuptools.package-data]
+ggarch = ["grammar.lark"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
