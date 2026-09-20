@@ -135,3 +135,15 @@ model edge list (fixed 2026-09-20, parser + elk).
   anchors again.
 - **Not in scope**: bringing container views to ELK (ADR-006 v2);
   the diagonal per-view declaration (ADR-003 amendment candidate).
+
+## Resolution (2026-09-20): the diagonal question
+
+Settled as per-view declaration, no engine change: the vocabulary
+keeps diagonals where they are the honest shortest arrow (the
+refinement acceptance view's fan, ELK's straight-diagonal renders),
+and a view that wants the orthogonal-everywhere grid declares
+`routing: orthogonal` (existing grammar; the snap-to-grid vocabulary).
+Forcing orthogonality globally was rejected — it would trade the fan
+diagonals that make the intro diagrams read for a tidiness the views
+did not ask for. The audit gate counts diagonals per view so any view
+opting into the grid is checked mechanically.
