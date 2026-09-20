@@ -537,6 +537,7 @@ def _route_candidates_eval(
     hints: dict | None = None,
     pair_bias: float | None = None,
     orthogonal: bool = False,
+    pref: tuple[str, str] | None = None,
 ):
     """Evaluate every vocabulary candidate. Returns (best_clear,
     best_soft): each is (points, bends, cost, order, crossings) or
@@ -557,11 +558,19 @@ def _route_candidates_eval(
     # column axis. A cost *preference*: priced under TURN_PENALTY, so
     # a bend never gets added to satisfy it, and the U-shape
     # (chain-skip over an align-middle blocker) keeps its two bends.
+    # A DECLARED fan face (pref — from the view's FanConstraint via
+    # SolvedLayout.fan_faces) overrides the geometric class entirely:
+    # "fan above" means the anchor's arrows leave north whatever the
+    # fan's spread does to the centre deltas (measured: a wide uniform
+    # fan above misread as inter-column flow and the arrows left
+    # west/east until the declaration spoke).
     dx_c = ((tgt_rect.x + tgt_rect.w / 2.0)
             - (src_rect.x + src_rect.w / 2.0))
     dy_c = ((tgt_rect.y + tgt_rect.h / 2.0)
             - (src_rect.y + src_rect.h / 2.0))
-    if abs(dx_c) >= abs(dy_c):
+    if pref is not None:
+        preferred = pref
+    elif abs(dx_c) >= abs(dy_c):
         preferred = ("right", "left") if dx_c > 0 else ("left", "right")
     else:
         preferred = (("bottom", "top") if dy_c > 0
@@ -742,6 +751,7 @@ def _route_edge_full(
     hints: dict | None = None,
     pair_bias: float | None = None,
     orthogonal: bool = False,
+    pref: tuple[str, str] | None = None,
 ) -> tuple[list[Point], bool]:
     """Route between two rects within the vocabulary.
 
@@ -783,14 +793,16 @@ def _route_edge_full(
                 src_rect, tgt_rect, src_ladder, tgt_ladder, search,
                 src_key, tgt_key, used_anchors,
                 pinned=a is not None or b is not None,
-                hints=hints, pair_bias=pair_bias, orthogonal=orthogonal)
+                hints=hints, pair_bias=pair_bias, orthogonal=orthogonal,
+                pref=pref)
     else:
         src_ladder = _anchor_ladder(src_rect)
         tgt_ladder = _anchor_ladder(tgt_rect)
         best_clear, best_soft = _route_candidates_eval(
             src_rect, tgt_rect, src_ladder, tgt_ladder, search,
             src_key, tgt_key, used_anchors,
-            hints=hints, pair_bias=pair_bias, orthogonal=orthogonal)
+            hints=hints, pair_bias=pair_bias, orthogonal=orthogonal,
+            pref=pref)
 
     chosen = best_clear if best_clear is not None else \
         (best_soft if soft else None)
@@ -1022,6 +1034,13 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
             plen = sum(pts[i].distance_to(pts[i + 1])
                        for i in range(len(pts) - 1))
             direct = _border_distance(by_id[src].rect, by_id[tgt].rect)
+            # Nested endpoints (an edge inside its own container, or
+            # container-to-child): border distance is 0 and the
+            # traceability ratio is meaningless — record 1.0 rather
+            # than a phantom >2x defect (measured: a 16px internal
+            # edge in principles' IAAS chain gated as a 16x monster).
+            if direct < 1.0:
+                direct = plen
             routed_edges.append(RoutedEdge(
                 source_id=src, target_id=tgt, label=e.label,
                 edge_type=e.type, style=e.style if e.style else _default_style(e.type),
@@ -1094,6 +1113,14 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
     for it in ordered:
         out_fans[it[0].source].append(it)
         in_fans[it[0].target].append(it)
+    # Declared fan faces (from the view's FanConstraints, threaded via
+    # SolvedLayout.fan_faces): "fan above" MEANS the anchor's arrows
+    # leave north and arrive on the members' south faces. The declared
+    # face outranks the geometric dominant-face guess and the
+    # centre-delta discipline class — a wide fan above reads as
+    # inter-column flow to the centre heuristic (measured: the Juju
+    # enters arrows left west/east until the declaration spoke).
+    fan_faces = getattr(layout, "fan_faces", {}) or {}
     edge_hints: dict[int, dict] = {}
     edge_bias: dict[int, float] = {}
     for node_id, members in list(out_fans.items()) + list(in_fans.items()):
@@ -1102,18 +1129,22 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
             continue
         node = members[0][1] if side == "src" else members[0][2]
         rect = node.rect
-        # Group the fan by dominant face, then distribute each
-        # same-face group across that face. (Mixed-face fans used to
-        # skip hinting entirely — "the ladder's own diversity wins" —
-        # which threw away the same-face subgroup's slots: the Juju
-        # enters controller fans two edges out of mid-north and one
-        # out of mid-south; a fan from mid-north is the vocabulary's
-        # own statement, not a ladder accident.)
+        # Group the fan by face — declared where a FanConstraint speaks
+        # for the edge, geometric dominant-face otherwise — then
+        # distribute each same-face group across that face. (Mixed-face
+        # fans used to skip hinting entirely — "the ladder's own
+        # diversity wins" — which threw away the same-face subgroup's
+        # slots: the Juju enters controller fans two edges out of
+        # mid-north and one out of mid-south; a fan from mid-north is
+        # the vocabulary's own statement, not a ladder accident.)
         by_face: dict = defaultdict(list)
         for m in members:
             other = m[2].rect if side == "src" else m[1].rect
             mine = m[1].rect if side == "src" else m[2].rect
-            by_face[_dominant_face(mine, other)].append(m)
+            declared = fan_faces.get((m[0].source, m[0].target))
+            face = (declared[0] if side == "src" else declared[1]) \
+                if declared else _dominant_face(mine, other)
+            by_face[face].append(m)
         for face, ms in by_face.items():
             if len(ms) < 2:
                 continue
@@ -1177,6 +1208,8 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
             tgt_key=edge.target, used_anchors=used_anchors,
             label=edge.label,
             hints=edge_hints.get(id(edge)),
+            pref=(fan_faces.get((edge.source, edge.target))
+                  if fan_faces else None),
             pair_bias=edge_bias.get(id(edge)),
             orthogonal=(getattr(select, "routing", "") == "orthogonal"))
         if not pts:
@@ -1204,6 +1237,11 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
         plen = sum(pts[i].distance_to(pts[i + 1])
                    for i in range(len(pts) - 1))
         direct = _border_distance(src_rect, tgt_rect)
+        # Nested endpoints: border distance is 0 and the traceability
+        # ratio is meaningless (a 16px internal edge gated as a 16x
+        # monster) — record the path length instead.
+        if direct < 1.0:
+            direct = plen
         routed_edges.append(RoutedEdge(
             source_id=edge.source,
             target_id=edge.target,
