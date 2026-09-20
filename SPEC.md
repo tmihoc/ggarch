@@ -2320,3 +2320,76 @@ Phases 8–12 add no new dependencies.
    therefore where the reader -- and an agent -- looks for editorial
    intent. Currently open; the `:file:` + `:view:` indirection covers the
    common case.
+
+---
+
+## Design item: the salience channel (focus + context)
+
+Origin: the agent-authored-diagram goal state — "add a diagram, keeping
+such-and-such meaning preattentive" — needs a way to SAY which path or
+group carries the argument. ADR-004 gave the edge grammar its semantic
+channels (colour = ownership, dash = rhythm/timing, arrowhead =
+commitment, ~3 values each). What it deliberately did not give: a
+SALIENCE channel — weight and saturation that say "this is the part
+the eye must find first," independent of what anything means.
+
+### The design question (to settle before implementation)
+
+**Does salience stack on the semantic channels, or override them?**
+
+- *Stack*: emphasis = weight/saturation MULTIPLIED onto existing
+  styling; ownership colours stay readable under emphasis, and the
+  de-emphasized remainder dims by the same factor. Pros: meaning is
+  never lost (a control arrow stays control-shaped when bold);
+  dimming the rest is one transform. Cons: two visual variables
+  (weight × saturation) can interact unpredictably with the dark
+  theme; ~3-values-per-channel discipline is harder to audit when
+  weight is continuous.
+- *Override*: emphasis swaps to a dedicated emphasis style (bold
+  stroke, full saturation; the remainder greys out to a fixed
+  de-emphasis style). Pros: one preattentive reading, trivially
+  auditable; the de-emphasis style is a single swatch. Cons: the
+  greyed remainder LOSES its ownership colours — meaning survives
+  only in the legend and the emphasized subgraph.
+
+The working preference (to be ratified by a rendered A/B): **stack,
+with the dimming factor shared** — one declared `dim: <factor>`
+(default 0.35) applied to the un-emphasized remainder, emphasis
+raising weight to `stroke-width: 3` and saturation to full. Rationale:
+the semantic channels are the diagram's vocabulary; a focus mechanism
+that erases them makes the un-focused region unreadable, which defeats
+focus+context. The audit's label/corridor machinery then treats
+emphasized strokes as wider (corridor budget +1px).
+
+### The grammar (proposed, view-level — salience is view rhetoric)
+
+```
+diagram "..." from "..." {
+  select { ... }
+  positions { ... }
+  emphasize {
+    path [user client controller app1 app2 app3]   # the argument chain
+    # or: nodes [controller] / edges [type control]
+  }
+}
+```
+
+- `path [...]` — a declared route through the graph (ordered node
+  ids); the edges between consecutive members are emphasized, the
+  rest of the view dims. The path is CHECKED (validator: consecutive
+  members must be connected by a selected edge — a path through
+  non-adjacent nodes is a lie, like every other lie the validator
+  catches).
+- `nodes [...]` / `edges [...]` — group-level emphasis without a
+  chain claim.
+- Stacking with `records: hidden`-style curation is orthogonal:
+  emphasis is placement rhetoric, not truth.
+
+### Acceptance (when implemented)
+
+- the emphasis vocabulary renders on the refinement acceptance view
+  (the user→client→controller→apps chain as the one loud thing);
+- the corpus suite + geometry gate stay green (emphasized strokes'
+  corridors budgeted);
+- an A/B render (stack vs override) ships with the ADR-004 amendment
+  so the ratification is visual, not rhetorical.
