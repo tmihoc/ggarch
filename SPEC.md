@@ -2393,3 +2393,19 @@ diagram "..." from "..." {
   corridors budgeted);
 - an A/B render (stack vs override) ships with the ADR-004 amendment
   so the ratification is visual, not rhetorical.
+
+### Implementation note (2026-09-20, stack arm landed)
+
+The stack arm is implemented and resolves one design detail: **the
+emphasized subgraph is induced on the declared loud node set** — an
+edge is loud when both endpoints are loud (declared, or descendants of
+a declared container; a loud container's anatomy stays loud, a
+boundary arrow to the dimmed outside dims). The path declaration is
+the adjacency-checked way to name loud nodes; `nodes [...]` names fan
+members and siblings the chain cannot visit — the validator caught the
+difference on the acceptance view itself (the apps are parallel fan
+members; a chain through them is a lie). The A/B for stack-vs-override
+ratification is still owed (the stack arm's dim = group opacity 0.35,
+which covers stroke, arrowhead glyphs and the riding label together).
+Corridor budgeting for the weight-3 strokes is deferred: planned at
+2px, drawn at 3, the 0.5px risk is below the accepted tensions.

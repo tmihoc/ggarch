@@ -414,19 +414,22 @@ class _GgarchTransformer(Transformer):
     # ------------------------------------------------------------------
 
     def diagram(self, name, model_name, body) -> DiagramView:
-        select, constraints, annotations = body
+        select, constraints, annotations, emphasize = body
         return DiagramView(
             name=_str(name),
             model_name=_str(model_name),
             select=select,
             constraints=constraints,
             annotations=annotations,
+            emphasize_path=emphasize.get("path", []),
+            emphasize_nodes=emphasize.get("nodes", []),
         )
 
     def diagram_body(self, *items):
         select = SelectClause()
         constraints: list[Constraint] = []
         annotations: list[Annotation] = []
+        emphasize: dict[str, list[str]] = {}
         for item in items:
             if isinstance(item, SelectClause):
                 select = item
@@ -438,7 +441,24 @@ class _GgarchTransformer(Transformer):
                         AnnotationSeparator, AnnotationBadge,
                         AnnotationLegend)):
                     annotations = item
-        return select, constraints, annotations
+            elif isinstance(item, dict):
+                emphasize = item
+        return select, constraints, annotations, emphasize
+
+    def emphasize_block(self, *items) -> dict:
+        out: dict[str, list[str]] = {"path": [], "nodes": []}
+        for item in items:
+            if not isinstance(item, tuple):
+                continue  # the EMPHASIZE_KW terminal rides the tree
+            key, ids = item
+            out[key] = ids
+        return out
+
+    def emph_path(self, *ids) -> tuple:
+        return ("path", [_str(i) for i in ids])
+
+    def emph_nodes(self, *ids) -> tuple:
+        return ("nodes", [_str(i) for i in ids])
 
     def select_block(self, *items) -> SelectClause:
         s = SelectClause()

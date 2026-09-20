@@ -323,6 +323,7 @@ def render(
     edge_styles = resolve_edge_style(model.style, dark=dark)
     layout = routed.layout
     bounds = layout.bounds
+    salience = _emphasize_state(view, layout)
 
     # Detect legend annotations and reserve gutter space (unless suppressed).
     legend_anns = [a for a in view.annotations if isinstance(a, AnnotationLegend)]
@@ -428,9 +429,10 @@ def render(
     nodes_g = dw.Group(id="ggarch-nodes")
     edges_g = dw.Group(id="ggarch-edges")
     ann_g   = dw.Group(id="ggarch-annotations")
-    _render_nodes(nodes_g, layout.nodes, node_styles, ox, oy, view, dark, border_gaps, model)
+    _render_nodes(nodes_g, layout.nodes, node_styles, ox, oy, view, dark, border_gaps, model,
+                  salience=salience)
     for edge in routed.edges:
-        _render_edge(edges_g, edge, edge_styles, ox, oy)
+        _render_edge(edges_g, edge, edge_styles, ox, oy, salience=salience)
 
     for ann in view.annotations:
         if skip_legend and isinstance(ann, AnnotationLegend):
@@ -521,14 +523,76 @@ def _render_nodes(
     dark: bool = False,
     border_gaps: dict | None = None,
     model=None,
+    salience: dict | None = None,
 ) -> None:
     border_gaps = border_gaps or {}
     for node in nodes:
         if node.children:
-            _render_node(g, node, node_styles, ox, oy, view, dark, border_gaps, model)
+            _render_node(g, node, node_styles, ox, oy, view, dark, border_gaps,
+                         model, salience=salience)
     for node in nodes:
         if not node.children:
-            _render_node(g, node, node_styles, ox, oy, view, dark, border_gaps, model)
+            _render_node(g, node, node_styles, ox, oy, view, dark, border_gaps,
+                         model, salience=salience)
+
+
+# ---------------------------------------------------------------------------
+# The salience channel (ADR-004 fourth variable; SPEC "Design item:
+# the salience channel")
+# ---------------------------------------------------------------------------
+
+SALIENCE_DIM_OPACITY = 0.35  # the shared dim factor (stack model)
+
+
+def _emphasize_state(view: DiagramView, layout: SolvedLayout) -> dict:
+    """The emphasized subgraph, derived from the view's declared
+    emphasis. Direction-agnostic on edges (emphasis highlights the
+    connection); upward-closed on nodes (a container stays loud if any
+    descendant is on the path — the path's context keeps its frame).
+    Returns {} when the view declares no emphasis: every consumer's
+    fast path, zero change to un-emphasized views."""
+    if not view.emphasize_path and not view.emphasize_nodes:
+        return {}
+    declared = set(view.emphasize_path) | set(view.emphasize_nodes)
+
+    # The emphasized subgraph is INDUCED on the declared loud nodes:
+    # loud_ids = declared nodes plus all their descendants; an edge is
+    # loud when BOTH endpoints are loud (a loud container's anatomy
+    # stays loud; a boundary arrow to the dimmed outside dims). The
+    # path declaration is the adjacency-checked way to name loud
+    # nodes; `nodes` names fan members and siblings the chain cannot
+    # visit (the apps are parallel, not sequential).
+    loud_ids = set(declared)
+    stack = list(layout.nodes)
+    while stack:
+        n = stack.pop()
+        if n.id in loud_ids:
+            for c in n.children:
+                if c.id not in loud_ids:
+                    loud_ids.add(c.id)
+                stack.append(c)
+        else:
+            stack.extend(n.children)
+
+    def _loud_subtree(n) -> bool:
+        if n.id in loud_ids:
+            return True
+        return any(_loud_subtree(c) for c in n.children)
+
+    return {"loud_ids": loud_ids, "subtree_loud": _loud_subtree}
+
+
+def _is_emphasized_edge(edge, salience: dict) -> bool:
+    if not salience:
+        return False
+    return (edge.source_id in salience["loud_ids"]
+            and edge.target_id in salience["loud_ids"])
+
+
+def _is_emphasized_node(node, salience: dict) -> bool:
+    if not salience:
+        return True  # no emphasis declared: everything renders normal
+    return salience["subtree_loud"](node)
 
 
 def _render_node(
@@ -541,20 +605,31 @@ def _render_node(
     dark: bool = False,
     border_gaps: dict | None = None,
     model=None,
+    salience: dict | None = None,
 ) -> None:
     style = node_styles.get(node.type, node_styles.get("default", NodeStyle()))
     r = node.rect
     x, y, w, h = r.x + ox, r.y + oy, r.w, r.h
     has_children = bool(node.children)
+    # Salience dim (stack model): a node outside the emphasized
+    # subgraph renders into its own group at the shared dim factor —
+    # walls, label and chips dim together. Nodes on the path (or
+    # containing it) stay loud. No emphasis declared: zero change.
+    if salience and not _is_emphasized_node(node, salience):
+        dim_g = dw.Group(opacity=SALIENCE_DIM_OPACITY)
+        g.append(dim_g)
+        g = dim_g
     if node.url:
         escaped = node.url.replace("&", "&amp;").replace('"', "&quot;")
         g.append(dw.Raw(f'<a href="{escaped}" target="_blank">'))
         _render_node_content(g, node, node_styles, ox, oy, view, dark,
-                             style, x, y, w, h, has_children, border_gaps, model)
+                             style, x, y, w, h, has_children, border_gaps,
+                             model, salience=salience)
         g.append(dw.Raw("</a>"))
     else:
         _render_node_content(g, node, node_styles, ox, oy, view, dark,
-                             style, x, y, w, h, has_children, border_gaps, model)
+                             style, x, y, w, h, has_children, border_gaps,
+                             model, salience=salience)
 
 
 def _render_node_content(
@@ -573,6 +648,7 @@ def _render_node_content(
     has_children: bool,
     border_gaps: dict | None = None,
     model=None,
+    salience: dict | None = None,
 ) -> None:
     """Render the visual content of a node (shape, children, badge) into g."""
     node_gaps = (border_gaps or {}).get(node.id, {})
@@ -586,7 +662,8 @@ def _render_node_content(
         _render_box(g, x, y, w, h, style, node.label, node.lifecycle,
                     is_container=has_children, border_gaps=node_gaps)
     if node.children:
-        _render_nodes(g, node.children, node_styles, ox, oy, view, dark, border_gaps, model)
+        _render_nodes(g, node.children, node_styles, ox, oy, view, dark,
+                      border_gaps, model, salience=salience)
     if node.cardinality:
         _render_cardinality_badge(g, x + w - 4, y + 4, node.cardinality)
     scope = node.properties.get("scope", "")
@@ -1065,15 +1142,27 @@ def _render_edge(
     edge_styles: dict[str, EdgeStyle],
     ox: float,
     oy: float,
+    salience: dict | None = None,
 ) -> None:
     pts = [(p.x + ox, p.y + oy) for p in edge.points]
     es = edge_styles.get(edge.edge_type, edge_styles.get("default", EdgeStyle()))
+    emphasized = _is_emphasized_edge(edge, salience or {})
+    # The salience stack (ADR-004 fourth variable): the emphasized
+    # stroke raises its weight (saturation is already the type's
+    # colour); the remainder dims by the shared factor. Group opacity
+    # covers stroke, arrowhead glyphs and the riding label together —
+    # element-level opacity would leave marker glyphs loud.
+    dim_wrap = None
+    if salience and not emphasized:
+        dim_wrap = dw.Group(opacity=SALIENCE_DIM_OPACITY)
+        g.append(dim_wrap)
+        g = dim_wrap
     # ADR-003 decision 9: rounded joins — one attribute, zero
     # geometry, sub-pixel corners; never participates in the search.
     path_kwargs: dict = dict(
         fill="none",
         stroke=es.stroke,
-        stroke_width=es.stroke_width,
+        stroke_width=(3.0 if emphasized else es.stroke_width),
         stroke_linejoin="round",
     )
     if edge.style == "dashed" or es.stroke_dash:

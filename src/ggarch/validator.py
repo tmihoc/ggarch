@@ -434,6 +434,62 @@ def _validate_diagram_view(diagram: DiagramView, f: GgarchFile) -> None:
         env_ids = set(model.environment_abstractions_map(diagram.select.environment).keys())
     _validate_constraints(diagram.constraints, model, diagram.name,
                           extra_ids=instance_ids | env_ids)
+    _validate_emphasize(diagram, model)
+
+
+def _validate_emphasize(diagram: DiagramView, model: Model) -> None:
+    """The salience channel's truth rule (SPEC 'Design item: the
+    salience channel'): a declared path is a route CLAIM — consecutive
+    members must be connected by an edge the view actually draws
+    (materialized through instances, curated by except, type-filtered).
+    A path through non-adjacent nodes is a lie, like every other lie
+    the validator catches. Direction-agnostic: emphasis highlights the
+    connection, not an arrow direction."""
+    from ggarch.instances import materialize_instances
+
+    if not diagram.emphasize_path and not diagram.emphasize_nodes:
+        return
+    view_name = diagram.name
+    nodes, edges = materialize_instances(diagram.select, model)
+    sel_ids = {n.id for n in nodes}
+    except_pairs = {(s, t, ty) for s, t, ty in diagram.select.except_pairs}
+    types = set(diagram.select.edge_types) if diagram.select.edge_types else None
+
+    def drawn(a: str, b: str) -> bool:
+        return any(
+            {e.source, e.target} == {a, b}
+            and e.source != e.target
+            and (types is None or e.type in types)
+            and not any(es == e.source and et == e.target
+                        and (ty == "" or ty == e.type)
+                        for es, et, ty in except_pairs)
+            for e in edges)
+
+    for nid in diagram.emphasize_nodes + diagram.emphasize_path:
+        if nid not in sel_ids:
+            raise ValidationError(
+                f"view {view_name!r}: emphasized node {nid!r} is not "
+                f"selected by the view (unknown, unexpanded, or "
+                f"unselected id)",
+            )
+    for a, b in zip(diagram.emphasize_path, diagram.emphasize_path[1:]):
+        if a == b:
+            raise ValidationError(
+                f"view {view_name!r}: emphasize path repeats {a!r}",
+            )
+        if not drawn(a, b):
+            raise ValidationError(
+                f"view {view_name!r}: emphasize path claims "
+                f"{a!r} -> {b!r}, but the view draws no edge between "
+                f"them (check the select, except, and edge-type "
+                f"filters; instance ids, not type ids)",
+                hint="a path is a route claim: consecutive members "
+                     "must be connected by a drawn edge",
+            )
+    if len(set(diagram.emphasize_path)) != len(diagram.emphasize_path):
+        raise ValidationError(
+            f"view {view_name!r}: emphasize path visits a node twice",
+        )
 
 
 def _validate_sequence_view(seq: SequenceView, f: GgarchFile) -> None:

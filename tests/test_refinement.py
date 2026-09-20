@@ -61,6 +61,15 @@ diagram "Juju enters (refined)" from "M" {
     // the run for their labels to separate.
     fan [app1 app2 app3] right-of controller gap: 140
   }
+  emphasize {
+    // The argument: Juju machinery between the user and the
+    // applications. The path is adjacency-checked; the fan members
+    // are declared as nodes (they are parallel, not sequential — the
+    // validator rejects a chain through them). Edges are induced:
+    // loud when both endpoints are loud.
+    path [user client controller app1]
+    nodes [app2 app3]
+  }
 }
 """
 
@@ -242,3 +251,36 @@ class TestJujuEntersRefined:
         d, m, rl = refined
         svg = render(rl, m, d)
         assert "<svg" in svg
+
+    def test_emphasis_renders_loud_and_dim(self, refined):
+        """The salience stack: emphasized strokes at weight 3, the
+        remainder in dim groups; nodes on the path stay loud."""
+        d, m, rl = refined
+        svg = render(rl, m, d)
+        # emphasized stroke width present exactly on the path edges
+        assert 'stroke-width="3.0"' in svg
+        dim_groups = svg.count('opacity="0.35"')
+        assert dim_groups > 0, "no dim groups rendered"
+        # loud: user, client, controller, apps (6 nodes) + induced
+        # loud edges (spine + three converging). dim: charmhub + two
+        # clouds (3 nodes) + their three edges = 6 groups.
+        assert dim_groups == 6, f"expected 6 dim groups, saw {dim_groups}"
+
+    def test_emphasis_path_validated(self):
+        """A path claiming adjacency the view does not draw is a lie
+        the validator catches; an unknown node too."""
+        bad = SRC.replace(
+            "path [user client controller app1]\n    nodes [app2 app3]",
+            "path [user controller client]\n    nodes [app2 app3]")
+        with pytest.raises(Exception, match="no edge between"):
+            validate(parse(bad))
+        unknown = SRC.replace(
+            "path [user client controller app1]\n    nodes [app2 app3]",
+            "path [user client nonexistent]\n    nodes [app2 app3]")
+        with pytest.raises(Exception, match="not selected"):
+            validate(parse(unknown))
+        parallel = SRC.replace(
+            "path [user client controller app1]\n    nodes [app2 app3]",
+            "path [user client controller app1 app2]\n    nodes [app3]")
+        with pytest.raises(Exception, match="no edge between"):
+            validate(parse(parallel))

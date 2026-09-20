@@ -449,6 +449,12 @@ class DiagramView:
     select: SelectClause = field(default_factory=SelectClause)
     constraints: list[Constraint | FanConstraint] = field(default_factory=list)
     annotations: list[Annotation] = field(default_factory=list)
+    # Focus + context rhetoric (ADR-004 fourth variable; SPEC "the
+    # salience channel"): the emphasized subgraph renders loud, the
+    # remainder dims. `path` is a declared route — adjacency is
+    # validated (a path through non-adjacent nodes is a lie).
+    emphasize_path: list[str] = field(default_factory=list)
+    emphasize_nodes: list[str] = field(default_factory=list)
 
 
 @dataclass

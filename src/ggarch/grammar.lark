@@ -92,7 +92,7 @@ style_rule: ID ":" attr_value
 
 diagram: "diagram" STRING "from" STRING "{" diagram_body "}"
 
-diagram_body: (select_block | positions_block | annotations_block)*
+diagram_body: (select_block | positions_block | annotations_block | emphasize_block)*
 
 select_block: "select" "{" select_item* "}"
 
@@ -138,6 +138,12 @@ ALIGN_KW: "align-top" | "align-bottom" | "align-left" | "align-right" | "align-m
 SAME_KW: "same-width" | "same-height" | "same-size"
 
 annotations_block: "annotations" "{" annotation* "}"
+
+EMPHASIZE_KW.2: "emphasize"
+emphasize_block: EMPHASIZE_KW "{" emphasize_item* "}"
+
+emphasize_item: "path" "[" ID+ "]"            -> emph_path
+              | "nodes" "[" ID+ "]"           -> emph_nodes
 
 annotation: "box"       attrs_inline -> ann_box
           | "callout"   attrs_inline -> ann_callout
