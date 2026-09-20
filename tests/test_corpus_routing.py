@@ -117,11 +117,13 @@ class TestDefectEdges:
     def test_juju4_juju_enters_fan_has_no_weaves(self, corpus):
         """controller -> app1 / app2 measured 5 and 7 turns — weaves
         around earlier strips. Offsets, not bends: the fan routes
-        straight from the controller's face."""
+        straight from the controller's face. Edge flipped to
+        apps -> controller ("converges toward", reconciliation) 2026-09-20;
+        the defect geometry is symmetric in the flip."""
         rl = corpus["juju4.ggarch"]["Intro: Juju enters"]
         for tgt in ("app1", "app2"):
-            e = _find_edge(rl, "controller", tgt)
-            assert e.turns <= 1, f"controller->{tgt}: {e.turns} turns"
+            e = _find_edge(rl, tgt, "controller")
+            assert e.turns <= 1, f"{tgt}->controller: {e.turns} turns"
 
     def test_juju3_unpacked_fan_is_left_aligned(self, corpus):
         """The unit fanout right of the controller is a column sharing
@@ -133,9 +135,10 @@ class TestDefectEdges:
         assert max(xs) - min(xs) <= 0.5, f"fan column not aligned: {xs}"
 
     def test_juju3_juju_enters_app3_has_no_weave(self, corpus):
-        """controller -> app3 measured 7 turns (juju3 twin)."""
+        """controller -> app3 measured 7 turns (juju3 twin). Flipped to
+        app3 -> controller with the reconciliation direction."""
         rl = corpus["juju3.ggarch"]["Intro: Juju enters"]
-        e = _find_edge(rl, "controller", "app3")
+        e = _find_edge(rl, "app3", "controller")
         assert e.turns <= 1, f"{e.turns} turns"
 
 

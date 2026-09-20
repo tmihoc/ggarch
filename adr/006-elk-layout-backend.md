@@ -118,3 +118,35 @@ the floor's current state) changed the integration detail:
   discipline was reverted after a third measured regression on authored
   views (1.91 -> 1.95, >1.5x 4 -> 8) — ELK supersedes the orthogonal
   synthesis path it would have served.
+
+## Amendment 2 (2026-09-20) — the verified constraint surface
+
+Before committing to the backend, the pre-layout constraint channels
+were probed empirically against both the pinned elkjs 0.8.2 bundle and
+npm-latest 0.12.0 (tiny discriminating graphs through the runner):
+
+| Channel | Status | Evidence |
+|---|---|---|
+| `elk.portConstraints` FIXED_SIDE + `elk.port.side` | **honored** (0.8.2) | ELK moved a node right of its target to face a WEST port |
+| `elk.layered.layering.layerConstraint` FIRST/LAST | honored (0.12) | node pinned to outermost layer |
+| `IN_LAYER` + `layerId` (pin to exact column) | **ignored, both versions** | enum absent from compiled JS; output equals natural layering |
+| `crossingMinimization.positionId` + `positionChoiceConstraint` | **ignored, both versions** | order identical with and without |
+| `semiInteractive` seeded in-layer order | **not enforced** | crossing-minimal order won over seeds |
+| `considerModelOrder` PREFER_NODES + cm NONE + greedySwitch OFF | **not enforced** (contradicts the ELK 0.8.x blog) | crossing-minimal order won; also mutually exclusive with INTERACTIVE seeding (kills seed layering) |
+| INTERACTIVE seeds for column assignment | honored **only** in the plain stack (cycleBreaking+layering INTERACTIVE, semiInteractive, default cm) | probe: 4 seeded columns held |
+| Same-layer edges (in-column arrows against flow) | **outside the paradigm** | ELK re-layers the target instead of drawing the connector |
+| Per-pair gaps / exact alignment | **not supported** | spacing options are graph-global; no per-node alignment constraint in JS builds |
+
+Consequence (the split of labor this ADR now records):
+
+- **ELK owns**: column assignment along the flow, ordering within
+  columns (crossing-driven), edge routes, anchor faces (FIXED_SIDE
+  upgrades from our port inference when needed), global spacing.
+- **The floor owns**: every declared-arrangement statement — same-plan
+  grouping, fan above/below (against-flow in-column arrows), exact
+  alignment, per-pair gaps. A view whose arrangement is content
+  declares positions and never reaches the backend (existing dispatch
+  rule, now the formal boundary).
+- View curation (`except:`) is applied to the backend's input graph,
+  not just the render — layout must never see curated-out edges
+  (fixed 2026-09-20; was silently layering around them).

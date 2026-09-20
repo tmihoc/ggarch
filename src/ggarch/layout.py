@@ -66,7 +66,13 @@ class SolvedNode:
 
 @dataclass
 class SolvedLayout:
-    """The fully solved layout for one diagram view."""
+    """The fully solved layout for one diagram view.
+
+    edge_routes: when laid out by the ELK backend (ADR-006), the
+    backend's edge geometry as (source, target, [Point, ...]) tuples;
+    route() wraps these instead of running the built-in router. None
+    for the built-in synthesizer."""
+    edge_routes: list | None = None
     # Top-level solved nodes (in declaration order).
     nodes: list[SolvedNode] = field(default_factory=list)
     # Total bounding box of the diagram (for SVG viewBox).

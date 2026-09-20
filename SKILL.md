@@ -360,6 +360,7 @@ select {
   sizing: uniform            # all selected leaf nodes render one size
   except: client -> cloud app -> charm [type: api]   # curate edges out
   records: shown             # render the runtime->record bridges
+  records: hidden            # suppress the derived chips on this view
 }
 ```
 
@@ -373,6 +374,10 @@ select {
   (source/target pairs, optional `[type: x]` qualifier). The model stays
   complete; each view tells the story it exists to tell. Multiple refs,
   space-separated.
+- `records: shown` / `records: hidden` — the bridges render when
+  declared (below); `hidden` suppresses the derived chips on this view
+  even where nodes carry `records:` (for views whose label crowding the
+  chips worsen — the chip design is under review, 2026-09-20).
 - `records: shown` — render the runtime→record **bridges** (ADR-005):
   one synthetic edge per recorded node, amber, solid, headless (the
   persistence axis states no call and no pointer; the pointer is the

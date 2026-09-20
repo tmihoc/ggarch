@@ -100,6 +100,25 @@ CENTRE_MISS_COST = 18.0  # px — a deliberate form (L/U) anchoring off
                          # the face centre: arrows start/end in the
                          # middle of an edge; offsets are for fans and
                          # for dodging blocked centres only
+FACE_DISCIPLINE_COST = 20  # px — an anchor pair against the port
+                         # discipline (ADR-007): inter-column edges
+                         # prefer source-EAST/target-WEST, same-column
+                         # edges prefer the column axis. Priced under
+                         # TURN_PENALTY (40) so it can never buy a
+                         # bend — the ADR-003 vocabulary (<=2 bends)
+                         # is the hard law, discipline yields to it —
+                         # and over ANCHOR_REUSE_COST (8) so among
+                         # bend-equal candidates the disciplined pair
+                         # wins. The label costs (24 per strip hit, 80 per node
+                         #  strike) outrank it — 20 sits under 24 by design: a
+                         # disciplined face is traded for label corridor before it is
+                         # traded for a bend (measured on the refinement
+                         # acceptance view — 20 un-dents a fan corner that 12
+                         # left; the third fan edge into a shared face keeps its dodge).
+                         # ELK precedent: it picks faces per edge the
+                         # same way (3/9 EAST entries on Worker tree
+                         # machine cloud, 17/17 WEST on Worker tree
+                         # controller — geometry, not dogma).
 
 
 # ---------------------------------------------------------------------------
@@ -532,6 +551,22 @@ def _route_candidates_eval(
     best_soft = None    # (points, bends, cost, order, crossings)
     hints = hints or {}
 
+    # Port discipline (ADR-007): the preferred (exit, enter) faces for
+    # this pair's geometry — inter-column: source-EAST/target-WEST on
+    # a rightward flow (mirrored leftward); same-column: along the
+    # column axis. A cost *preference*: priced under TURN_PENALTY, so
+    # a bend never gets added to satisfy it, and the U-shape
+    # (chain-skip over an align-middle blocker) keeps its two bends.
+    dx_c = ((tgt_rect.x + tgt_rect.w / 2.0)
+            - (src_rect.x + src_rect.w / 2.0))
+    dy_c = ((tgt_rect.y + tgt_rect.h / 2.0)
+            - (src_rect.y + src_rect.h / 2.0))
+    if abs(dx_c) >= abs(dy_c):
+        preferred = ("right", "left") if dx_c > 0 else ("left", "right")
+    else:
+        preferred = (("bottom", "top") if dy_c > 0
+                     else ("top", "bottom"))
+
     def _center(rect: Rect, face: str) -> float:
         lo, hi = ((rect.x, rect.x + rect.w) if face in ("top", "bottom")
                   else (rect.y, rect.y + rect.h))
@@ -564,6 +599,8 @@ def _route_candidates_eval(
                                     (tgt_key, ft), ()):
                                 reuse += ANCHOR_REUSE_COST
                         cost = direct + TURN_PENALTY * bends + reuse
+                        if (fs, ft) != preferred:
+                            cost += FACE_DISCIPLINE_COST
                         # Deliberate forms anchor at face centres
                         # (review round 2): a U or L reads best
                         # leaving/entering the middle of an edge —
@@ -613,6 +650,7 @@ def _route_candidates_eval(
                         if search.label:
                             node_hits, other_hits = search.label_score(pts)
                         other_hits += search.stroke_label_hits(pts)
+
                         cost += (LABEL_NODE_COST * node_hits
                                  + LABEL_OTHER_COST * other_hits)
                         order = (fs_i, ft_i, si, ti, form_rank,
@@ -964,6 +1002,34 @@ def _route_order(items):
 
 def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
     """Compute routed edges for all model edges whose endpoints are in layout."""
+    # ADR-006: an ELK-laid-out view carries its edge geometry from the
+    # backend — wrap it (strips for the label contract, audit metrics
+    # computed the same way as built-in routes) and skip the router.
+    # Routes are matched against the MATERIALIZED edges: instance
+    # expansion rewires endpoints (user -> bare_application becomes
+    # user -> app1/2/3), so the raw model edges don't carry the
+    # expanded endpoint ids.
+    if getattr(layout, "edge_routes", None):
+        _, mat_edges = materialize_instances(select, model)
+        by_id = {n.id: n for n in layout.nodes}
+        routed_edges = []
+        for src, tgt, pts in layout.edge_routes:
+            e = next((x for x in mat_edges
+                      if x.source == src and x.target == tgt), None)
+            if e is None or src not in by_id or tgt not in by_id:
+                continue
+            strip = _edge_strip(pts, e)
+            plen = sum(pts[i].distance_to(pts[i + 1])
+                       for i in range(len(pts) - 1))
+            direct = _border_distance(by_id[src].rect, by_id[tgt].rect)
+            routed_edges.append(RoutedEdge(
+                source_id=src, target_id=tgt, label=e.label,
+                edge_type=e.type, style=e.style if e.style else _default_style(e.type),
+                arrow=e.arrow, url=e.url, points=pts,
+                turns=_count_turns([(p.x, p.y) for p in pts]), residuals=[],
+                direct=direct, ratio=plen / max(direct, 1.0), strip=strip))
+        return RoutedLayout(layout=layout, edges=routed_edges)
+
     clear = ROUTE_STROKE_W / 2 + STRIP_PAD
 
     # Materialized edges: instanced types are stamped out (subtrees +
@@ -1036,26 +1102,51 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
             continue
         node = members[0][1] if side == "src" else members[0][2]
         rect = node.rect
-        face = _dominant_face(rect, members[0][2].rect if side == "src"
-                              else members[0][1].rect)
-        if any(_dominant_face(m[1].rect if side == "src" else m[2].rect,
-                              m[2].rect if side == "src" else m[1].rect)
-               != face for m in members):
-            continue  # mixed faces: the ladder's own diversity wins
-        lo, hi = ((rect.y, rect.y + rect.h) if face in ("right", "left")
-                  else (rect.x, rect.x + rect.w))
-        usable = hi - lo - 2 * SEED_INSET
-        spacing = min(PORT_GAP, usable / (len(members) - 1)) \
-            if len(members) > 1 else 0.0
-        center = (lo + hi) / 2.0
-        key = (lambda m: m[2].rect.cy if side == "src" and face in
-               ("right", "left") else
-               m[1].rect.cy if face in ("right", "left") else
-               m[2].rect.cx if side == "src" else m[1].rect.cx)
-        for i, m in enumerate(sorted(members, key=key)):
-            delta = (i - (len(members) - 1) / 2.0) * spacing
-            edge_hints.setdefault(id(m), {"src": {}, "tgt": {}})[side][face] \
-                = center + delta
+        # Group the fan by dominant face, then distribute each
+        # same-face group across that face. (Mixed-face fans used to
+        # skip hinting entirely — "the ladder's own diversity wins" —
+        # which threw away the same-face subgroup's slots: the Juju
+        # enters controller fans two edges out of mid-north and one
+        # out of mid-south; a fan from mid-north is the vocabulary's
+        # own statement, not a ladder accident.)
+        by_face: dict = defaultdict(list)
+        for m in members:
+            other = m[2].rect if side == "src" else m[1].rect
+            mine = m[1].rect if side == "src" else m[2].rect
+            by_face[_dominant_face(mine, other)].append(m)
+        for face, ms in by_face.items():
+            if len(ms) < 2:
+                continue
+            lo, hi = ((rect.y, rect.y + rect.h)
+                      if face in ("right", "left")
+                      else (rect.x, rect.x + rect.w))
+            usable = hi - lo - 2 * SEED_INSET
+            spacing = min(PORT_GAP, usable / (len(ms) - 1)) \
+                if len(ms) > 1 else 0.0
+            center = (lo + hi) / 2.0
+            key = (lambda m: m[2].rect.cy if side == "src" and face in
+                   ("right", "left") else
+                   m[1].rect.cy if face in ("right", "left") else
+                   m[2].rect.cx if side == "src" else m[1].rect.cx)
+            # Hints must sit ON the ladder grid: a hinted coordinate
+            # between slots is missed by every slot equally (each pays
+            # HINT_MISS_COST) and the hint is a no-op. Snap the ideal
+            # delta to the nearest ladder slot, clamped to the ladder's
+            # reach — same step formula as _anchor_ladder.
+            step = max(SEED_STEP, usable / 6.0)
+            for i, m in enumerate(sorted(ms, key=key)):
+                ideal = (i - (len(ms) - 1) / 2.0) * spacing
+                k = max(-LADDER_K, min(LADDER_K, round(ideal / step)))
+                delta = k * step
+                # Key by the edge object's identity, not id() of the
+                # (edge, src, tgt) tuple: the lookup rebuilds that
+                # tuple, and a fresh tuple's id never matches the
+                # stored one — the fan slots were dead code (fans
+                # distributed via anchor reuse instead, which is why
+                # nobody noticed).
+                edge_hints.setdefault(
+                    id(m[0]), {"src": {}, "tgt": {}})[side][face] \
+                    = center + delta
 
     anti_parallel: dict = {}
     for it in ordered:
@@ -1063,8 +1154,8 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                                  []).append(it)
     for group in anti_parallel.values():
         if len(group) == 2 and group[0][0].source == group[1][0].target:
-            edge_bias[id(group[0])] = PAIR_BIAS
-            edge_bias[id(group[1])] = -PAIR_BIAS
+            edge_bias[id(group[0][0])] = PAIR_BIAS
+            edge_bias[id(group[1][0])] = -PAIR_BIAS
 
     for edge, src_node, tgt_node in ordered:
         src_rect, tgt_rect = src_node.rect, tgt_node.rect
@@ -1085,8 +1176,8 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
             src_anchor, tgt_anchor, src_key=edge.source,
             tgt_key=edge.target, used_anchors=used_anchors,
             label=edge.label,
-            hints=edge_hints.get(id((edge, src_node, tgt_node))),
-            pair_bias=edge_bias.get(id((edge, src_node, tgt_node))),
+            hints=edge_hints.get(id(edge)),
+            pair_bias=edge_bias.get(id(edge)),
             orthogonal=(getattr(select, "routing", "") == "orthogonal"))
         if not pts:
             # Complete search failure (degenerate geometry): fall back
