@@ -18,6 +18,14 @@ def main() -> None:
     check = sub.add_parser("check", help="parse and validate a .ggarch file")
     check.add_argument("file", type=Path)
 
+    scaffold_cmd = sub.add_parser(
+        "scaffold", help="generate a .ggarch fragment from a SQLite DDL")
+    scaffold_cmd.add_argument("ddl", type=Path, help="the .ddl file")
+    scaffold_cmd.add_argument("--db", default="schema",
+                              help="db label for ground pointers")
+    scaffold_cmd.add_argument("--tables", default="",
+                              help="comma-separated table subset (default: all)")
+
     dump = sub.add_parser("dump", help="parse and dump the model as JSON")
     dump.add_argument("file", type=Path)
 
@@ -51,6 +59,13 @@ def main() -> None:
     if args.cmd is None:
         p.print_help()
         sys.exit(0)
+
+    if args.cmd == "scaffold":
+        from ggarch.scaffold import scaffold_file
+        only = ({t.strip() for t in args.tables.split(",") if t.strip()}
+                or None)
+        sys.stdout.write(scaffold_file(args.ddl, args.db, only))
+        return
 
     source = args.file.read_text(encoding="utf-8")
     try:

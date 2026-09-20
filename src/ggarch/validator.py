@@ -148,15 +148,30 @@ def _validate_fk_edges(model: Model) -> None:
         for f in node.fields:
             if f.id not in fk_fields[node.id]:
                 continue
-            n = origin_count.get((node.id, f.id), 0)
-            if n != 1:
+            targets = [e.target for e in edges
+                       if _edge_src(e) == (node.id, f.id)]
+            n = len(targets)
+            if n == 0:
                 raise ValidationError(
                     f"model {model.name!r}: fk field "
-                    f"{node.id}.{f.id!r} originates {n} data edges; "
+                    f"{node.id}.{f.id!r} originates 0 data edges; "
                     f"exactly 1 expected — the FK column is the storage "
                     f"truth of the association and must be drawn exactly "
-                    f"once (a missing edge hides the pointer; a second "
-                    f"one asserts a column with two FK targets)",
+                    f"once (a missing edge hides the pointer)",
+                )
+            # One pointer per target: a DDL may legitimately declare one
+            # column referencing TWO tables (measured:
+            # application_remote_consumer.offer_connection_uuid, dual
+            # reference sanctioned in the DDL comment) — each pointer
+            # drawn once. A repeated target is a double-drawn arrow.
+            dupes = {t for t in targets if targets.count(t) > 1}
+            if dupes:
+                raise ValidationError(
+                    f"model {model.name!r}: fk field "
+                    f"{node.id}.{f.id!r} draws {n} data edges to the "
+                    f"same target {sorted(dupes)[0]!r}; each pointer is "
+                    f"drawn exactly once (distinct targets may each "
+                    f"carry an edge — a DDL-declared dual reference)",
                 )
 
 

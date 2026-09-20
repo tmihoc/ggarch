@@ -140,13 +140,16 @@ class TestFkCompleteness:
             validate(f)
 
     def test_fk_field_with_two_data_edges_rejected(self):
-        """One column, two arrows: asserts a column with two FK targets."""
+        """One column, two arrows to the SAME target: a double-drawn
+        arrow (distinct targets are legal — a DDL-declared dual
+        reference draws one pointer per target)."""
         src = RECORD_SRC.replace(
             "post.user_id -> user.id [type: data, label: \"author\"]",
             "post.user_id -> user.id [type: data, label: \"author\"]\n"
             "    post.user_id -> user.name [type: data, label: \"names\"]")
         f = parse(src)
-        with pytest.raises(ValidationError, match="exactly 1 expected"):
+        with pytest.raises(ValidationError,
+                           match="same target"):
             validate(f)
 
     def test_data_edge_from_non_fk_field_rejected(self):

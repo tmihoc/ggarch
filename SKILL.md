@@ -292,6 +292,19 @@ truth-maker.
 
 ## Writing a diagram: step by step
 
+### 0. Scaffolding from DDL (data-model diagrams)
+
+For entity-relationship views, scaffold instead of hand-writing the
+record nodes: `ggarch scaffold <file>.ddl --db model --tables a,b,c`
+emits a valid model fragment — record nodes (fields with
+`pk:`/`fk:`/`null:` markers), data edges (FK column → parent PK
+column, one pointer per distinct target), and `ground:` pointers into
+the DDL. The transitive FK-parent closure of the requested tables is
+auto-included (pruning a referenced parent would hide the pointer).
+The fragment validates by construction — FK-completeness holds at
+birth — so your curation (trim tables, name the relationships with
+aligned verbs, build the views) happens with the validator watching.
+
 ### 1. Identify the nodes
 
 List every entity that needs to appear in at least one diagram. Assign each a
