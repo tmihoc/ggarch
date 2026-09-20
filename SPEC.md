@@ -292,6 +292,11 @@ channel (shape, colour, size) encodes one orthogonal dimension of meaning.
 Every visual element is semantically load-bearing; nothing decorates for its
 own sake.
 
+The concrete edge-channel assignment (colour = ownership, dash =
+rhythm/timing, arrowhead = commitment) is ADR-004's grammar; its
+fourth variable — salience — is SPEC "Design item: the salience
+channel".
+
 Position is deliberately excluded from this list of channels: position is
 content (an authored spatial argument), not a channel encoding a model
 dimension. See Motivation, "Position is content".
@@ -595,7 +600,11 @@ declarations (`charm_relation`, `charm_action`) do not -- they are
 Start with realisation; add read-access only when a diagram needs it --
 for example, the uniter reading charm declarations when dispatching.
 
-**Implemented (0.21.0): `records:` as a node attribute.** `records:
+**Implemented (0.21.0): `records:` as a node attribute.**
+(ADR-005 later built provenance on it: the derived chips — a node's
+amber `rec:` chip derives from its subtree's records and is
+upward-closed — and the `records: shown` view bridges. The facet
+derivation below is the next leg.) `records:
 "unit_rec"` on a runtime node links it to the record that backs it --
 declared in the model, never in views, on the persistence axis
 (`abstracts:` is its sibling on the abstraction axis). It delivers:
