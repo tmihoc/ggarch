@@ -471,6 +471,10 @@ class _GgarchTransformer(Transformer):
     def select_routing(self, mode_token) -> tuple: return ("routing", _str(mode_token))
 
     def edge_ref(self, src_token, tgt_token, *typ) -> tuple:
+        # Lark's maybe_placeholders passes None for the optional [type]
+        # group; treat it as absent (a literal 'None' string here silently
+        # no-opped every typeless except ref against the ty=="" filter).
+        typ = [t for t in typ if t is not None]
         t = _str(typ[0]) if typ else ""
         return (_str(src_token), _str(tgt_token), t)
 
