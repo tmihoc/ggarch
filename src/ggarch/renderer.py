@@ -311,6 +311,7 @@ def render(
     view: DiagramView,
     dark: bool = False,
     skip_legend: bool = False,
+    salience_mode: str = "dim",
 ) -> str:
     """Render a RoutedLayout to an SVG string.
 
@@ -324,6 +325,8 @@ def render(
     layout = routed.layout
     bounds = layout.bounds
     salience = _emphasize_state(view, layout)
+    if salience:
+        salience = dict(salience, mode=salience_mode)
 
     # Detect legend annotations and reserve gutter space (unless suppressed).
     legend_anns = [a for a in view.annotations if isinstance(a, AnnotationLegend)]
@@ -542,6 +545,10 @@ def _render_nodes(
 # ---------------------------------------------------------------------------
 
 SALIENCE_DIM_OPACITY = 0.35  # the shared dim factor (stack model)
+# The override arm (ratification A/B): the remainder keeps full
+# opacity but loses colour (grayscale) — meaning survives only in the
+# emphasized subgraph and the legend.
+SALIENCE_OVERRIDE_FILTER = "grayscale(1)"
 
 
 def _emphasize_state(view: DiagramView, layout: SolvedLayout) -> dict:
@@ -616,7 +623,10 @@ def _render_node(
     # walls, label and chips dim together. Nodes on the path (or
     # containing it) stay loud. No emphasis declared: zero change.
     if salience and not _is_emphasized_node(node, salience):
-        dim_g = dw.Group(opacity=SALIENCE_DIM_OPACITY)
+        if salience.get("mode") == "override":
+            dim_g = dw.Group(filter=SALIENCE_OVERRIDE_FILTER)
+        else:
+            dim_g = dw.Group(opacity=SALIENCE_DIM_OPACITY)
         g.append(dim_g)
         g = dim_g
     if node.url:
@@ -1154,7 +1164,10 @@ def _render_edge(
     # element-level opacity would leave marker glyphs loud.
     dim_wrap = None
     if salience and not emphasized:
-        dim_wrap = dw.Group(opacity=SALIENCE_DIM_OPACITY)
+        if salience.get("mode") == "override":
+            dim_wrap = dw.Group(filter=SALIENCE_OVERRIDE_FILTER)
+        else:
+            dim_wrap = dw.Group(opacity=SALIENCE_DIM_OPACITY)
         g.append(dim_wrap)
         g = dim_wrap
     # ADR-003 decision 9: rounded joins — one attribute, zero
