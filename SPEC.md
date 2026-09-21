@@ -717,6 +717,19 @@ relationship the tag rendering shows. Regions remain a rendering
 choice, not a modelling one: authors with overlapping provenance use
 tags instead.
 
+**TODO: view-level flow flip (TB vs LR).** (Reviewer request
+2026-09-21: a standard DaC capability we lack.) A view-level option —
+`flow: down` (or `direction: down` on the view) — that rotates the
+whole synthesis: depth columns become rows (top-to-bottom flow), the
+spine runs vertically, and the typed hub planes mirror (sink-spoke
+bands sit LEFT/RIGHT of the hub straddling its row, api-type spokes to
+the left; feeder fans hang below/above with RL->TB arrows; the
+stack-split's above/below becomes right/left). The router needs no
+change (it works off solved rects); the solver's plane vocabulary and
+the between-column emitter parametrize on the flow axis. Sequences are
+unaffected. Build when a view reads better top-to-bottom — do not
+pre-build; the corpus is currently all LR.
+
 **TODO: collective nodes.** (Reviewer request 2026-09-21, on the Juju
 overview: "clouds and apps referenced in the plural, collectively".)
 A node that abstracts over the instances of its type — the DSL
