@@ -75,6 +75,8 @@ from ggarch.geometry import (  # noqa: E402 — re-export
     LABEL_SIDE_PAD,
     LabelGeometry,
     Strip,
+    ANN_LABEL_LINE_H,
+    ann_band_h,
     label_geometry,
     rects_overlap,
     strip_for_edge,
@@ -336,7 +338,7 @@ def render(
         pos = (ann_positions.get(idx) if idx in ann_positions
                else (ann.label_position
                      if hasattr(ann, 'label_position') else 'top'))
-        LABEL_H = 26
+        LABEL_H = ann_band_h(ann.label)
         pt = (ann.padding_top    if hasattr(ann, 'padding_top')    and ann.padding_top    is not None else pad)
         pr = (ann.padding_right  if hasattr(ann, 'padding_right')  and ann.padding_right  is not None else pad)
         pb = (ann.padding_bottom if hasattr(ann, 'padding_bottom') and ann.padding_bottom is not None else pad)
@@ -1208,7 +1210,7 @@ def _render_ann_box(
                    if hasattr(ann, 'label_position') else 'top'))
 
     # For inside-* positions, reserve an extra strip for the label.
-    LABEL_H = 26
+    LABEL_H = ann_band_h(ann.label)
     if pos == 'inside-bottom':
         pb += LABEL_H
     elif pos == 'inside-top':
@@ -1245,13 +1247,21 @@ def _render_ann_box(
             lx, ly, anchor = x + w + 14, y + h / 2,            "start"
         else:  # top (default)
             lx, ly, anchor = x + w / 2, y - 14,                "middle"
-        g.append(dw.Text(
-            ann.label, 11, lx, ly,
-            font_family=ANNOTATION_FONT,
-            fill=color,
-            text_anchor=anchor,
-            dominant_baseline="central",
-        ))
+        # The multi-line convention (the same one node and edge labels
+        # follow): manual \n lines render as one Text per line, centred
+        # on the band's anchor - never the literal backslash-n.
+        lines = ann.label.split("\\n")
+        lh = ANN_LABEL_LINE_H
+        start_y = ly - lh * (len(lines) - 1) / 2
+        for line in lines:
+            g.append(dw.Text(
+                line, 11, lx, start_y,
+                font_family=ANNOTATION_FONT,
+                fill=color,
+                text_anchor=anchor,
+                dominant_baseline="central",
+            ))
+            start_y += lh
 
 
 def _render_ann_callout(
@@ -1273,13 +1283,17 @@ def _render_ann_callout(
         "right": (r.x2 + ox + 8, r.cy + oy),
     }
     tx, ty = offsets.get(ann.position, offsets["above"])
-    g.append(dw.Text(
-        ann.text, 11, tx, ty,
-        font_family=ANNOTATION_FONT,
-        fill=color,
-        text_anchor="middle",
-        dominant_baseline="auto",
-    ))
+    lines = ann.text.split("\\n")
+    lh = ANN_LABEL_LINE_H
+    start_y = ty - lh * (len(lines) - 1) / 2
+    for i, line in enumerate(lines):
+        g.append(dw.Text(
+            line, 11, tx, start_y + i * lh,
+            font_family=ANNOTATION_FONT,
+            fill=color,
+            text_anchor="middle",
+            dominant_baseline="auto" if i == 0 else "central",
+        ))
 
 
 def _render_ann_separator(

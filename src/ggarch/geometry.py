@@ -247,6 +247,17 @@ def _point_seg_dist(p, a, b) -> float:
     return math.hypot(p[0] - (a[0] + ab[0] * t), p[1] - (a[1] + ab[1] * t))
 
 
+ANN_LABEL_LINE_H = 14.0
+
+
+def ann_band_h(label: str) -> float:
+    """The annotation label band's height: the 26px single-line band,
+    grown only when the label carries manual lines (multi-line labels
+    render one Text per line, so the band must fit them)."""
+    n = len(label.split("\\n")) if label else 1
+    return 26.0 if n <= 1 else 12.0 + n * ANN_LABEL_LINE_H
+
+
 def annotation_label_rect(ann, member_boxes: list) -> tuple | None:
     """The label band of an AnnotationBox, in layout coordinates.
 
@@ -261,7 +272,7 @@ def annotation_label_rect(ann, member_boxes: list) -> tuple | None:
         return None
     if not getattr(ann, "label", ""):
         return None
-    LABEL_H = 26.0
+    LABEL_H = ann_band_h(ann.label)
     pad = getattr(ann, "padding", 10)
     pt = ann.padding_top if ann.padding_top is not None else pad
     pr = ann.padding_right if ann.padding_right is not None else pad
