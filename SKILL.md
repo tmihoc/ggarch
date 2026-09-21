@@ -246,6 +246,13 @@ that restores flow; never let two channels argue.**
    the label names the relationship ("api", "watch", "belongs to").
    Direction-bearing wording is a smell: it usually means you wanted
    two edges, or the arrow points the wrong way.
+7. **One verb per facet.** The same channel drawn in several views (an
+   edge of one type between the same kinds of nodes) carries the SAME
+   label everywhere. The view chooses which facet to draw, not a new
+   verb for it. (Measured drift: the agent-to-controller api facet
+   shipped as "connects to", "connects via Juju API", "calls Juju API"
+   and unlabelled across view eras -- normalized 2026-09-21 to "makes
+   API calls to".)
 
 Two sub-policies:
 
