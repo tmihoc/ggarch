@@ -1,11 +1,14 @@
-"""ADR-006 — the ELK Layered backend (GGARCH_LAYOUT=elk).
+"""ADR-006 — the ELK Layered backend (the on-demand oracle).
 
 Gated on node + the elkjs bundle: skipped when either is absent; the
 built-in floor serves every view in that case and none of these tests
 run. When the bundle is present (GGARCH_ELK_BUNDLE or ./node_modules),
-the tests pin the backend contract: ELK owns positions and edge
-routes for views without declared positions; determinism holds; the
-built-in pipeline is untouched when the backend is not activated.
+the tests pin the backend contract through its EXPLICIT entry point
+(ggarch.elk.solve_view): solve() never auto-selects ELK (2026-09-21 —
+the fast path is retired; the floor's typed hub planes are synthesis
+machinery an ELK build cannot express). ELK owns positions and edge
+routes for the views it serves; determinism holds; the parallel ELK
+build runs through scripts/elk-compare.py.
 """
 import json
 import os
@@ -21,7 +24,7 @@ pytestmark = pytest.mark.skipif(
     reason="node + GGARCH_ELK_BUNDLE required for the ELK backend")
 
 
-ELK_ENV = {"GGARCH_LAYOUT": "elk", "GGARCH_ELK_BUNDLE": BUNDLE}
+ELK_ENV = {"GGARCH_ELK_BUNDLE": BUNDLE}
 
 SRC = """\
 model "M" {
@@ -48,15 +51,22 @@ def with_elk(monkeypatch):
     for k, v in ELK_ENV.items():
         monkeypatch.setenv(k, v)
 
+    def elk_solve(d, m):
+        from ggarch import elk
+        return elk.solve_view(d, m, d.select)
+    return elk_solve
+
 
 class TestElkBackend:
-    def test_authored_view_ignores_elk(self, with_elk, monkeypatch):
-        """A view with declared positions never reaches the backend:
-        position is content (the declared layout must survive)."""
-        monkeypatch.delenv("GGARCH_ELK_BUNDLE", raising=False)
+    def test_solve_never_selects_elk(self, with_elk):
+        """solve() is floor-only: even with the bundle and env present,
+        the fast path is retired — declared AND synthesized views are
+        served by the built-in floor (the typed hub planes are
+        synthesis machinery an ELK build cannot express)."""
         f = parse(SRC); validate(f)
         d = f.diagrams[0]; m = f.get_model(d.model_name)
         lay = solve(d, m)
+        assert lay.edge_routes is None
         a, b = lay.find("a").rect, lay.find("b").rect
         assert b.x - (a.x + a.w) >= 55  # the declared left-of gap
 
@@ -65,7 +75,7 @@ class TestElkBackend:
                           "              a align-middle b }\n", "")
         f = parse(src); validate(f)
         d = f.diagrams[0]; m = f.get_model(d.model_name)
-        lay = solve(d, m)
+        lay = with_elk(d, m)
         assert lay.edge_routes is not None, "ELK backend produced no routes"
         assert {n.id for n in lay.nodes} == {"a", "b", "c"}
         pts = next(p for s, t, p in lay.edge_routes if (s, t) == ("a", "b"))
@@ -76,7 +86,7 @@ class TestElkBackend:
                           "              a align-middle b }\n", "")
         f = parse(src); validate(f)
         d = f.diagrams[0]; m = f.get_model(d.model_name)
-        svg = render(route(solve(d, m), m, d.select), m, d)
+        svg = render(route(with_elk(d, m), m, d.select), m, d)
         assert "<svg" in svg
         assert 'marker-end="url(#arrow)"' in svg  # api head from the channel grammar
 
@@ -86,8 +96,8 @@ class TestElkBackend:
                           "              a align-middle b }\n", "")
         f = parse(src); validate(f)
         d = f.diagrams[0]; m = f.get_model(d.model_name)
-        routes1 = solve(d, m).edge_routes
-        routes2 = solve(d, m).edge_routes
+        routes1 = with_elk(d, m).edge_routes
+        routes2 = with_elk(d, m).edge_routes
         assert routes1 == routes2
 
     def test_elk_honors_view_curation(self, with_elk):
@@ -103,7 +113,7 @@ class TestElkBackend:
                         "              a align-middle b }\n", ""))
         f = parse(src); validate(f)
         d = f.diagrams[0]; m = f.get_model(d.model_name)
-        lay = solve(d, m)
+        lay = with_elk(d, m)
         assert lay.edge_routes is not None
         assert all((s, t) != ("a", "b") for s, t, _p in lay.edge_routes)
         assert any((s, t) == ("b", "c") for s, t, _p in lay.edge_routes)

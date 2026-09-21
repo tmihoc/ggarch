@@ -57,10 +57,28 @@ def bundle_path() -> str | None:
 
 
 def available() -> bool:
-    """True when node and the elkjs bundle are both present."""
-    return (os.environ.get("GGARCH_LAYOUT") == "elk"
-            and shutil.which("node") is not None
+    """True when node and the elkjs bundle are both present.
+
+    The GGARCH_LAYOUT env no longer gates anything (2026-09-21: the
+    fast path is retired — solve() is floor-only, and the backend is
+    an explicit on-demand oracle); the env still names the bundle for
+    the tests and the compare script.
+    """
+    return (shutil.which("node") is not None
             and bundle_path() is not None)
+
+
+def solve_view(diagram, model, select):
+    """Layout one view with ELK and return a routed SolvedLayout, or
+    None when the view is out of scope (layout_view's contract). The
+    explicit ELK entry point: solve() never auto-selects the backend —
+    a parallel ELK build runs through here (scripts/elk-compare.py)."""
+    result = layout_view(diagram, model, select)
+    if result is None:
+        return None
+    layout, routes = result
+    layout.edge_routes = routes
+    return layout
 
 
 def layout_view(diagram, model, select):

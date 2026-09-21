@@ -150,3 +150,14 @@ Consequence (the split of labor this ADR now records):
 - View curation (`except:`) is applied to the backend's input graph,
   not just the render — layout must never see curated-out edges
   (fixed 2026-09-20; was silently layering around them).
+
+## Amendment (2026-09-21): the fast path is retired — explicit oracle only
+
+The floor's typed hub planes are synthesis machinery an ELK build
+cannot express (the synthesizer emits its own FanConstraints; a
+zero-constraint view is no longer "views the floor can't serve"). The
+auto-selection in solve() (env-gated) is retired: solve() is
+floor-only by construction — "no ELK dependence" holds without
+configuration. ELK remains the on-demand ORACLE (ADR-007's role):
+ggarch.elk.solve_view() and scripts/elk-compare.py run a parallel ELK
+build explicitly, floor | ELK side by side per view.

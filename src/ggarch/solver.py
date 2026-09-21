@@ -96,15 +96,13 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     below is the fallback (and serves every authored view).
 
     Raises ValidationError if user constraints are unsatisfiable.
-    """
-    from ggarch import elk as _elk
-    if not diagram.constraints and _elk.available():
-        result = _elk.layout_view(diagram, model, diagram.select)
-        if result is not None:
-            layout, routes = result
-            layout.edge_routes = routes
-            return layout
 
+    ELK is NOT auto-selected (2026-09-21, ADR-006 amendment): the floor
+    serves every view — the typed hub planes are synthesis machinery an
+    ELK build cannot express. The backend remains the on-demand oracle:
+    ggarch.elk.layout_view() and scripts/elk-compare.py run it
+    explicitly, side by side with the floor.
+    """
     # View-level curation: except pairs drop declared edges before
     # expansion (source, target, type "" = any type) — the same filter
     # route() applies before its own materialization. Without it the
