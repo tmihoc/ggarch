@@ -63,6 +63,8 @@ MARGIN          = 20    # px — white-space margin around the diagram
 # geometry audit. Re-exported here for existing importers.
 from ggarch.geometry import (  # noqa: E402 — re-export
     ANNOTATION_FONT,
+    ann_label_text_rect,
+    choose_annotation_position,
     ARROWHEAD_SIZE,
     LABEL_CHAR_W,
     LABEL_CLEARANCE,
@@ -74,6 +76,7 @@ from ggarch.geometry import (  # noqa: E402 — re-export
     LabelGeometry,
     Strip,
     label_geometry,
+    rects_overlap,
     strip_for_edge,
     wrap_label_lines,
 )
@@ -124,6 +127,79 @@ def _legend_dims(node_types: list[str], edge_types: list[str]) -> tuple[float, f
     return _LEGEND_W, _LEGEND_PAD * 2 + rows * _LEGEND_ROW
 
 
+
+
+def _resolve_annotation_labels(view, layout, routed) -> dict:
+    """Engine-chosen annotation label placement + along-leg shifts.
+
+    Returns {annotation index: chosen position}. Two passes:
+
+    1. Placement: an annotation whose label_position is the DEFAULT
+       gets the first preference side whose text rect clashes with no
+       riding edge label (the inside-bottom band reads as the
+       abstraction over everything above it; the top band sat in the
+       corridors edges ride). A declared position is the author's word.
+    2. Shift: an edge label still clashing with any annotation's text
+       rect slides ALONG its longest leg (ADR-002: the label follows
+       the arrow — the arrow is unchanged, only where along it the
+       label sits) to the first anchor that is clear of every
+       annotation text rect and every other edge label. The strip is
+       rebuilt at the chosen anchor, so the renderer and the audit
+       measure the shifted truth.
+    """
+    def _member_boxes(ann):
+        boxes = []
+        for nid in ann.nodes:
+            n = layout.find(nid)
+            if n is not None:
+                r = n.rect
+                boxes.append((r.x, r.y, r.x + r.w, r.y + r.h))
+        return boxes
+
+    label_rects = [e.strip.label for e in routed.edges
+                   if e.strip is not None and e.strip.label is not None]
+    positions: dict = {}
+    for i, ann in enumerate(view.annotations):
+        if not hasattr(ann, "nodes"):
+            continue
+        boxes = _member_boxes(ann)
+        positions[i] = choose_annotation_position(ann, boxes, label_rects)
+
+    text_rects = []
+    for i, ann in enumerate(view.annotations):
+        if not hasattr(ann, "nodes"):
+            continue
+        tr = ann_label_text_rect(ann, _member_boxes(ann), positions[i])
+        if tr is not None:
+            text_rects.append(tr)
+
+    from ggarch.geometry import strip_for_edge
+    from ggarch.router import ROUTE_STROKE_W
+    for e in routed.edges:
+        if e.strip is None or not e.strip.label:
+            continue
+        if not any(rects_overlap(e.strip.label, tr)
+                   for tr in text_rects):
+            continue
+        pts = [(p.x, p.y) for p in e.points]
+        owner = f"{e.source_id}->{e.target_id}"
+        for frac in (0.5, 0.35, 0.65, 0.25, 0.75, 0.15, 0.85,
+                     0.92, 0.08, 0.96, 0.04):
+            cand = strip_for_edge(pts, ROUTE_STROKE_W, e.arrow,
+                                  e.label, frac, owner=owner)
+            if cand.label is None:
+                break
+            if (any(rects_overlap(cand.label, tr) for tr in text_rects)
+                    or any(o is not e.strip and o.label is not None
+                           and rects_overlap(cand.label, o.label)
+                           for o in (x.strip for x in routed.edges)
+                           if o is not None)):
+                continue
+            e.strip = cand
+            break
+    return positions
+
+
 def render(
     routed: RoutedLayout,
     model: Model,
@@ -146,6 +222,11 @@ def render(
     salience = _emphasize_state(view, layout)
     if salience:
         salience = dict(salience, mode=salience_mode)
+
+    # Chosen annotation positions + along-leg label shifts FIRST: the
+    # canvas expansion, the strips the canvas loop measures and the
+    # drawing all consume them.
+    ann_positions = _resolve_annotation_labels(view, layout, routed)
 
     # Detect legend annotations and reserve gutter space (unless suppressed).
     legend_anns = [a for a in view.annotations if isinstance(a, AnnotationLegend)]
@@ -205,7 +286,10 @@ def render(
         if br is None:
             continue
         pad = ann.padding if hasattr(ann, 'padding') else 10
-        pos = ann.label_position if hasattr(ann, 'label_position') else 'top'
+        idx = view.annotations.index(ann) if hasattr(view, 'annotations') else -1
+        pos = (ann_positions.get(idx) if idx in ann_positions
+               else (ann.label_position
+                     if hasattr(ann, 'label_position') else 'top'))
         LABEL_H = 26
         pt = (ann.padding_top    if hasattr(ann, 'padding_top')    and ann.padding_top    is not None else pad)
         pr = (ann.padding_right  if hasattr(ann, 'padding_right')  and ann.padding_right  is not None else pad)
@@ -225,11 +309,14 @@ def render(
         if pos == 'bottom':        box_y2 += LABEL_H
         if pos == 'left':          box_x1 -= LABEL_H
         if pos == 'right':         box_x2 += LABEL_H
-        # Convert to SVG space and check overflow.
+        # Convert to SVG space and check overflow. The far-edge checks
+        # MUST use the post-shift origin: the near-edge branches below
+        # mutate ox/oy, and measuring x2/y2 against the pre-shift
+        # offset under-reserves exactly by the shift (measured: the HA
+        # annotation's bottom was reserved at oy=20 and drawn at
+        # oy=44 — 4px past the canvas).
         svg_x1 = box_x1 + ox
         svg_y1 = box_y1 + oy
-        svg_x2 = box_x2 + ox
-        svg_y2 = box_y2 + oy
         if svg_x1 < 0:
             # Expand past zero AND leave the white-space margin — a box
             # landing exactly at the canvas edge reads as clipped (the
@@ -239,6 +326,8 @@ def render(
         if svg_y1 < 0:
             expand = -svg_y1 + MARGIN
             oy += expand; vh += expand
+        svg_x2 = box_x2 + ox
+        svg_y2 = box_y2 + oy
         if svg_x2 > vw:
             vw = svg_x2 + MARGIN
         if svg_y2 > vh:
@@ -257,11 +346,12 @@ def render(
     for edge in routed.edges:
         _render_edge(edges_g, edge, edge_styles, ox, oy, salience=salience)
 
-    for ann in view.annotations:
+    for i, ann in enumerate(view.annotations):
         if skip_legend and isinstance(ann, AnnotationLegend):
             continue
         _render_annotation(ann_g, ann, layout, ox, oy, dark, node_styles,
-                           edge_styles, routed.edges, vw=vw, vh=vh)
+                           edge_styles, routed.edges, vw=vw, vh=vh,
+                           ann_positions=ann_positions, view_index=i)
 
     drawing.append(nodes_g)
     drawing.append(edges_g)
@@ -1016,9 +1106,14 @@ def _render_annotation(
     edges: list | None = None,
     vw: float = 0,
     vh: float = 0,
+    ann_positions: dict | None = None,
+    view_index: int | None = None,
 ) -> None:
     if isinstance(ann, AnnotationBox):
-        _render_ann_box(g, ann, layout, ox, oy, dark)
+        pos = None
+        if ann_positions is not None and view_index is not None:
+            pos = ann_positions.get(view_index)
+        _render_ann_box(g, ann, layout, ox, oy, dark, label_position=pos)
     elif isinstance(ann, AnnotationCallout):
         _render_ann_callout(g, ann, layout, ox, oy, dark)
     elif isinstance(ann, AnnotationSeparator):
@@ -1052,13 +1147,16 @@ def _render_ann_box(
     layout: SolvedLayout,
     ox: float, oy: float,
     dark: bool,
+    label_position: str | None = None,
 ) -> None:
     pad   = ann.padding if hasattr(ann, 'padding') else 10
     pt    = (ann.padding_top    if hasattr(ann, 'padding_top')    and ann.padding_top    is not None else pad)
     pr    = (ann.padding_right  if hasattr(ann, 'padding_right')  and ann.padding_right  is not None else pad)
     pb    = (ann.padding_bottom if hasattr(ann, 'padding_bottom') and ann.padding_bottom is not None else pad)
     pl    = (ann.padding_left   if hasattr(ann, 'padding_left')   and ann.padding_left   is not None else pad)
-    pos   = ann.label_position if hasattr(ann, 'label_position') else 'top'
+    pos   = (label_position if label_position is not None
+             else (ann.label_position
+                   if hasattr(ann, 'label_position') else 'top'))
 
     # For inside-* positions, reserve an extra strip for the label.
     LABEL_H = 26

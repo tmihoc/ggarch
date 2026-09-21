@@ -133,26 +133,29 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
 
     # Solve, with the typed hub planes tried first and abandoned on a
     # contradiction: dense typed webs (a record feeding and fed by the
-    # same hubs) can make the plane floors contradictory — the plain
+    # same hubs) can make the plane floors contradictory - the plain
     # depth layout is the honest fallback, not a crash. The planes
     # must also never be WORSE than plain depth: an arrangement whose
-    # cells collide (two nodes solved into one rect) falls back too —
+    # cells collide (two nodes solved into one rect) falls back too -
     # a fan claiming an occupied column can under-constrain exactly
     # that cell, and an overlapped render is never the honest floor.
-    try:
-        layout = _solve_constraints(
-            diagram, model, selected, mat_edges, planes=True)
-    except ValidationError:
-        if diagram.constraints:
-            raise
-        auto_cons, weak_align, auto_fans = _synthesize_auto_layout(
-            diagram, selected, mat_edges, refine=False, planes=False)
-        return _solve_constraints(
-            diagram, model, selected, mat_edges,
-            auto_cons=auto_cons, weak_align=weak_align,
-            auto_fans=auto_fans)
-    if diagram.constraints or not _layout_has_overlaps(layout):
-        return layout
+    # Between the planes and plain depth sits one more honest attempt:
+    # the SAME planes with the barycenter row orders REVERSED per
+    # column - the equality chains (spine aligns) can be feasible
+    # under one stack order and not the other (measured: the worker
+    # tree's provisioner->model_worker_manager chain is unsatisfiable
+    # under one ordering, straight under the other).
+    for variant in (0, 1):
+        try:
+            layout = _solve_constraints(
+                diagram, model, selected, mat_edges, planes=True,
+                row_order_variant=variant)
+        except ValidationError:
+            if diagram.constraints:
+                raise
+            continue
+        if diagram.constraints or not _layout_has_overlaps(layout):
+            return layout
     auto_cons, weak_align, auto_fans = _synthesize_auto_layout(
         diagram, selected, mat_edges, refine=False, planes=False)
     return _solve_constraints(
@@ -183,6 +186,7 @@ def _solve_constraints(
     weak_align: list | None = None,
     auto_fans: list | None = None,
     planes: bool = True,
+    row_order_variant: int = 0,
 ):
     """One constraint solve: synthesis -> fan expansion -> user
     constraints -> label contract. Called once for synthesized views
@@ -211,7 +215,8 @@ def _solve_constraints(
     if auto_cons is None:
         auto_cons, weak_align, auto_fans = _synthesize_auto_layout(
             diagram, selected, mat_edges, refine=bool(diagram.constraints),
-            planes=planes)
+            planes=planes,
+            row_order_variant=row_order_variant)
     solver = Solver()
 
     # Add minimum-size and non-negativity constraints.
@@ -302,6 +307,7 @@ def _synthesize_auto_layout(
     mat_edges: list,
     refine: bool = False,
     planes: bool = True,
+    row_order_variant: int = 0,
 ) -> list[Constraint]:
     """Constraints for a view that declares no positions block.
 
@@ -871,6 +877,13 @@ def _synthesize_auto_layout(
     if best_arr is not None:
         for c in list(columns):
             columns[c] = best_arr.get(c, columns[c])
+    if row_order_variant % 2 == 1:
+        # Feasibility variant: the barycenter minimises crossings, not
+        # constraint feasibility; reversing each column's row order is
+        # the cheap second candidate the retry ladder tries before the
+        # honest plain-depth fallback.
+        for c in list(columns):
+            columns[c] = list(reversed(columns[c]))
 
     # Fanned members leave their column's stacking — SINK spokes and
     # FEEDER spokes alike (the FanConstraint owns their plane; the

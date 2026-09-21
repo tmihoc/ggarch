@@ -558,3 +558,63 @@ def strip_hits_clip(strip: "Strip", clip: ClipStrip) -> bool:
         if clip.label is not None and point_box_dist(pt, clip.label) < cap_r:
             return True
     return False
+
+# Annotation label placement (2026-09-21 reviewer: the top band sat in
+# the corridors edges ride and was neither clash-free nor preattentive;
+# the inside-bottom band reads as the abstraction over everything above
+# it). The DEFAULT position is the engine's choice; an author-declared
+# position other than the default is the author's word.
+
+ANN_POSITION_PREF = ("inside-bottom", "bottom", "top", "right", "left")
+
+
+def ann_label_text_rect(ann, member_boxes, position=None):
+    """The label TEXT's own rect for a position (not the full band).
+
+    The band spans the members' union; the text is centred in it, so
+    the honest strike target is the centred extent (the full-width band
+    would strike edges nowhere near the glyphs).
+    """
+    if position is None:
+        position = getattr(ann, "label_position", "top")
+    if not getattr(ann, "label", ""):
+        return None
+    lr = annotation_label_rect(ann, member_boxes) if position == (
+        getattr(ann, "label_position", "top") or "top") else None
+    if lr is None:
+        import dataclasses
+        a2 = dataclasses.replace(ann, label_position=position) \
+            if hasattr(ann, "label_position") else ann
+        lr = annotation_label_rect(a2, member_boxes)
+    if lr is None:
+        return None
+    text_w = len(ann.label) * 7.2 + 2 * 7.0
+    if position in ("left", "right"):
+        cy = (lr[1] + lr[3]) / 2
+        return (lr[0], cy - text_w / 2, lr[2], cy + text_w / 2)
+    cx = (lr[0] + lr[2]) / 2
+    return (cx - text_w / 2, lr[1], cx + text_w / 2, lr[3])
+
+
+def choose_annotation_position(ann, member_boxes, label_rects,
+                               declared_default="top"):
+    """Pick the annotation label's side: the first preference whose
+    text rect clashes with no riding edge label; on total contention
+    the preference order stands (the audit's ACLASH keeps measuring).
+
+    label_rects: the riding edge labels as (x, y, x2, y2). A declared
+    position other than the default is the author's word and wins.
+    """
+    declared = getattr(ann, "label_position", declared_default)
+    if declared != declared_default:
+        return declared
+    if not getattr(ann, "label", ""):
+        return declared
+    best = declared
+    for pos in ANN_POSITION_PREF:
+        trect = ann_label_text_rect(ann, member_boxes, pos)
+        if trect is None:
+            continue
+        if not any(rects_overlap(trect, lr) for lr in label_rects):
+            return pos
+    return best

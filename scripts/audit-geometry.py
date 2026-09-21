@@ -41,9 +41,9 @@ import math
 
 from ggarch import parse, validate, solve, route
 from ggarch.layout import CONTAINER_PAD, CONTAINER_PAD_TOP
-from ggarch.renderer import label_geometry
+from ggarch.renderer import label_geometry, _resolve_annotation_labels
 from ggarch.geometry import (STRIP_PAD, clip_strip, strip_hits_clip,
-                             annotation_label_rect)
+                             annotation_label_rect, ann_label_text_rect)
 from ggarch.router import ROUTE_STROKE_W
 
 EPS = 0.5
@@ -162,6 +162,9 @@ def audit_file(path):
         anc = ancestors_map(solved)
         rects = all_rects(solved)
         rmap = rects_by_id(solved)
+        # The engine's annotation placement + along-leg shifts FIRST —
+        # every metric below measures the shifted truth.
+        ann_positions = _resolve_annotation_labels(d, solved, routed)
         crossings = []
         diagonals = []
         rotated = 0
@@ -203,7 +206,12 @@ def audit_file(path):
             lg = label_geometry(pts, e.label, 0.5)
             if lg.rotated:
                 rotated += 1
-            labels.append((desc, lg.strip))
+            # The label rect the renderer DRAWS: the routed strip (the
+            # resolver may have shifted the anchor along the leg — the
+            # recompute at 0.5 would measure a phantom clash).
+            labels.append((desc, e.strip.label if e.strip is not None
+                           and e.strip.label is not None
+                           else lg.strip))
 
             # Node strikes: strip vs non-exempt rects whose interior
             # the stroke itself clears (a stroke that crosses the node
@@ -247,7 +255,7 @@ def audit_file(path):
         # shared geometry helper's band, narrowed to the centred text
         # extent) vs every riding edge label.
         ann_clashes = []
-        for ann in getattr(d, "annotations", []):
+        for i, ann in enumerate(getattr(d, "annotations", [])):
             if not hasattr(ann, "nodes") or not hasattr(ann, "label"):
                 continue
             if not ann.label:
@@ -256,18 +264,13 @@ def audit_file(path):
                             else (rmap[m].x, rmap[m].y,
                                   rmap[m].x2, rmap[m].y2)
                             for m in ann.nodes if m in rmap]
-            lrect = annotation_label_rect(ann, member_boxes)
-            if lrect is None:
+            pos = (ann_positions.get(i)
+                   if i in ann_positions
+                   else getattr(ann, 'label_position', 'top'))
+            tr = ann_label_text_rect(ann, member_boxes, pos)
+            if tr is None:
                 continue
-            text_w = len(ann.label) * 7.2 + 14
-            if ann.label_position in ("left", "right"):
-                cy = (lrect[1] + lrect[3]) / 2
-                trect = (lrect[0], cy - text_w / 2, lrect[2],
-                         cy + text_w / 2)
-            else:
-                cx = (lrect[0] + lrect[2]) / 2
-                trect = (cx - text_w / 2, lrect[1], cx + text_w / 2,
-                         lrect[3])
+            trect = tr
             for desc, lrect_e in labels:
                 if rects_overlap(trect, lrect_e):
                     ann_clashes.append(
@@ -364,6 +367,7 @@ def audit_file(path):
                     node_overlaps.append((rects[i].id, rects[j].id))
 
         report[d.name] = dict(
+            ann_positions=ann_positions,
             n_edges=len(routed.edges),
             crossings=crossings,
             diagonals=diagonals,
