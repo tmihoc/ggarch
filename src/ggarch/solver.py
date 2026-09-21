@@ -40,7 +40,9 @@ from ggarch.layout import (
     min_size,
 )
 from ggarch.instances import materialize_instances
+from ggarch.geometry import annotation_label_rect
 from ggarch.model import (
+    AnnotationBox,
     Constraint,
     FanConstraint,
     DiagramView,
@@ -51,6 +53,10 @@ from ggarch.model import (
     SelectClause,
 )
 from ggarch.router import _route_edge
+
+# Annotation labels render at 11px (the annotation font); the
+# strike target is the centred text rect at ~0.64em per char.
+_ANN_CHAR_W = 7.2
 
 
 # ---------------------------------------------------------------------------
@@ -128,9 +134,13 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     # Solve, with the typed hub planes tried first and abandoned on a
     # contradiction: dense typed webs (a record feeding and fed by the
     # same hubs) can make the plane floors contradictory — the plain
-    # depth layout is the honest fallback, not a crash.
+    # depth layout is the honest fallback, not a crash. The planes
+    # must also never be WORSE than plain depth: an arrangement whose
+    # cells collide (two nodes solved into one rect) falls back too —
+    # a fan claiming an occupied column can under-constrain exactly
+    # that cell, and an overlapped render is never the honest floor.
     try:
-        return _solve_constraints(
+        layout = _solve_constraints(
             diagram, model, selected, mat_edges, planes=True)
     except ValidationError:
         if diagram.constraints:
@@ -141,6 +151,26 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
             diagram, model, selected, mat_edges,
             auto_cons=auto_cons, weak_align=weak_align,
             auto_fans=auto_fans)
+    if diagram.constraints or not _layout_has_overlaps(layout):
+        return layout
+    auto_cons, weak_align, auto_fans = _synthesize_auto_layout(
+        diagram, selected, mat_edges, refine=False, planes=False)
+    return _solve_constraints(
+        diagram, model, selected, mat_edges,
+        auto_cons=auto_cons, weak_align=weak_align,
+        auto_fans=auto_fans)
+
+
+def _layout_has_overlaps(layout: SolvedLayout) -> bool:
+    """True when two top-level nodes solved into the same cell."""
+    rects = [n.rect for n in layout.nodes]
+    for i in range(len(rects)):
+        for j in range(i + 1, len(rects)):
+            a, b = rects[i], rects[j]
+            if not (a.x + a.w <= b.x + 0.5 or b.x + b.w <= a.x + 0.5
+                    or a.y + a.h <= b.y + 0.5 or b.y + b.h <= a.y + 0.5):
+                return True
+    return False
 
 
 def _solve_constraints(
@@ -485,6 +515,7 @@ def _synthesize_auto_layout(
     spine_aligns: list[tuple[str, str]] = []
     spine_child_aligns: list[tuple[str, str]] = []
     feeder_fans: dict[str, list[str]] = {}
+    peer_cons: list[Constraint] = []
     if not refine and planes:
         outs: dict[str, list[str]] = {}
         ins: dict[str, list[str]] = {}
@@ -505,6 +536,7 @@ def _synthesize_auto_layout(
         # application); the column stack owns the rest. Depth column:
         # the fan centres the group on the hub's axis, so the
         # between-column emitter must not drag them a column east.
+        sink_spokes: set[str] = set()
         for h in top_ids:
             if h in cycle:
                 continue
@@ -516,7 +548,28 @@ def _synthesize_auto_layout(
                 continue
             for t in sinks:
                 col[t] = col[h]
+            sink_spokes.update(sinks)
             if len(sinks) == 1:
+                continue
+            # A SOURCE hub (no feeders — the actor of the view) reads
+            # best with its satellites fanned EAST: the arrows run
+            # left-to-right, the preattentive direction (2026-09-21
+            # reviewer, tested with readers: the directed LR fan beats
+            # radial and band placements at a glance). A hub with a
+            # west-side spine feed stacks its spokes N/S around the
+            # axis instead (the declared enters/overview/K8s
+            # references) — the planes below.
+            if not ins.get(h):
+                label_w = max((_label_w(e.label) for e, s, t in vis_edges
+                               if s == h and t in sinks), default=0.0)
+                ordered = list(reversed(sinks))
+                fan_cons.append(FanConstraint(
+                    members=ordered, anchor=h, direction="right-of",
+                    gap=max(40, int(label_w) + 35), spacing=20))
+                for t in ordered:
+                    col[t] = col[h] + 1
+                fanned.update(ordered)
+                sink_fans[h] = sinks
                 continue
             # Stack split (2026-09-21 reviewer direction, the declared
             # overview and K8s references): mixed-type sink spokes
@@ -569,24 +622,49 @@ def _synthesize_auto_layout(
                        if p not in fanned and p not in cycle]
             if not feeders:
                 continue
-            if h in fanned:
-                # A spoke's row is owned by its own fan (the declared
-                # hub planes) — a spine align here would pin a fanned
-                # sink spoke onto its feeder's row and contradict the
-                # fan (measured: unit_a above controller vs the spine
-                # align dragging it onto the controller's row).
+            if h in fanned or h in sink_spokes:
+                # A spoke's row is owned by its own plane: a fan owns
+                # its members' rows, and a lone sink spoke stacks in
+                # its hub's column (the child-stacking rule). A spine
+                # align here would pin the spoke onto its feeder's row
+                # and contradict the plane (measured: unit_a above the
+                # controller vs the spine align dragging it onto the
+                # controller's row; charm's align vs its stack under
+                # the application — the honest fallback hid the whole
+                # planes path in four views).
                 continue
             # A lone feeder IS the spine (2026-09-21: the declared K8s
             # reference — unit_pod feeds controller_pod alone, and the
             # spine's required align-middle still holds; the old
             # >=2-feeder gate left the K8s spine rows unpinned).
             spine = max(feeders, key=lambda p: fdepth.get(p, -1))
+            if col.get(spine) == col.get(h):
+                # The pair shares a column — the within-column stack
+                # owns their rows (the child-stacking reading: charm
+                # below its application, api_server above object_
+                # store). A spine align would pin the pair onto one
+                # row and contradict the stack; skip it (measured: the
+                # honest fallback hid the whole planes path in the
+                # dense record views).
+                continue
             spine_aligns.append((spine, h))
             spoke_feeders = [p for p in feeders if p != spine]
-            feeder_fans[h] = spoke_feeders
-            for p in spoke_feeders:
-                col[p] = col[h] + 1
-            if spoke_feeders:
+            # The feeder fan claims the column east of the hub; when
+            # that column already holds depth-assigned NON-members,
+            # the claim collides with them (measured: the worker
+            # tree's provider_tracker fanned onto change_stream's
+            # cell — same column, both rows pinned to the hub's row).
+            # The fan then stays home: the members keep their depth
+            # columns and the spine aligns flatten the chain instead —
+            # the straight LR reading (the declared arrangement's own
+            # answer for a chain with a side feed).
+            target_col = col.get(h, 0) + 1
+            occupied = any(col.get(nid) == target_col for nid in top_ids
+                           if nid not in spoke_feeders and nid not in fanned)
+            if spoke_feeders and not occupied:
+                feeder_fans[h] = spoke_feeders
+                for p in spoke_feeders:
+                    col[p] = target_col
                 # The feeder column centres on the hub's row (the
                 # declared apps fan); a LONE spoke feeder hangs in the
                 # hub's row (align-middle via the fan's odd-n rule —
@@ -601,6 +679,37 @@ def _synthesize_auto_layout(
                     direction="right-of",
                     gap=max(40, int(label_w) + 35), spacing=20))
                 fanned.update(spoke_feeders)
+
+        # Peer rows (2026-09-21 reviewer, the HA replicaset: "the
+        # replicas parallel on the same row... the placement algorithm
+        # would be missing an important grouping generalization").
+        # Instances of one type are PEERS by construction — the same
+        # archetype stamped N times — so an instance group the planes
+        # did not claim (no fan owns it, no relationships pulled it
+        # apart) reads as a horizontal row, not a column stack. Groups
+        # a fan claimed keep the fan's plane (the enters apps fan east,
+        # the declared clouds band above).
+        peer_groups: dict[str, list[str]] = {}
+        for spec in diagram.select.instances:
+            peer_groups.setdefault(spec.type_id, []).append(spec.instance_id)
+        for members in peer_groups.values():
+            if len(members) < 2:
+                continue
+            if any(m in fanned or m in sink_spokes or m in cycle
+                   for m in members):
+                continue
+            cols = {col.get(m) for m in members}
+            if len(cols) != 1 or None in cols:
+                continue
+            for i in range(len(members) - 1):
+                peer_cons.append(Constraint(kind="left-of",
+                                            subject=members[i],
+                                            object=members[i + 1],
+                                            gap=100, strength=strength))
+                peer_cons.append(Constraint(kind="align-middle",
+                                            subject=members[i],
+                                            object=members[i + 1],
+                                            strength=strength))
 
         # Spine free-side flip (2026-09-21 reviewer direction: straight
         # arrows where straight arrows are possible, minimal
@@ -763,14 +872,24 @@ def _synthesize_auto_layout(
         for c in list(columns):
             columns[c] = best_arr.get(c, columns[c])
 
-    # Fanned sinks leave their column's stacking (the FanConstraint
-    # owns their plane); the hub stays, so its row follows the spine.
-    for sinks in sink_fans.values():
+    # Fanned members leave their column's stacking — SINK spokes and
+    # FEEDER spokes alike (the FanConstraint owns their plane; the
+    # hub stays, so its row follows the spine). The old loop iterated
+    # sink_fans, so a view with only feeder fans (the full spine's
+    # credential fan) never stripped its fan members: their fan
+    # align-middles then contradicted the column stack and the whole
+    # planes path fell back — the honest fallback hid the planes.
+    # Peer-row members leave too (the peer row owns their plane).
+    for c in columns:
+        columns[c] = [nid for nid in columns[c] if nid not in fanned]
+    if peer_cons:
+        peers = {m for c in peer_cons for m in (c.subject, c.object)}
         for c in columns:
-            columns[c] = [nid for nid in columns[c] if nid not in fanned]
+            columns[c] = [nid for nid in columns[c] if nid not in peers]
 
     GAP = 60
     cons: list[Constraint] = []
+    cons.extend(peer_cons)
     # Within a column: stack vertically, centred.
     for members in columns.values():
         for i in range(len(members) - 1):
@@ -1103,8 +1222,15 @@ def _add_containment_for_node(
         solver.addConstraint(
             (cv.x2 <= parent.x2 - CONTAINER_PAD) | "required"
         )
+        # Symmetric vertical padding (2026-09-21 reviewer: a fan arrow
+        # leaving a nested child must be align-middle'ed with the child
+        # AND the hub — possible only when the child row sits on the
+        # container's midline; the label band's top pad alone put rows
+        # ~12px low). The bottom pad equals the top pad, so the content
+        # centres on the box and every level of nesting stays on the
+        # midline.
         solver.addConstraint(
-            (cv.y2 <= parent.y2 - CONTAINER_PAD) | "required"
+            (cv.y2 <= parent.y2 - CONTAINER_PAD_TOP) | "required"
         )
         # Recurse.
         if child.children and child.id not in select.collapse:
@@ -1477,6 +1603,86 @@ def _measure_label_reservations(
                     gap = depth - (sy - ev.y.value())
                     if gap > 0:
                         out.append(("v", nid, eid, gap))
+
+        # Annotation label strikes (2026-09-21 reviewer: labels NEVER
+        # overlap - an annotation's label is content too, and the
+        # measured defect was a riding edge label through an
+        # annotation's label band). The label TEXT is centred in its
+        # band (the band itself spans the members' union, which for a
+        # wide box would strike everything); the strike target is the
+        # text's own rect. The box follows its members, so reserving
+        # the edge's endpoint away from the member that defines the
+        # struck side holds the clearance as they move.
+        for ann in diagram.annotations:
+            if not isinstance(ann, AnnotationBox):
+                continue
+            member_ids = [m for m in ann.nodes if m in vars_by_id]
+            if not member_ids:
+                continue
+            member_boxes = [(v.x.value(), v.y.value(),
+                             v.x.value() + v.w.value(),
+                             v.y.value() + v.h.value())
+                            for v in (vars_by_id[m] for m in member_ids)]
+            lrect = annotation_label_rect(ann, member_boxes)
+            if lrect is None:
+                continue
+            text_w = len(ann.label) * _ANN_CHAR_W + 2 * LABEL_SIDE_PAD
+            if ann.label_position in ('left', 'right'):
+                cy = (lrect[1] + lrect[3]) / 2
+                trect = (lrect[0], cy - text_w / 2, lrect[2],
+                         cy + text_w / 2)
+            else:
+                cx = (lrect[0] + lrect[2]) / 2
+                trect = (cx - text_w / 2, lrect[1], cx + text_w / 2,
+                         lrect[3])
+            if (strip[2] <= trect[0] + _STRIKE_EPS
+                    or strip[0] >= trect[2] - _STRIKE_EPS
+                    or strip[3] <= trect[1] + _STRIKE_EPS
+                    or strip[1] >= trect[3] - _STRIKE_EPS):
+                continue  # no overlap
+            if _pts_cross_rect(pts, *trect):
+                continue  # the stroke runs through the band: router work
+            # The reservation primitive anchors at a member node, so
+            # the shortfall is measured to that same member: required
+            # slack = (member-to-band offset) + label depth.
+            if lg.rotated:
+                # Vertical leg: the strip extends right of the stroke;
+                # the edge node must clear the band horizontally.
+                right = max(member_boxes, key=lambda b: b[2])
+                left = min(member_boxes, key=lambda b: b[0])
+                for eid, ev in ((es, vs), (et, vt)):
+                    if ev.x.value() >= trect[2] - _STRIKE_EPS:
+                        m_id = member_ids[member_boxes.index(right)]
+                        gap = (right[2] - trect[2]) + depth \
+                            - (ev.x.value() - right[2])
+                        if gap > 0:
+                            out.append(('h', m_id, eid, gap))
+                    elif (ev.x.value() + ev.w.value()
+                          <= trect[0] + _STRIKE_EPS):
+                        m_id = member_ids[member_boxes.index(left)]
+                        gap = (trect[0] - left[0]) + depth \
+                            - (left[0] - ev.x2.value())
+                        if gap > 0:
+                            out.append(('h', eid, m_id, gap))
+            else:
+                # Horizontal leg: the strip extends above the stroke.
+                # The edge node sits above or below the band; reserve
+                # in the direction that opens the gap.
+                low = max(member_boxes, key=lambda b: b[3])
+                high = min(member_boxes, key=lambda b: b[1])
+                for eid, ev in ((es, vs), (et, vt)):
+                    if ev.y2.value() <= trect[1] + _STRIKE_EPS:
+                        m_id = member_ids[member_boxes.index(high)]
+                        gap = (high[1] - trect[1]) + depth \
+                            - (high[1] - ev.y2.value())
+                        if gap > 0:
+                            out.append(('v', eid, m_id, gap))
+                    elif ev.y.value() >= trect[3] - _STRIKE_EPS:
+                        m_id = member_ids[member_boxes.index(low)]
+                        gap = (trect[3] - low[3]) + depth \
+                            - (ev.y.value() - low[3])
+                        if gap > 0:
+                            out.append(('v', m_id, eid, gap))
 
         # Wall strikes: the strip crossing the padded boundary of the
         # container shared by both endpoints (internal edges only --

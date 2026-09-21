@@ -247,6 +247,44 @@ def _point_seg_dist(p, a, b) -> float:
     return math.hypot(p[0] - (a[0] + ab[0] * t), p[1] - (a[1] + ab[1] * t))
 
 
+def annotation_label_rect(ann, member_boxes: list) -> tuple | None:
+    """The label band of an AnnotationBox, in layout coordinates.
+
+    (x, y, x2, y2) or None for an unlabelled box. The single source of
+    the box/label geometry: the solver's strike measurement (an edge
+    label riding through an annotation's label band is a reservation),
+    the audit's ann-clash metric and the renderer's canvas expansion
+    all consume this one formula. Inside-* labels live in the grown pad
+    band; outside labels sit a band beyond the border.
+    """
+    if not member_boxes:
+        return None
+    if not getattr(ann, "label", ""):
+        return None
+    LABEL_H = 26.0
+    pad = getattr(ann, "padding", 10)
+    pt = ann.padding_top if ann.padding_top is not None else pad
+    pr = ann.padding_right if ann.padding_right is not None else pad
+    pb = ann.padding_bottom if ann.padding_bottom is not None else pad
+    pl = ann.padding_left if ann.padding_left is not None else pad
+    pos = getattr(ann, "label_position", "top")
+    bx1 = min(b[0] for b in member_boxes) - pl
+    by1 = min(b[1] for b in member_boxes) - pt
+    bx2 = max(b[2] for b in member_boxes) + pr
+    by2 = max(b[3] for b in member_boxes) + pb
+    if pos == "inside-bottom":
+        return (bx1, by2 - LABEL_H, bx2, by2)
+    if pos == "inside-top":
+        return (bx1, by1, bx2, by1 + LABEL_H)
+    if pos == "top":
+        return (bx1, by1 - LABEL_H, bx2, by1)
+    if pos == "bottom":
+        return (bx1, by2, bx2, by2 + LABEL_H)
+    if pos == "left":
+        return (bx1 - LABEL_H, by1, bx1, by2)
+    return (bx2, by1, bx2 + LABEL_H, by2)  # right
+
+
 def rects_overlap(a: Box, b: Box, eps: float = 0.5) -> bool:
     """Do two (x, y, x2, y2) boxes overlap by more than eps?"""
     return not (a[2] <= b[0] + eps or b[2] <= a[0] + eps

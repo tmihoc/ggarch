@@ -42,7 +42,8 @@ import math
 from ggarch import parse, validate, solve, route
 from ggarch.layout import CONTAINER_PAD, CONTAINER_PAD_TOP
 from ggarch.renderer import label_geometry
-from ggarch.geometry import STRIP_PAD, clip_strip, strip_hits_clip
+from ggarch.geometry import (STRIP_PAD, clip_strip, strip_hits_clip,
+                             annotation_label_rect)
 from ggarch.router import ROUTE_STROKE_W
 
 EPS = 0.5
@@ -241,6 +242,37 @@ def audit_file(path):
                 if rects_overlap(labels[i][1], labels[j][1]):
                     label_clashes.append((labels[i][0], labels[j][0]))
 
+        # Annotation labels are content too (2026-09-21 reviewer: labels
+        # NEVER overlap): each AnnotationBox's label TEXT rect (the
+        # shared geometry helper's band, narrowed to the centred text
+        # extent) vs every riding edge label.
+        ann_clashes = []
+        for ann in getattr(d, "annotations", []):
+            if not hasattr(ann, "nodes") or not hasattr(ann, "label"):
+                continue
+            if not ann.label:
+                continue
+            member_boxes = [rmap[m].bounds() if hasattr(rmap[m], 'bounds')
+                            else (rmap[m].x, rmap[m].y,
+                                  rmap[m].x2, rmap[m].y2)
+                            for m in ann.nodes if m in rmap]
+            lrect = annotation_label_rect(ann, member_boxes)
+            if lrect is None:
+                continue
+            text_w = len(ann.label) * 7.2 + 14
+            if ann.label_position in ("left", "right"):
+                cy = (lrect[1] + lrect[3]) / 2
+                trect = (lrect[0], cy - text_w / 2, lrect[2],
+                         cy + text_w / 2)
+            else:
+                cx = (lrect[0] + lrect[2]) / 2
+                trect = (cx - text_w / 2, lrect[1], cx + text_w / 2,
+                         lrect[3])
+            for desc, lrect_e in labels:
+                if rects_overlap(trect, lrect_e):
+                    ann_clashes.append(
+                        (f"ann[{ann.label}]", desc))
+
         # Strip crossings (ADR-003): edge i's strip vs earlier strips
         # — the router's collision currency, measured independently of
         # the router's own reporting. Earlier strips are clipped against
@@ -350,6 +382,7 @@ def audit_file(path):
             ratios=[e.ratio for e in routed.edges],
             turns_list=[e.turns for e in routed.edges],
             ann_overlaps=ann_overlaps,
+            ann_clashes=ann_clashes,
             node_overlaps=node_overlaps,
         )
     return report
@@ -438,6 +471,8 @@ def main(paths=None, gate=False):
                 print(f"  BRIDE  {view}: {desc}  rides {nid} border ({ov}px)")
             for a, b in r["label_clashes"]:
                 print(f"  LCLASH {view}: {a}  <->  {b}")
+            for a, b in r.get("ann_clashes", []):
+                print(f"  ACLASH {view}: {a}  <->  {b}")
             for s0, s1, owner in r["strip_crossings"]:
                 print(f"  SCROSS {view}: {s0} -> {s1}  overlaps {owner}")
             for a, b in r.get("node_overlaps", []):

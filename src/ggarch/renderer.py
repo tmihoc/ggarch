@@ -231,10 +231,13 @@ def render(
         svg_x2 = box_x2 + ox
         svg_y2 = box_y2 + oy
         if svg_x1 < 0:
-            expand = -svg_x1
+            # Expand past zero AND leave the white-space margin — a box
+            # landing exactly at the canvas edge reads as clipped (the
+            # HA replicaset annotation sat flush against the frame).
+            expand = -svg_x1 + MARGIN
             ox += expand; vw += expand
         if svg_y1 < 0:
-            expand = -svg_y1
+            expand = -svg_y1 + MARGIN
             oy += expand; vh += expand
         if svg_x2 > vw:
             vw = svg_x2 + MARGIN
