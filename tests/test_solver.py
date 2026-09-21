@@ -587,13 +587,23 @@ class TestViewAutoLayout:
         xs = {n.id: n.rect.x for n in lay.nodes}
         assert xs["user"] < xs["client"] < xs["controller"] < xs["unit_a"]
 
-    def test_branch_targets_stack_in_their_column(self):
+    def test_branch_targets_fan_above_their_hub(self):
+        """The typed hub planes (2026-09-21): the controller's sink
+        successors fan side by side in the orthogonal band, straddling
+        its column and centred on its axis (the declared cloud pair as
+        the model); the hub's row holds with the spine feed."""
         lay = self._layout()
         ua = lay.find("unit_a").rect
         ub = lay.find("unit_b").rect
-        # Same column: centred on each other, vertically separated.
-        assert abs(ua.cx - ub.cx) < 1.0
-        assert ua.y != ub.y and abs(ua.cy - ub.cy) >= 60.0
+        c = lay.find("controller").rect
+        # The orthogonal plane: one band above the hub's row.
+        assert ua.y2 <= c.y and ub.y2 <= c.y
+        assert abs(ua.y - ub.y) < 1.0
+        # The group straddles the hub's column, centred on its axis.
+        centre = (ua.cx + ub.cx) / 2.0
+        assert abs(centre - c.cx) < 1.0
+        # Separated horizontally, no overlap.
+        assert abs(ua.cx - ub.cx) >= 80.0
 
     def test_no_overlaps(self):
         lay = self._layout()

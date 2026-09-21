@@ -93,6 +93,15 @@ HINT_MISS_COST = 18.0    # px — ignoring a fan-slot / pair-bias anchor
                          # anchor points and parallel pair strokes; a
                          # clear hinted route beats an unhinted one
                          # unless the hinted geometry is blocked
+HINT_MISS_DECLARED = 30.0  # px — ignoring a DECLARED fan face's ideal
+                         # symmetric slot (2026-09-21 reviewer rule:
+                         # fan out symmetric about the midpoint, as
+                         # close to it as can be): above the length
+                         # incentive (measured: a declared cloud pair
+                         # drifted to the ladder's k=3 edge on a ~22px
+                         # stub saving), under the label costs so a
+                         # label-carrying fan can still spread its
+                         # slots when its labels demand room
 PORT_GAP      = 24.0   # px — max spacing between fan ports on one
                          # face: wide enough that multiple
                          # arrowheads read as deliberate ports,
@@ -685,14 +694,25 @@ def _route_candidates_eval(
                         # Hint misses: a candidate away from its
                         # predictable slot (fan distribution, pair
                         # parallelism) pays, so hinted routes win.
+                        # A DECLARED fan face holds harder: the view
+                        # spoke, and the ideal symmetric slots must
+                        # beat a stub's length saving (measured: the
+                        # declared cloud pair drifted to the ladder's
+                        # k=3 edge because the soft price lost to
+                        # ~22px) — while staying under the label
+                        # costs, so a label-carrying fan can still
+                        # spread beyond the ideal slots when its
+                        # labels demand room.
+                        hint_price = HINT_MISS_DECLARED \
+                            if hints.get("declared") else HINT_MISS_COST
                         sh = hints.get("src", {}).get(fs)
                         if sh is not None and \
                                 abs(_face_coord(a, fs) - sh) > 0.5:
-                            cost += HINT_MISS_COST
+                            cost += hint_price
                         th = hints.get("tgt", {}).get(ft)
                         if th is not None and \
                                 abs(_face_coord(b, ft) - th) > 0.5:
-                            cost += HINT_MISS_COST
+                            cost += hint_price
                         if pair_bias is not None:
                             ba = abs(_face_coord(a, fs)
                                      - (_center(src_rect, fs) + pair_bias))
@@ -859,6 +879,28 @@ def _route_edge_full(
     else:
         src_ladder = _anchor_ladder(src_rect)
         tgt_ladder = _anchor_ladder(tgt_rect)
+        # Fan hints are REAL candidate anchors: the ideal symmetric
+        # slots (centre ± spacing/2 about the face midpoint) usually
+        # sit between ladder slots, so as mere preferences they were
+        # no-ops — every candidate paid HINT_MISS equally. Insert the
+        # hinted coordinate into the face's ladder so the slot exists.
+        for ladder, rect in ((src_ladder, src_rect),
+                             (tgt_ladder, tgt_rect)):
+            side = "src" if ladder is src_ladder else "tgt"
+            for face, coord in ((hints or {}).get(side, {}) or {}).items():
+                slots = ladder.get(face)
+                if not slots:
+                    continue
+                if any(abs(_face_coord(p, face) - coord) < 0.5
+                       for p in slots):
+                    continue
+                on_width = face in ("top", "bottom")
+                px = coord if on_width else (
+                    _snap(rect.x) if face == "left" else _snap(rect.x2))
+                py = (_snap(rect.y) if face == "top"
+                      else _snap(rect.y2)) if on_width else coord
+                slots.append(Point(px, py))
+                slots.sort(key=lambda p: _face_coord(p, face))
         best_clear, best_soft = _route_candidates_eval(
             src_rect, tgt_rect, src_ladder, tgt_ladder, search,
             src_key, tgt_key, used_anchors,
@@ -1247,16 +1289,27 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                    ("right", "left") else
                    m[1].rect.cy if face in ("right", "left") else
                    m[2].rect.cx if side == "src" else m[1].rect.cx)
-            # Hints must sit ON the ladder grid: a hinted coordinate
-            # between slots is missed by every slot equally (each pays
-            # HINT_MISS_COST) and the hint is a no-op. Snap the ideal
-            # delta to the nearest ladder slot, clamped to the ladder's
-            # reach — same step formula as _anchor_ladder.
-            step = max(SEED_STEP, usable / 6.0)
+            # The ideal slots are the SYMMETRIC, minimal separation:
+            # centre ± k*spacing/2 about the face midpoint (2026-09-21
+            # reviewer rule: fan out symmetric about the midpoint and
+            # as close to it as can be — better content/white-space
+            # distribution than ladder-reach staggering). These are
+            # injected as real candidate anchors (see _route_edge_full):
+            # the old ladder snap placed ideal ±12 at the ladder's k=3
+            # edge (±46), and the length incentive confirmed it.
             for i, m in enumerate(sorted(ms, key=key)):
-                ideal = (i - (len(ms) - 1) / 2.0) * spacing
-                k = max(-LADDER_K, min(LADDER_K, round(ideal / step)))
-                delta = k * step
+                ideal = center + (i - (len(ms) - 1) / 2.0) * spacing
+                # Keep the ladder's label-calibrated mark: the author's
+                # fan spacing was calibrated against label separation
+                # at the ladder's slots, so an ideal within a few px of
+                # one IS that slot (the refined cloud pair's stubs are
+                # label-clean at ±15.33 and strike their neighbour at
+                # ±12 — measured, tests/test_refinement).
+                step = max(SEED_STEP, usable / 6.0)
+                k = round((ideal - center) / step)
+                ladder_ideal = center + k * step
+                if abs(ladder_ideal - ideal) <= 5.0:
+                    ideal = ladder_ideal
                 # Key by the edge object's identity, not id() of the
                 # (edge, src, tgt) tuple: the lookup rebuilds that
                 # tuple, and a fresh tuple's id never matches the
@@ -1265,7 +1318,18 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                 # nobody noticed).
                 edge_hints.setdefault(
                     id(m[0]), {"src": {}, "tgt": {}})[side][face] \
-                    = center + delta
+                    = ideal
+                if declared:
+                    # A declared fan face holds its hint against the
+                    # length incentive (2026-09-21 reviewer rule: fan
+                    # out symmetric about the midpoint and as close to
+                    # it as can be — the declared cloud pair drifted to
+                    # the ladder's k=3 edge, ±46, because the ±12 stubs
+                    # cost ~22px more than the soft hint price). The
+                    # hint stays soft so the router can still spread
+                    # label-carrying fans beyond the ideal slots when
+                    # the label costs demand it.
+                    edge_hints[id(m[0])]["declared"] = True
 
     anti_parallel: dict = {}
     for it in ordered:

@@ -127,6 +127,38 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     mat_nodes, mat_edges = materialize_instances(diagram.select, model)
     selected = _selected_nodes(diagram.select, model, mat_nodes)
 
+    # Solve, with the typed hub planes tried first and abandoned on a
+    # contradiction: dense typed webs (a record feeding and fed by the
+    # same hubs) can make the plane floors contradictory — the plain
+    # depth layout is the honest fallback, not a crash.
+    try:
+        return _solve_constraints(
+            diagram, model, selected, mat_edges, planes=True)
+    except ValidationError:
+        if diagram.constraints:
+            raise
+        auto_cons, weak_align, auto_fans = _synthesize_auto_layout(
+            diagram, selected, mat_edges, refine=False, planes=False)
+        return _solve_constraints(
+            diagram, model, selected, mat_edges,
+            auto_cons=auto_cons, weak_align=weak_align,
+            auto_fans=auto_fans)
+
+
+def _solve_constraints(
+    diagram: DiagramView,
+    model: Model,
+    selected: list,
+    mat_edges: list,
+    refine: bool = False,
+    auto_cons: list | None = None,
+    weak_align: list | None = None,
+    auto_fans: list | None = None,
+    planes: bool = True,
+):
+    """One constraint solve: synthesis -> fan expansion -> user
+    constraints -> label contract. Called once for synthesized views
+    (with the hub planes) and once, on ValidationError, without them."""
     # Build variable bundles for every node (including nested children).
     vars_by_id: dict[str, _NodeVars] = {}
     for node in selected:
@@ -148,6 +180,10 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
         if spec.instance_id not in vars_by_id:
             vars_by_id[spec.instance_id] = _NodeVars(spec.instance_id)
 
+    if auto_cons is None:
+        auto_cons, weak_align, auto_fans = _synthesize_auto_layout(
+            diagram, selected, mat_edges, refine=bool(diagram.constraints),
+            planes=planes)
     solver = Solver()
 
     # Add minimum-size and non-negativity constraints.
@@ -171,16 +207,16 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
 
     # Anchor the layout: the top-left node starts at (0, 0) by default.
     # Without this the system is under-constrained (translatable).
-    _add_origin_anchor(solver, selected, vars_by_id)
+    _add_origin_anchor(solver, selected, vars_by_id,
+                       anchor_y=bool(diagram.constraints))
 
     # View auto-layout: when the diagram declares no positions at all,
     # synthesize a layered layout (SPEC, "Position is content" -- the
     # floor, not the ceiling). Merged into the constraint set so the
     # label-gap pass sees the declared pairs.
-    auto_cons, weak_align = _synthesize_auto_layout(
-        diagram, selected, mat_edges, refine=bool(diagram.constraints))
     expanded_constraints = _expand_fan_constraints(
-        list(diagram.constraints) + auto_cons, solver, vars_by_id)
+        list(diagram.constraints) + auto_cons + auto_fans,
+        solver, vars_by_id)
 
     # Auto-layout container children using direction constraints.
     # This runs before user constraints so user constraints can override.
@@ -209,7 +245,6 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
         if a_id in vars_by_id and b_id in vars_by_id:
             va, vb = vars_by_id[a_id], vars_by_id[b_id]
             solver.addConstraint((va.cy == vb.cy) | "weak")
-    # Solve.
     try:
         solver.updateVariables()
     except UnsatisfiableConstraint as exc:
@@ -227,7 +262,7 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
 
     # Read results back.
     return _build_layout(selected, vars_by_id, model, diagram.select,
-                         diagram.constraints)
+                         list(diagram.constraints) + auto_fans)
 
 # ---------------------------------------------------------------------------
 # View auto-layout
@@ -238,6 +273,7 @@ def _synthesize_auto_layout(
     selected: list,
     mat_edges: list,
     refine: bool = False,
+    planes: bool = True,
 ) -> list[Constraint]:
     """Constraints for a view that declares no positions block.
 
@@ -434,6 +470,107 @@ def _synthesize_auto_layout(
     for nid in top_ids:     # still unplaced: forward scale
         col.setdefault(nid, fdepth[nid])
 
+    def _label_w(label: str) -> float:
+        if not label:
+            return 0.0
+        return max(len(ln) for ln in label.split("\\n")) * LABEL_CHAR_W
+
+    # Typed hub planes (2026-09-21 reviewer direction: "giving each
+    # type of meaning its own plane" — the declared "Juju enters" as
+    # the model: spine LR, sink spokes fanned side by side in the
+    # orthogonal band, feeder spokes east of the hub with RL arrows).
+    # Pure synthesis only: in refinement mode the author's declaration
+    # is the arrangement and synthesis fills the undeclared geometry.
+    fan_cons: list[FanConstraint] = []
+    fanned: set[str] = set()
+    sink_fans: dict[str, list[str]] = {}
+    spine_aligns: list[tuple[str, str]] = []
+    if not refine and planes:
+        outs: dict[str, list[str]] = {}
+        ins: dict[str, list[str]] = {}
+        for _e, s, t in vis_edges:
+            outs.setdefault(s, []).append(t)
+            ins.setdefault(t, []).append(s)
+        # Cycle members (stalled in the reversed Kahn — Raft meshes,
+        # mutual pairs) keep the plain depth behaviour: a mesh has no
+        # hub, and plane claims on mutually-feeding nodes contradict
+        # their own layering.
+        cycle = {nid for nid in top_ids if nid not in rdepth}
+
+        # Pass A — sink spokes: a hub's sink successors fan side by
+        # side in the orthogonal band (above, straddling its column;
+        # with n >= 3 the last spoke hangs below — the declared
+        # reference: clouds above, charmhub below for n=3). A lone
+        # sink spoke hangs in the hub's column (charm under its
+        # application); the column stack owns the rest. Depth column:
+        # the fan centres the group on the hub's axis, so the
+        # between-column emitter must not drag them a column east.
+        for h in top_ids:
+            if h in cycle:
+                continue
+            if len(outs.get(h, [])) < 2:
+                continue
+            sinks = [t for t in outs.get(h, []) if not outs.get(t)
+                     and t not in fanned]
+            if not sinks:
+                continue
+            for t in sinks:
+                col[t] = col[h]
+            if len(sinks) == 1:
+                continue
+            below_count = 1 if len(sinks) >= 3 else 0
+            ordered = list(reversed(sinks))
+            below = ordered[-below_count:] if below_count else []
+            above = ordered[:len(sinks) - below_count]
+            # Member spacing carries the riding labels: the widest
+            # label plus clearance, floor 40 — the declared view's
+            # measured 120 for 85px labels.
+            label_w = max((_label_w(e.label) for e, s, t in vis_edges
+                           if s == h and t in sinks), default=0.0)
+            spacing = max(40, int(label_w) + 35)
+            if above:
+                fan_cons.append(FanConstraint(
+                    members=above, anchor=h, direction="above",
+                    gap=40, spacing=spacing))
+                fanned.update(above)
+            if below:
+                fan_cons.append(FanConstraint(
+                    members=below, anchor=h, direction="below",
+                    gap=40, spacing=spacing))
+                fanned.update(below)
+            sink_fans[h] = sinks
+
+        # Pass B — feeder spokes: the spine feed (the predecessor
+        # deepest on the forward scale, excluding fanned spokes — a
+        # spoke cannot define the plane it hangs off) stays west;
+        # every other feeder fans EAST of the hub with RL arrows, the
+        # feeder plane.
+        for h in top_ids:
+            if h in cycle:
+                continue
+            feeders = [p for p in ins.get(h, [])
+                       if p not in fanned and p not in cycle]
+            if len(feeders) < 2:
+                continue
+            spine = max(feeders, key=lambda p: fdepth.get(p, -1))
+            spine_aligns.append((spine, h))
+            spoke_feeders = [p for p in feeders if p != spine]
+            for p in spoke_feeders:
+                col[p] = col[h] + 1
+            if len(spoke_feeders) >= 2:
+                # The feeder column centres on the hub's row (the
+                # declared apps fan); the member gap carries the
+                # riding labels.
+                label_w = max((_label_w(e.label)
+                               for e, s, t in vis_edges
+                               if s in spoke_feeders and t == h),
+                              default=0.0)
+                fan_cons.append(FanConstraint(
+                    members=spoke_feeders, anchor=h,
+                    direction="right-of",
+                    gap=max(40, int(label_w) + 35), spacing=20))
+                fanned.update(spoke_feeders)
+
     # Compact to consecutive columns; then BARYCENTER row ordering
     # (Sugiyama step 4): rows ordered by the mean position of their
     # neighbours in the adjacent columns, alternating sweeps — the
@@ -505,6 +642,12 @@ def _synthesize_auto_layout(
         for c in list(columns):
             columns[c] = best_arr.get(c, columns[c])
 
+    # Fanned sinks leave their column's stacking (the FanConstraint
+    # owns their plane); the hub stays, so its row follows the spine.
+    for sinks in sink_fans.values():
+        for c in columns:
+            columns[c] = [nid for nid in columns[c] if nid not in fanned]
+
     GAP = 60
     cons: list[Constraint] = []
     # Within a column: stack vertically, centred.
@@ -519,16 +662,23 @@ def _synthesize_auto_layout(
                 cons.append(Constraint(kind="align-centre", subject=u,
                                        object=v, strength=strength))
 
+    # The spine is a plane statement, not a coordinate nudge: the
+    # hub's row holds with the spine feed at the floor's own strength
+    # (required, like every other pure-synthesis term — the generic
+    # weak pulls stay the barycenter coordinates). A synthesized spine
+    # that folded to a strong label reservation would trade the plane
+    # for a corridor the declared view itself keeps audited (measured:
+    # the enters hub dropped 37px and bent the spine for a stub-label
+    # corridor its target-exempt label rides anyway).
+    for a_id, b_id in spine_aligns:
+        cons.append(Constraint(kind="align-middle", subject=a_id,
+                               object=b_id, strength="required"))
+
     # Corridor budget (the edge-aware floor): a column boundary must be
     # wide enough for every edge whose label rides through it — the
     # label's longest line plus side pads and arrowhead clearance. A
     # fixed 60px gap starves any corridor carrying a labelled edge
     # (the juju4 forced strike: a 57px label in a 60px gap).
-    def _label_w(label: str) -> float:
-        if not label:
-            return 0.0
-        return max(len(ln) for ln in label.split("\\n")) * LABEL_CHAR_W
-
     boundary_budget: dict[int, float] = {}
     for e, ts, tt in vis_edges:
         cs, ct = col[ts], col[tt]
@@ -588,12 +738,14 @@ def _synthesize_auto_layout(
                                        gap=gap, strength=strength))
         else:
             members = columns[cs]
+            if ts not in members or tt not in members:
+                continue    # fanned: the FanConstraint owns the plane
             i, j = members.index(ts), members.index(tt)
             u, v = members[min(i, j)], members[max(i, j)]
             if frozenset((u, v)) not in declared_y:
                 cons.append(Constraint(kind="above", subject=u, object=v,
                                        gap=GAP, strength=strength))
-    return cons, weak_align
+    return cons, weak_align, fan_cons
 
 
 def _add_uniform_sizing(
@@ -843,17 +995,26 @@ def _add_origin_anchor(
     solver: Solver,
     nodes: list[Node],
     vars_by_id: dict[str, _NodeVars],
+    anchor_y: bool = True,
 ) -> None:
     """Anchor the first top-level node at (0, 0) with WEAK priority.
 
     This prevents the layout from floating to arbitrary coordinates while
     still allowing user constraints to override the position.
+
+    anchor_y=False for synthesized views: the required non-negativity
+    chain from the anchor node otherwise pins the spine row at y=0 and
+    forbids the typed hub planes from fanning a band ABOVE the spine
+    (the solver then breaks the spine's weak alignment instead — the
+    whole arrangement pays for one weak pin). _build_layout translates
+    the solved boxes back to the origin.
     """
     if not nodes:
         return
     first = vars_by_id[nodes[0].id]
     solver.addConstraint((first.x == 0) | "weak")
-    solver.addConstraint((first.y == 0) | "weak")
+    if anchor_y:
+        solver.addConstraint((first.y == 0) | "weak")
 
 
 # ---------------------------------------------------------------------------
@@ -1503,10 +1664,22 @@ def _build_layout(
         for node in nodes
     ]
 
-    # Compute overall bounding box.
+    # Compute overall bounding box; translate to the origin — the
+    # typed hub planes fan spokes into negative y (bands above the
+    # origin-anchored spine row), and the canvas is not a place for
+    # negative coordinates.
     if solved_nodes:
         min_x = min(n.rect.x for n in solved_nodes)
         min_y = min(n.rect.y for n in solved_nodes)
+        if min_x > 0 or min_y > 0:
+            dx, dy = -min_x, -min_y
+            solved_nodes = [
+                _dc_replace(n, rect=Rect(n.rect.x + dx, n.rect.y + dy,
+                                         n.rect.w, n.rect.h))
+                for n in solved_nodes
+            ]
+            min_x = min(n.rect.x for n in solved_nodes)
+            min_y = min(n.rect.y for n in solved_nodes)
         max_x = max(n.rect.x2 for n in solved_nodes)
         max_y = max(n.rect.y2 for n in solved_nodes)
         bounds = Rect(min_x, min_y, max_x - min_x, max_y - min_y)
