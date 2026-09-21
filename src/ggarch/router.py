@@ -69,10 +69,15 @@ SEED_INSET     = 6.0   # px — anchors stay clear of face corners (the
 LADDER_K       = 3     # ladder half-depth: centre ± k*step — deep enough
                        # that an L dodges an obstacle beside the face
 U_MARGINS      = (14.0, 30.0, 60.0)  # U run distance beyond both rects
-ANCHOR_REUSE_COST = 8.0  # px — prefer unused face anchors (deliberate
-                         # offsets for shared faces / anti-parallel pairs).
-                         # Must exceed the SEED_STEP ladder (6px) so a
-                         # used slot never beats a fresh offset.
+PORT_EXCLUSIVE_COST = 400.0  # px — a used face port is closed (ADR-003:
+                         # separation is deliberate offsets). Convergent
+                         # or divergent edges spread to fresh ladder
+                         # slots; a shared port pays exclusion scale,
+                         # above every length saving and a bend, so it
+                         # survives only when no other candidate exists
+                         # (2026-09-21: the old 8px reuse price lost to
+                         # the length incentive and three convergent
+                         # unit_agent edges stacked onto one arrowhead)
 RELEVANT_MARGIN = 150.0  # px — obstacle-corridor relevance pruning
 LABEL_NODE_COST = 80.0   # px — the price of a route whose label strikes
                          # a node: two bends' worth, so a cheap detour or
@@ -107,7 +112,7 @@ FACE_DISCIPLINE_COST = 20  # px — an anchor pair against the port
                          # TURN_PENALTY (40) so it can never buy a
                          # bend — the ADR-003 vocabulary (<=2 bends)
                          # is the hard law, discipline yields to it —
-                         # and over ANCHOR_REUSE_COST (8) so among
+                         # and over the old anchor-reuse price so among
                          # bend-equal candidates the disciplined pair
                          # wins. The label costs (24 per strip hit, 80 per node
                          #  strike) outrank it — 20 sits under 24 by design: a
@@ -645,12 +650,22 @@ def _route_candidates_eval(
                             # Keyed by (node, face) regardless of edge
                             # role: an anti-parallel pair's reverse
                             # edge must see the forward edge's slots.
+                            # A used port is CLOSED (ADR-003: offsets
+                            # are deliberate; 2026-09-21 fan review:
+                            # an 8px reuse price lost to the length
+                            # incentive and convergent edges stacked
+                            # onto one arrowhead — the unpacked view's
+                            # three unit_agent edges shared one west-
+                            # face port). Exclusion scale: a fresh
+                            # ladder slot wins over any length saving;
+                            # a shared port survives only when no
+                            # other candidate exists.
                             if _face_coord(a, fs) in used_anchors.get(
                                     (src_key, fs), ()):
-                                reuse += ANCHOR_REUSE_COST
+                                reuse += PORT_EXCLUSIVE_COST
                             if _face_coord(b, ft) in used_anchors.get(
                                     (tgt_key, ft), ()):
-                                reuse += ANCHOR_REUSE_COST
+                                reuse += PORT_EXCLUSIVE_COST
                         cost = direct + TURN_PENALTY * bends + reuse
                         if (fs, ft) != preferred:
                             cost += FACE_DISCIPLINE_COST
