@@ -109,6 +109,37 @@ def stroke_interior_hits(points, rect):
     return hits
 
 
+def border_rides(points, rmap, eps=0.5):
+    """Segments collinear with a node face line and overlapping its
+    span — a stroke riding a border instead of meeting the face
+    perpendicularly (2026-09-21 hard law: never permitted). Returns
+    (segment index, node id, overlap px)."""
+    out = []
+    for i in range(len(points) - 1):
+        p1, p2 = points[i], points[i + 1]
+        if math.hypot(p2.x - p1.x, p2.y - p1.y) < eps:
+            continue
+        if abs(p1.x - p2.x) < eps:      # vertical segment
+            lo, hi = sorted((p1.y, p2.y))
+            for nid, r in rmap.items():
+                for x in (r.x, r.x2):
+                    if abs(p1.x - x) < eps:
+                        ov = min(hi, r.y2) - max(lo, r.y)
+                        if ov > eps:
+                            out.append((i, nid, round(ov, 1)))
+                        break
+        elif abs(p1.y - p2.y) < eps:    # horizontal segment
+            lo, hi = sorted((p1.x, p2.x))
+            for nid, r in rmap.items():
+                for y in (r.y, r.y2):
+                    if abs(p1.y - y) < eps:
+                        ov = min(hi, r.x2) - max(lo, r.x)
+                        if ov > eps:
+                            out.append((i, nid, round(ov, 1)))
+                        break
+    return out
+
+
 def rects_overlap(a, b, eps=WALL_EPS):
     """Do two (x, y, x2, y2) boxes overlap by more than eps?"""
     return not (a[2] <= b[0] + eps or b[2] <= a[0] + eps
@@ -135,6 +166,7 @@ def audit_file(path):
         rotated = 0
         node_strikes = []
         wall_crossings = []
+        rides = []
         labelled = 0
 
         labels = []   # (desc, strip) for label-label checks
@@ -144,6 +176,9 @@ def audit_file(path):
             src_anc = anc.get(e.source_id, set()) | {e.source_id}
             tgt_anc = anc.get(e.target_id, set()) | {e.target_id}
             exempt = src_anc | tgt_anc
+
+            for _seg, nid, ov in border_rides(e.points, rmap):
+                rides.append((desc, nid, ov))
 
             for j in range(len(e.points) - 1):
                 p1, p2 = e.points[j], e.points[j + 1]
@@ -304,6 +339,7 @@ def audit_file(path):
             labelled=labelled,
             node_strikes=node_strikes,
             wall_crossings=wall_crossings,
+            border_rides=rides,
             label_clashes=label_clashes,
             strip_crossings=strip_crossings,
             residuals=residuals,
@@ -334,6 +370,7 @@ def main(paths=None, gate=False):
             nr = r["rotated"]
             nns = len(r["node_strikes"])
             nwc = len(r["wall_crossings"])
+            nbr = len(r["border_rides"])
             nl = len(r["label_clashes"])
             nsc = len(set(s[0] + s[1] for s in r["strip_crossings"]))
             nres = len(set(x[0] for x in r["residuals"]))
@@ -350,17 +387,19 @@ def main(paths=None, gate=False):
             hist: dict[int, int] = {}
             for t in r["turns_list"]:
                 hist[t] = hist.get(t, 0) + 1
-            if gate and (nc or nns or nwc):
+            if gate and (nc or nns or nwc or nbr):
                 violations.append(
                     f"{path}:{view}: crossing-edges={nc} "
-                    f"node-strikes={nns} wall-crossings={nwc}")
+                    f"node-strikes={nns} wall-crossings={nwc} "
+                    f"border-rides={nbr}")
             flag = "  <-- DEFECTS" if (nc or nsc or nres or nd or nns
-                                       or nwc or nl) else ""
+                                       or nwc or nl or nbr) else ""
             print(f"{view}: edges={r['n_edges']} "
                   f"crossing-edges={nc} strip-crossings={nsc} "
                   f"residuals={nres} diagonals={nd} "
                   f"rotated-labels={nr}/{r['labelled']} "
                   f"node-strikes={nns} wall-crossings={nwc} "
+                  f"border-rides={nbr} "
                   f"label-clashes={nl} turns/edge="
                   f"{r['turns'] / max(r['n_edges'], 1):.2f} "
                   f"max-ratio={max(ratios, default=0):.2f} "
@@ -395,6 +434,8 @@ def main(paths=None, gate=False):
                 print(f"  NSTRIKE {view}: {desc}  strip strikes {obst}")
             for desc, cont in r["wall_crossings"]:
                 print(f"  WALL   {view}: {desc}  strip crosses {cont} wall")
+            for desc, nid, ov in r["border_rides"]:
+                print(f"  BRIDE  {view}: {desc}  rides {nid} border ({ov}px)")
             for a, b in r["label_clashes"]:
                 print(f"  LCLASH {view}: {a}  <->  {b}")
             for s0, s1, owner in r["strip_crossings"]:

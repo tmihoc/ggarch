@@ -326,3 +326,29 @@ strikes 1 -> 0; juju4 max-ratio 5.36 -> 2.06, >2-bend 15 -> 0, strikes
 3 -> 1 (forced, audited); crossing-edges 0/0; sequences byte-identical.
 The strip-crossing/residual counts are now edge-over-edge overlaps —
 audited facts of retiring hard strips, owned by layout.
+
+## Amendment (2026-09-21): border rides are hard-banned
+
+Reviewer position, measured on the corpus: an edge whose first or last
+leg is collinear with a node's own face line rides the border before
+meeting the face (worker tree, domain_services -> db_accessor: 30px up
+the target's west border; the same class at 6px in the authored view).
+"It looks wrong" — the vocabulary now guarantees a perpendicular
+approach or a corner landing:
+
+- Candidate forms whose endpoint rides are corner-snapped at
+  evaluation: the riding endpoint slides to the face-span end nearest
+  the penultimate point, so the stroke arrives from outside and lands
+  at the corner (`router._corner_snap`).
+- Any ride the snap cannot collapse (the endpoint already sits at the
+  span end) is priced at RIDE_COST (400px) — above every legitimate
+  cost bundle — so any ride-free candidate wins; a ride survives only
+  when the alternative is a crossing or no route.
+- Pinned (field-qualified) anchors are content and do not snap; their
+  L orientations are filtered to ride-free forms directly.
+- The audit gains the `border-rides` metric as a hard gate invariant
+  (collinear overlap of a first/last leg with any face line).
+
+Measured corpus-wide: 15 rides (5 views, incl. 2 authored) -> 0; the
+gate holds (crossing-edges 0, node-strikes 0, wall-crossings 0,
+>2-bend 0).

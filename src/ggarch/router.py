@@ -119,6 +119,14 @@ FACE_DISCIPLINE_COST = 20  # px — an anchor pair against the port
                          # same way (3/9 EAST entries on Worker tree
                          # machine cloud, 17/17 WEST on Worker tree
                          # controller — geometry, not dogma).
+RIDE_COST      = 400.0  # px — a surviving border ride (first/last leg
+                         # collinear with a face line; 2026-09-21 hard
+                         # law: never permitted). Priced above every
+                         # legitimate cost bundle (bends, label strikes,
+                         # discipline combined), so any ride-free
+                         # candidate wins; a ride survives only when the
+                         # alternative is a crossing or no route — and
+                         # the audit's border-rides metric gates it.
 
 
 # ---------------------------------------------------------------------------
@@ -289,59 +297,6 @@ def _anchor_ladder(rect: Rect) -> dict[str, list[Point]]:
     return out
 
 
-def _candidate_routes(
-    src_rect: Rect, tgt_rect: Rect,
-    src_ladder: dict[str, list[Point]],
-    tgt_ladder: dict[str, list[Point]],
-):
-    """Deterministic candidate routes: for every anchor pair, the
-    straight line; for perpendicular faces, both L orientations (one
-    bend); for same-facing faces, the four U families at each U margin
-    (two bends — the deliberate shape for topology that demands it).
-    Yields (points, bends, form_rank, u_mi, src_face, tgt_face,
-    src_i, tgt_i)."""
-    for fs_i, fs in enumerate(_FACE_ORDER):
-        for si, a in enumerate(src_ladder[fs]):
-            for ft_i, ft in enumerate(_FACE_ORDER):
-                for ti, b in enumerate(tgt_ladder[ft]):
-                    # Straight — always a candidate, any angle.
-                    yield ([a, b], 0, 0, -1, fs, ft, si, ti)
-                    perp = ((fs in ("right", "left"))
-                            != (ft in ("right", "left")))
-                    if perp:
-                        # L, both orientations (one bend). The bend is
-                        # determined by the anchor pair; legs that
-                        # re-enter an endpoint's interior are rejected
-                        # by the own-interior check.
-                        yield ([a, Point(b.x, a.y), b], 1, 1, -1,
-                               fs, ft, si, ti)
-                        yield ([a, Point(a.x, b.y), b], 1, 2, -1,
-                               fs, ft, si, ti)
-                    elif fs == ft:
-                        # U families: out along the face normal, run
-                        # parallel beyond both rects, back in.
-                        for mi, m in enumerate(U_MARGINS):
-                            if fs == "right":
-                                run = max(src_rect.x + src_rect.w,
-                                          tgt_rect.x + tgt_rect.w) + m
-                                pts = [a, Point(run, a.y),
-                                       Point(run, b.y), b]
-                            elif fs == "left":
-                                run = min(src_rect.x, tgt_rect.x) - m
-                                pts = [a, Point(run, a.y),
-                                       Point(run, b.y), b]
-                            elif fs == "bottom":
-                                run = max(src_rect.y + src_rect.h,
-                                          tgt_rect.y + tgt_rect.h) + m
-                                pts = [a, Point(a.x, run),
-                                       Point(b.x, run), b]
-                            else:  # top
-                                run = min(src_rect.y, tgt_rect.y) - m
-                                pts = [a, Point(a.x, run),
-                                       Point(b.x, run), b]
-                            yield (pts, 2, 3, mi, fs, ft, si, ti)
-
-
 class _Search:
     """Per-edge evaluation state: pruned obstacles, own interiors, leg
     cache, earlier strips (for label-strike scoring), and the label."""
@@ -485,6 +440,12 @@ def _forms(src_rect, tgt_rect, a: Point, b: Point, fs: str, ft: str,
         yield ([a, b], 0, 0, -1)
     perp = ((fs in ("right", "left")) != (ft in ("right", "left")))
     if perp:
+        # Both L orientations are generated; one of them has a first or
+        # last leg collinear with a face line (a border ride). The
+        # evaluator corner-snaps riding endpoints (2026-09-21 hard law:
+        # a stroke meets its face perpendicularly or lands at the
+        # face-span end — it never rides the border), so the mirror
+        # form stays available where it is the only clear corridor.
         yield ([a, Point(b.x, a.y), b], 1, 1, -1)
         yield ([a, Point(a.x, b.y), b], 1, 2, -1)
         if orthogonal:
@@ -495,6 +456,7 @@ def _forms(src_rect, tgt_rect, a: Point, b: Point, fs: str, ft: str,
             # leg into the inter-row corridor (14) — or past a same-row
             # blocker (30, 60) — keeps it clear at the cost of the
             # second bend, inside the vocabulary's two-bend budget.
+            # Its riding final leg is corner-snapped by the evaluator.
             for m in U_MARGINS:
                 if fs in ("top", "bottom"):
                     sgn = 1 if fs == "bottom" else -1
@@ -524,6 +486,85 @@ def _forms(src_rect, tgt_rect, a: Point, b: Point, fs: str, ft: str,
 
 
 
+
+
+def _ride_len(pts, src_rect, tgt_rect):
+    """Total px of border ride on the first/last legs (collinear
+    overlap with the node's own face line) — the quantity RIDE_COST
+    prices and the audit's border-rides metric gates. Straights cannot
+    ride (perpendicular crossing or diagonal), so len<3 returns 0."""
+    if len(pts) < 3:
+        return 0.0
+    total = 0.0
+    for p_end, p_in, rect in ((pts[0], pts[1], src_rect),
+                              (pts[-1], pts[-2], tgt_rect)):
+        if abs(p_end.x - p_in.x) < 0.5:          # vertical leg
+            if (abs(p_end.x - rect.x) < 0.5
+                    or abs(p_end.x - rect.x2) < 0.5):
+                ylo, yhi = sorted((p_end.y, p_in.y))
+                total += max(0.0, min(yhi, rect.y2) - max(ylo, rect.y))
+        elif abs(p_end.y - p_in.y) < 0.5:        # horizontal leg
+            if (abs(p_end.y - rect.y) < 0.5
+                    or abs(p_end.y - rect.y2) < 0.5):
+                xlo, xhi = sorted((p_end.x, p_in.x))
+                total += max(0.0, min(xhi, rect.x2) - max(xlo, rect.x))
+    return total
+
+
+def _corner_snap(pts, src_rect, tgt_rect):
+    """Collapse a border ride (2026-09-21 hard law: a stroke meets its
+    face perpendicularly — it never runs along the border before
+    landing). When a candidate's first or last leg is collinear with
+    its own node's face line, the riding endpoint slides to the
+    face-span end nearest the penultimate point: the stroke arrives
+    from outside and lands at the corner. Returns the (possibly
+    point-reduced) pts, or None when nothing rode."""
+    pts = list(pts)
+    if len(pts) < 3:
+        return None
+    changed = False
+    for i, rect in ((0, src_rect), (len(pts) - 1, tgt_rect)):
+        p_end = pts[i]
+        p_in = pts[1] if i == 0 else pts[-2]
+        vertical_leg = abs(p_end.x - p_in.x) < 0.5
+        horizontal_leg = abs(p_end.y - p_in.y) < 0.5
+        if vertical_leg:
+            # collinear with a vertical face line (left/right): the
+            # line coordinate is x, the span runs along y
+            lines = ((rect.x, rect.y, rect.y2), (rect.x2, rect.y, rect.y2))
+            end_v, in_v, fixed_v = p_end.x, p_in.y, p_end.x
+        elif horizontal_leg:
+            # collinear with a horizontal face line (top/bottom): the
+            # line coordinate is y, the span runs along x
+            lines = ((rect.y, rect.x, rect.x2), (rect.y2, rect.x, rect.x2))
+            end_v, in_v, fixed_v = p_end.y, p_in.x, p_end.y
+        else:
+            continue
+        for coord, lo, hi in lines:
+            if abs(end_v - coord) >= 0.5:
+                continue
+            # the ride is the leg's extent along the free axis
+            # (both endpoints) overlapping the face span
+            free_end = p_end.y if vertical_leg else p_end.x
+            e_lo, e_hi = sorted((free_end, in_v))
+            if min(e_hi, hi) - max(e_lo, lo) <= 0.5:
+                continue
+            new_v = lo if abs(in_v - lo) <= abs(in_v - hi) else hi
+            if abs(new_v - free_end) <= 0.5:
+                continue
+            if vertical_leg:
+                pts[i] = Point(fixed_v, new_v)
+            else:
+                pts[i] = Point(new_v, fixed_v)
+            changed = True
+            break
+    if not changed:
+        return None
+    out = [pts[0]]
+    for p in pts[1:]:
+        if abs(p.x - out[-1].x) > 1e-9 or abs(p.y - out[-1].y) > 1e-9:
+            out.append(p)
+    return out
 
 
 def _route_candidates_eval(
@@ -596,6 +637,9 @@ def _route_candidates_eval(
                                 direct + TURN_PENALTY * bends >= \
                                 best_clear[2]:
                             continue
+                        snapped = _corner_snap(pts, src_rect, tgt_rect)
+                        if snapped is not None:
+                            pts = snapped
                         reuse = 0.0
                         if used_anchors is not None and not pinned:
                             # Keyed by (node, face) regardless of edge
@@ -641,6 +685,8 @@ def _route_candidates_eval(
                                      - (_center(tgt_rect, ft) + pair_bias))
                             if ba > 0.5 or bb > 0.5:
                                 cost += HINT_MISS_COST
+                        if _ride_len(pts, src_rect, tgt_rect) > 0.5:
+                            cost += RIDE_COST
                         if best_clear is not None and \
                                 cost >= best_clear[2]:
                             continue
@@ -838,8 +884,35 @@ def _pinned_candidates(src_rect, tgt_rect, a: Point, b: Point, search,
     forms = []
     if not orthogonal or abs(b.x - a.x) < 1e-6 or abs(b.y - a.y) < 1e-6:
         forms.append(([a, b], 0))
-    forms.append(([a, Point(b.x, a.y), b], 1))
-    forms.append(([a, Point(a.x, b.y), b], 1))
+    # Perpendicularity (2026-09-21, hard law — no border grazing): an L
+    # whose first or last leg is collinear with a face line rides the
+    # node border before meeting the face. Tested directly (corner
+    # anchors make nearest-face classification ambiguous); only
+    # ride-free orientations are kept.
+    def _rides(pts):
+        for p_end, p_in, rect in ((pts[0], pts[1], src_rect),
+                                  (pts[-1], pts[-2], tgt_rect)):
+            if abs(p_end.x - p_in.x) < 0.5:      # vertical leg
+                if (abs(p_end.x - rect.x) < 0.5
+                        or abs(p_end.x - rect.x2) < 0.5):
+                    ylo, yhi = sorted((p_end.y, p_in.y))
+                    if min(yhi, rect.y2) - max(ylo, rect.y) > 0.5:
+                        return True
+            elif abs(p_end.y - p_in.y) < 0.5:    # horizontal leg
+                if (abs(p_end.y - rect.y) < 0.5
+                        or abs(p_end.y - rect.y2) < 0.5):
+                    xlo, xhi = sorted((p_end.x, p_in.x))
+                    if min(xhi, rect.x2) - max(xlo, rect.x) > 0.5:
+                        return True
+        return False
+    for cand in ([a, Point(b.x, a.y), b], [a, Point(a.x, b.y), b]):
+        if not _rides(cand):
+            forms.append((cand, 1))
+    if not forms and orthogonal:
+        # The vocabulary cannot express this pair orthogonally without
+        # riding (same-facing or same-axis faces, misaligned rows).
+        # A diagonal beats a border ride.
+        forms.append(([a, b], 0))
     for pts, bends in forms:
         clear = True
         crossings: list[str] = []
