@@ -1242,6 +1242,33 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
     all_rects = _collect_rects(layout)
     anc = _ancestors_map(layout)
 
+    # Top-level id set + parent map: the member-side hint resolves a
+    # nested member's CONTAINER (the fan member node), so the align-
+    # middle member's arrow anchors at the container's face midpoint —
+    # the container's row is what aligns with the hub (the declared
+    # fan/typed-hub statements are top-level), not the child's own
+    # centre, which the label band pushes ~12px low (measured: app2's
+    # arrow left its child's face at container+12 and came in at a NW
+    # angle while its hub port sat exactly at the midpoint).
+    _top_ids = {n.id for n in layout.nodes}
+    _parent_of: dict[str, str] = {}
+    _stk = [(n, None) for n in layout.nodes]
+    while _stk:
+        _n, _p = _stk.pop()
+        if _p is not None:
+            _parent_of[_n.id] = _p
+        for _c in _n.children:
+            _stk.append((_c, _n.id))
+
+    def _top_rect(nid: str):
+        cur = nid
+        while cur not in _top_ids:
+            cur = _parent_of.get(cur)
+            if cur is None:
+                return None
+        n = layout.find(cur)
+        return n.rect if n is not None else None
+
     items = []
     for edge in edges:
         if select.edge_types and edge.type not in select.edge_types:
@@ -1389,9 +1416,29 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                     # the pair bias (both strokes straddle the midpoint
                     # at ±PAIR_BIAS — itself a symmetric distribution);
                     # a centre hint here would fight the mirror.
+                    # A NESTED align-middle member anchors at its
+                    # CONTAINER's face midpoint instead of the child's
+                    # own centre: the fan statements are top-level, so
+                    # the container's row is what aligns with the hub
+                    # (2026-09-21: app2's arrow must be align-middle'ed
+                    # with the controller as a whole). Only when the
+                    # container's coordinate lies on the child's face;
+                    # outer members and top-level members keep the
+                    # member's own centre.
+                    hint_v = (mlo + mhi) / 2.0
+                    if (i == (len(ms) - 1) // 2
+                            and member.id not in _top_ids):
+                        trect = _top_rect(member.id)
+                        if trect is not None:
+                            tlo, thi = (
+                                (trect.x, trect.x + trect.w)
+                                if mface in ("top", "bottom")
+                                else (trect.y, trect.y + trect.h))
+                            tmid = (tlo + thi) / 2.0
+                            if mlo <= tmid <= mhi:
+                                hint_v = tmid
                     edge_hints[id(m[0])][
-                        "src" if side == "tgt" else "tgt"][mface] \
-                        = (mlo + mhi) / 2.0
+                        "src" if side == "tgt" else "tgt"][mface] = hint_v
                 if m_declared:
                     # A declared fan face holds its hint against the
                     # length incentive (2026-09-21 reviewer rule: fan

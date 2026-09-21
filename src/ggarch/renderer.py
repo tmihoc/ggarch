@@ -56,9 +56,6 @@ from ggarch.router import RoutedEdge, RoutedLayout
 # ---------------------------------------------------------------------------
 
 MARGIN          = 20    # px — white-space margin around the diagram
-TAIL_EPS        = 1e-6  # px — a border crossing within this distance of
-                        # a segment endpoint is the anchor itself, not a
-                        # crossing (the spurious tail-notch fix, 0.26.1)
 
 # Along-path edge labels (ADR-002) and strips (ADR-003) — shared
 # geometry: the single source of measurement lives in ggarch.geometry
@@ -86,59 +83,6 @@ from ggarch.geometry import (  # noqa: E402 — re-export
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def _seg_intersect_horiz(
-    px1: float, py1: float, px2: float, py2: float,
-    lx: float, rx: float, y: float,
-) -> float | None:
-    """X coordinate where segment (p1→p2) crosses horizontal line y, within [lx,rx], or None.
-
-    A crossing within epsilon of either segment endpoint is the anchor
-    itself, not a crossing: kiwisolver float noise can put a route's
-    start point ~1e-13 inside its own box, and the first segment then
-    'crosses' the border at t~0 — the spurious tail notch (0.26.1 fix)."""
-    dy = py2 - py1
-    if abs(dy) < 1e-6:
-        return None
-    t = (y - py1) / dy
-    if not (0.0 < t < 1.0):
-        return None
-    x = px1 + t * (px2 - px1)
-    if lx <= x <= rx:
-        if math.hypot(x - px1, y - py1) < TAIL_EPS \
-                or math.hypot(x - px2, y - py2) < TAIL_EPS:
-            return None
-        return x
-    return None
-
-
-def _seg_intersect_vert(
-    px1: float, py1: float, px2: float, py2: float,
-    ty: float, by: float, x: float,
-) -> float | None:
-    """Y coordinate where segment (p1→p2) crosses vertical line x, within [ty,by], or None.
-
-    Endpoint-epsilon crossings are anchors, not crossings (see
-    _seg_intersect_horiz)."""
-    dx = px2 - px1
-    if abs(dx) < 1e-6:
-        return None
-    t = (x - px1) / dx
-    if not (0.0 < t < 1.0):
-        return None
-    y = py1 + t * (py2 - py1)
-    if ty <= y <= by:
-        if math.hypot(x - px1, y - py1) < TAIL_EPS \
-                or math.hypot(x - px2, y - py2) < TAIL_EPS:
-            return None
-        return y
-    return None
-
-
-# Gap half-width to cut into a box border where an edge crosses it.
-BORDER_GAP = 6  # px each side of the crossing point
-
-
-
 def _strip_zero_dy(svg: str) -> str:
     """drawsvg wraps textPath text in `<tspan dy="0em">`. The dy
     attribute is what renderers disagree on over rotated textPath
@@ -147,131 +91,6 @@ def _strip_zero_dy(svg: str) -> str:
     plain text inside the textPath: maximally renderer-compatible
     (review round 4, the half-printed label class)."""
     return re.sub(r'<tspan dy="0(?:\.0+)?em">([^<]*)</tspan>', r"\1", svg)
-
-
-def _compute_border_gaps(
-    nodes: list,
-    edges: list,
-    ox: float, oy: float,
-) -> dict:
-    """{node_id: {'top': [x,...], 'bottom': [...], 'left': [y,...],
-    'right': [...]}} — the ports of each container border.
-
-    A notch is a port (ADR-003 decision 11): it is cut only where an
-    edge genuinely enters or exits the subtree — exactly one endpoint
-    inside. Edges passing OVER a container (both endpoints outside)
-    leave the border solid — that is a routing defect for the router
-    to eliminate, not a border feature. Edges internal to the subtree
-    do not notch their own container.
-    """
-    gaps: dict = {}
-
-    # Rects (in SVG coords) and subtree membership (inclusive).
-    rects: dict = {}
-    subtree: dict[str, set[str]] = {}
-
-    def collect(ns):
-        for n in ns:
-            r = n.rect
-            rects[n.id] = (r.x + ox, r.y + oy, r.w, r.h)
-            members = subtree.setdefault(n.id, {n.id})
-            for c in n.children:
-                collect([c])
-                members.update(subtree.get(c.id, {c.id}))
-            subtree[n.id] = members
-    collect(nodes)
-
-    def _endpoints(edge):
-        src = getattr(edge, "source_id", None) or edge.source
-        tgt = getattr(edge, "target_id", None) or edge.target
-        return src, tgt
-
-    for edge in edges:
-        pts = [(p.x + ox, p.y + oy) for p in edge.points]
-        src, tgt = _endpoints(edge)
-        for nid, (nx, ny, nw, nh) in rects.items():
-            # Port semantics: exactly one endpoint inside the subtree.
-            inside = [e for e in (src, tgt) if e in subtree.get(nid, ())]
-            if len(inside) != 1:
-                continue
-            for i in range(len(pts) - 1):
-                x1, y1 = pts[i]
-                x2, y2 = pts[i + 1]
-                g = gaps.setdefault(
-                    nid, {'top': [], 'bottom': [], 'left': [], 'right': []})
-                # Top edge
-                cx = _seg_intersect_horiz(x1, y1, x2, y2, nx, nx + nw, ny)
-                if cx is not None:
-                    g['top'].append(cx)
-                # Bottom edge
-                cx = _seg_intersect_horiz(
-                    x1, y1, x2, y2, nx, nx + nw, ny + nh)
-                if cx is not None:
-                    g['bottom'].append(cx)
-                # Left edge
-                cy = _seg_intersect_vert(x1, y1, x2, y2, ny, ny + nh, nx)
-                if cy is not None:
-                    g['left'].append(cy)
-                # Right edge
-                cy = _seg_intersect_vert(
-                    x1, y1, x2, y2, ny, ny + nh, nx + nw)
-                if cy is not None:
-                    g['right'].append(cy)
-    return gaps
-
-
-def _draw_side_with_gaps(
-    g: dw.Group,
-    pts: list[tuple[float,float]],
-    crossings: list[float],
-    stroke: str,
-    stroke_width: float,
-    stroke_dash: str,
-    gap: float = BORDER_GAP,
-) -> None:
-    """Draw a straight line from pts[0] to pts[-1] as segments, skipping
-    gaps at crossings.
-
-    pts must be a two-point list defining a horizontal or vertical line.
-    crossings are the coordinates (x for horiz, y for vert) where gaps are cut.
-    """
-    x0, y0 = pts[0]
-    x1, y1 = pts[1]
-    horiz = abs(y1 - y0) < 1e-6
-    # Parameter is x for horizontal, y for vertical.
-    start = x0 if horiz else y0
-    end   = x1 if horiz else y1
-    if start > end:
-        start, end = end, start
-
-    # Build gap intervals and sort.
-    intervals = sorted((max(c - gap, start), min(c + gap, end)) for c in crossings)
-    # Merge overlapping intervals.
-    merged: list[tuple[float,float]] = []
-    for lo, hi in intervals:
-        if merged and lo <= merged[-1][1]:
-            merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
-        else:
-            merged.append([lo, hi])
-
-    kwargs: dict = dict(stroke=stroke, stroke_width=stroke_width, fill="none")
-    if stroke_dash:
-        kwargs["stroke_dasharray"] = stroke_dash
-
-    # Draw segments between gaps.
-    cursor = start
-    for lo, hi in merged:
-        if cursor < lo:
-            if horiz:
-                g.append(dw.Line(cursor, y0, lo, y0, **kwargs))
-            else:
-                g.append(dw.Line(x0, cursor, x0, lo, **kwargs))
-        cursor = hi
-    if cursor < end:
-        if horiz:
-            g.append(dw.Line(cursor, y0, end, y0, **kwargs))
-        else:
-            g.append(dw.Line(x0, cursor, x0, end, **kwargs))
 
 
 # Legend sizing constants — kept here so render() can use them before drawing.
@@ -427,12 +246,10 @@ def render(
     drawing.append(dw.Rectangle(0, 0, vw, vh, fill=bg))
     _add_arrowhead_defs(drawing, dark, preset)
 
-    border_gaps = _compute_border_gaps(layout.nodes, routed.edges, ox, oy)
-
     nodes_g = dw.Group(id="ggarch-nodes")
     edges_g = dw.Group(id="ggarch-edges")
     ann_g   = dw.Group(id="ggarch-annotations")
-    _render_nodes(nodes_g, layout.nodes, node_styles, ox, oy, view, dark, border_gaps, model,
+    _render_nodes(nodes_g, layout.nodes, node_styles, ox, oy, view, dark, model,
                   salience=salience)
     for edge in routed.edges:
         _render_edge(edges_g, edge, edge_styles, ox, oy, salience=salience)
@@ -524,18 +341,16 @@ def _render_nodes(
     oy: float,
     view: DiagramView,
     dark: bool = False,
-    border_gaps: dict | None = None,
     model=None,
     salience: dict | None = None,
 ) -> None:
-    border_gaps = border_gaps or {}
     for node in nodes:
         if node.children:
-            _render_node(g, node, node_styles, ox, oy, view, dark, border_gaps,
+            _render_node(g, node, node_styles, ox, oy, view, dark,
                          model, salience=salience)
     for node in nodes:
         if not node.children:
-            _render_node(g, node, node_styles, ox, oy, view, dark, border_gaps,
+            _render_node(g, node, node_styles, ox, oy, view, dark,
                          model, salience=salience)
 
 
@@ -610,7 +425,6 @@ def _render_node(
     oy: float,
     view: DiagramView,
     dark: bool = False,
-    border_gaps: dict | None = None,
     model=None,
     salience: dict | None = None,
 ) -> None:
@@ -633,12 +447,12 @@ def _render_node(
         escaped = node.url.replace("&", "&amp;").replace('"', "&quot;")
         g.append(dw.Raw(f'<a href="{escaped}" target="_blank">'))
         _render_node_content(g, node, node_styles, ox, oy, view, dark,
-                             style, x, y, w, h, has_children, border_gaps,
+                             style, x, y, w, h, has_children,
                              model, salience=salience)
         g.append(dw.Raw("</a>"))
     else:
         _render_node_content(g, node, node_styles, ox, oy, view, dark,
-                             style, x, y, w, h, has_children, border_gaps,
+                             style, x, y, w, h, has_children,
                              model, salience=salience)
 
 
@@ -656,12 +470,10 @@ def _render_node_content(
     w: float,
     h: float,
     has_children: bool,
-    border_gaps: dict | None = None,
     model=None,
     salience: dict | None = None,
 ) -> None:
     """Render the visual content of a node (shape, children, badge) into g."""
-    node_gaps = (border_gaps or {}).get(node.id, {})
     if node.fields and node.type in ("record", "class"):
         _render_structured_node(g, node, style, x, y, w, h, dark)
     elif style.shape == "person":
@@ -670,10 +482,10 @@ def _render_node_content(
         _render_cylinder(g, x, y, w, h, style, node.label)
     else:
         _render_box(g, x, y, w, h, style, node.label, node.lifecycle,
-                    is_container=has_children, border_gaps=node_gaps)
+                    is_container=has_children)
     if node.children:
         _render_nodes(g, node.children, node_styles, ox, oy, view, dark,
-                      border_gaps, model, salience=salience)
+                      model, salience=salience)
     if node.cardinality:
         _render_cardinality_badge(g, x + w - 4, y + 4, node.cardinality)
     scope = node.properties.get("scope", "")
@@ -706,7 +518,6 @@ def _render_box(
     label: str,
     lifecycle: str = "persistent",
     is_container: bool = False,
-    border_gaps: dict | None = None,
 ) -> None:
     from ggarch.layout import CONTAINER_PAD_TOP
     fill        = style.fill if style.fill != "none" else "none"
@@ -715,28 +526,13 @@ def _render_box(
     stroke_width = style.stroke_width
     r           = style.border_radius
 
-    node_gaps = border_gaps or {}
-    has_gaps = any(node_gaps.get(face) for face in ('top', 'bottom', 'left', 'right'))
-
-    if has_gaps:
-        # Draw fill rect (no stroke), then each side as separate segments with gaps.
-        if fill != "none":
-            g.append(dw.Rectangle(x, y, w, h, fill=fill, stroke="none", rx=r, ry=r))
-        for face, pts, crossings in (
-            ('top',    [(x, y),     (x+w, y)],   node_gaps.get('top',    [])),
-            ('bottom', [(x, y+h),   (x+w, y+h)], node_gaps.get('bottom', [])),
-            ('left',   [(x, y),     (x, y+h)],   node_gaps.get('left',   [])),
-            ('right',  [(x+w, y),   (x+w, y+h)], node_gaps.get('right',  [])),
-        ):
-            _draw_side_with_gaps(g, pts, crossings, stroke, stroke_width, stroke_dash)
-    else:
-        rect_kwargs: dict = dict(
-            fill=fill, stroke=stroke,
-            stroke_width=stroke_width, rx=r, ry=r,
-        )
-        if stroke_dash:
-            rect_kwargs["stroke_dasharray"] = stroke_dash
-        g.append(dw.Rectangle(x, y, w, h, **rect_kwargs))
+    rect_kwargs: dict = dict(
+        fill=fill, stroke=stroke,
+        stroke_width=stroke_width, rx=r, ry=r,
+    )
+    if stroke_dash:
+        rect_kwargs["stroke_dasharray"] = stroke_dash
+    g.append(dw.Rectangle(x, y, w, h, **rect_kwargs))
 
     if is_container:
         label_y = y + CONTAINER_PAD_TOP / 2

@@ -717,6 +717,20 @@ relationship the tag rendering shows. Regions remain a rendering
 choice, not a modelling one: authors with overlapping provenance use
 tags instead.
 
+**TODO: collective nodes.** (Reviewer request 2026-09-21, on the Juju
+overview: "clouds and apps referenced in the plural, collectively".)
+A node that abstracts over the instances of its type — the DSL
+encodes the abstraction (`clouds [collective: cloud]`) instead of
+faking it with a plural label, and the renderer draws the
+overlapping-rectangles glyph (the Mermaid/Structurizr collective
+mark) behind one label. Edge semantics: edges to a collective touch
+the type (the relation holds of each instance); a view that needs
+specifics expands to `instances:` as today. Validation: the
+collective's type must exist in the model. First consumers: the
+overview's `clouds` and `apps` nodes (currently plain nodes with
+plural labels). Build when a view needs the glyph to read as
+collectivity — do not pre-build without a consumer.
+
 **Proposed, not settled: relationship axes.** The earlier open question
 -- whether `records:`, `abstracts:`, and scope facets are instances of a
 general "relationship axis" concept -- has a candidate resolution: they

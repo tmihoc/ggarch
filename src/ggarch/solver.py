@@ -483,6 +483,8 @@ def _synthesize_auto_layout(
     fanned: set[str] = set()
     sink_fans: dict[str, list[str]] = {}
     spine_aligns: list[tuple[str, str]] = []
+    spine_child_aligns: list[tuple[str, str]] = []
+    feeder_fans: dict[str, list[str]] = {}
     if not refine and planes:
         outs: dict[str, list[str]] = {}
         ins: dict[str, list[str]] = {}
@@ -516,10 +518,27 @@ def _synthesize_auto_layout(
                 col[t] = col[h]
             if len(sinks) == 1:
                 continue
-            below_count = 1 if len(sinks) >= 3 else 0
-            ordered = list(reversed(sinks))
-            below = ordered[-below_count:] if below_count else []
-            above = ordered[:len(sinks) - below_count]
+            # Stack split (2026-09-21 reviewer direction, the declared
+            # overview and K8s references): mixed-type sink spokes
+            # split across the hub's faces — api-type spokes (pull-from
+            # stores: charmhub) hang BELOW on the hub's axis, the rest
+            # (substrate/authority: clouds, k8s) fan above. Each face
+            # group with one member stacks ON the axis (the fan's odd-n
+            # align-centre), so its arrow joins the N/S face midpoints.
+            # A single-type fan keeps the band rule: side by side
+            # above, with n >= 3 the last spoke below.
+            ety = {(s, t): e.type for e, s, t in vis_edges}
+            mixed = len({ety.get((h, t), "") for t in sinks}) > 1
+            if mixed:
+                below = [t for t in reversed(sinks)
+                         if ety.get((h, t)) == "api"]
+                above = [t for t in reversed(sinks)
+                         if ety.get((h, t)) != "api"]
+            else:
+                below_count = 1 if len(sinks) >= 3 else 0
+                ordered = list(reversed(sinks))
+                below = ordered[-below_count:] if below_count else []
+                above = ordered[:len(sinks) - below_count]
             # Member spacing carries the riding labels: the widest
             # label plus clearance, floor 40 — the declared view's
             # measured 120 for 85px labels.
@@ -548,17 +567,31 @@ def _synthesize_auto_layout(
                 continue
             feeders = [p for p in ins.get(h, [])
                        if p not in fanned and p not in cycle]
-            if len(feeders) < 2:
+            if not feeders:
                 continue
+            if h in fanned:
+                # A spoke's row is owned by its own fan (the declared
+                # hub planes) — a spine align here would pin a fanned
+                # sink spoke onto its feeder's row and contradict the
+                # fan (measured: unit_a above controller vs the spine
+                # align dragging it onto the controller's row).
+                continue
+            # A lone feeder IS the spine (2026-09-21: the declared K8s
+            # reference — unit_pod feeds controller_pod alone, and the
+            # spine's required align-middle still holds; the old
+            # >=2-feeder gate left the K8s spine rows unpinned).
             spine = max(feeders, key=lambda p: fdepth.get(p, -1))
             spine_aligns.append((spine, h))
             spoke_feeders = [p for p in feeders if p != spine]
+            feeder_fans[h] = spoke_feeders
             for p in spoke_feeders:
                 col[p] = col[h] + 1
-            if len(spoke_feeders) >= 2:
+            if spoke_feeders:
                 # The feeder column centres on the hub's row (the
-                # declared apps fan); the member gap carries the
-                # riding labels.
+                # declared apps fan); a LONE spoke feeder hangs in the
+                # hub's row (align-middle via the fan's odd-n rule —
+                # symmetric with the lone sink's column stack), and the
+                # member gap carries the riding labels.
                 label_w = max((_label_w(e.label)
                                for e, s, t in vis_edges
                                if s in spoke_feeders and t == h),
@@ -568,6 +601,96 @@ def _synthesize_auto_layout(
                     direction="right-of",
                     gap=max(40, int(label_w) + 35), spacing=20))
                 fanned.update(spoke_feeders)
+
+        # Spine free-side flip (2026-09-21 reviewer direction: straight
+        # arrows where straight arrows are possible, minimal
+        # arrow/node overlap — the declared K8s reference:
+        # controller_pod LEFT of unit_pod). A container feed whose
+        # spine edge originates at a nested child exits through the
+        # child's free side — no row siblings beyond it at ANY level of
+        # its ancestry. When that free side faces AWAY from the hub,
+        # the straight spine is structurally impossible on the depth
+        # order (measured: unit_agent's east corridor is walled by its
+        # own row siblings, so the L detoured 718px through the pod's
+        # top corridor); the spine pair swaps columns — the hub takes
+        # the free side — instead of routing the spine around the
+        # feed's own row. Both spine endpoints must be free toward
+        # each other after the flip, else the honest L stays.
+        node_by_id: dict = {}
+
+        def _reg_nodes(n) -> None:
+            node_by_id[n.id] = n
+            for c in n.children:
+                _reg_nodes(c)
+        for n in selected:
+            _reg_nodes(n)
+        direction_map = _collect_directions(list(diagram.constraints))
+
+        def _free_sides(nid: str, stop: str) -> set:
+            sides = {"west", "east"}
+            cur = nid
+            while cur != stop and sides:
+                p = parent.get(cur)
+                if p is None:
+                    return set()
+                sibs = node_by_id[p].children
+                if len(sibs) > 1 and direction_map.get(p, "right") == "right":
+                    idx = next((i for i, s in enumerate(sibs)
+                                if s.id == cur), None)
+                    if idx is None:
+                        return set()
+                    if idx != 0:
+                        sides.discard("west")
+                    if idx != len(sibs) - 1:
+                        sides.discard("east")
+                cur = p
+            return sides
+
+        spine_child_aligns = []
+        for feed, hub in list(spine_aligns):
+            fn, hn = node_by_id.get(feed), node_by_id.get(hub)
+            if fn is None or hn is None or not fn.children:
+                continue
+            spine_edges = [(e, s, t) for e, s, t in vis_edges
+                           if s == feed and t == hub]
+            if not spine_edges:
+                continue
+            for e, _s, _t in spine_edges:
+                if e.source != feed and e.target != hub:
+                    # Both endpoints nested: the spine arrow runs
+                    # child-to-child — align the children's rows too
+                    # (the declared K8s pins jujud align-middle
+                    # unit_agent; the pods' align alone leaves the
+                    # pads' offset in). Raw endpoints: the edge's own
+                    # ids are the deepest distinct ends (the shared
+                    # _effective resolves to the TOP ancestors — its
+                    # chain-exclusion is self-referential — so it can
+                    # never produce a child pair).
+                    spine_child_aligns.append((e.source, e.target))
+            src_free = _free_sides(spine_edges[0][0].source, feed)
+            tgt_free = _free_sides(spine_edges[0][0].target, hub)
+            if not src_free or not tgt_free:
+                continue
+            if any(e.source == feed or e.target == hub
+                   for e, _s, _t in spine_edges):
+                continue    # a container-level endpoint exits its own face
+            hub_east = col.get(hub, 0) > col.get(feed, 0)
+            flip = (("west" in src_free and "east" in tgt_free)
+                    if hub_east else
+                    ("east" in src_free and "west" in tgt_free))
+            if flip:
+                # The swap carries the hub's PLANES with it: its sink
+                # spokes share its column (col[t] = col[h]) and its
+                # feeder spokes hang a column east — stranding them in
+                # the old column makes the between-column left-of fight
+                # the fans' align-centre (measured: k8s/charmhub stuck
+                # in unit_pod's column vs their above/below fans, the
+                # whole planes path unsatisfiable, the honest fallback).
+                col[feed], col[hub] = col[hub], col[feed]
+                for t in sink_fans.get(hub, []):
+                    col[t] = col[hub]
+                for p in feeder_fans.get(hub, []):
+                    col[p] = col[hub] + 1
 
     # Compact to consecutive columns; then BARYCENTER row ordering
     # (Sugiyama step 4): rows ordered by the mean position of their
@@ -669,6 +792,9 @@ def _synthesize_auto_layout(
     # the enters hub dropped 37px and bent the spine for a stub-label
     # corridor its target-exempt label rides anyway).
     for a_id, b_id in spine_aligns:
+        cons.append(Constraint(kind="align-middle", subject=a_id,
+                               object=b_id, strength="required"))
+    for a_id, b_id in spine_child_aligns:
         cons.append(Constraint(kind="align-middle", subject=a_id,
                                object=b_id, strength="required"))
 

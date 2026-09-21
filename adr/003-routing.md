@@ -352,3 +352,64 @@ approach or a corner landing:
 Measured corpus-wide: 15 rides (5 views, incl. 2 authored) -> 0; the
 gate holds (crossing-edges 0, node-strikes 0, wall-crossings 0,
 >2-bend 0).
+
+## Amendment (2026-09-21): borders are solid — notches retired
+
+Reviewer position, on the pairs page: "whenever an arrow crosses a
+node edge, the node edge gaps. It shouldn't." The port notch
+(decision 11's rendering) is retired: a container border renders as
+one solid rectangle and edges pass OVER it — including edges that
+genuinely enter/exit the subtree (the K8s spine's L notched
+charm_container's top, unit_pod's east and controller_pod's west;
+every fan arrow notched its pod's west border). `_compute_border_gaps`,
+`_draw_side_with_gaps` and `BORDER_GAP` are deleted; the
+`tests/test_border_gaps.py` contract with them.
+
+## Amendment (2026-09-21): sink-spoke stacks split across the hub's faces
+
+Reviewer position, on the declared overview and K8s references: a
+hub's sink spokes belong ON the hub's axis — "clouds and charmhub
+stacked above and, respectively, below the controller, with the arrows
+joining the mid-points on the N/S edges" — not side by side in a band
+above. The typed hub planes' Pass A now splits:
+
+- Mixed-type sink spokes: api-type spokes (pull-from stores:
+  charmhub) hang BELOW the hub, the rest (substrate/authority:
+  clouds, k8s) fan above — the corpus's three declared views agree on
+  the assignment (declaration order provably cannot: charmhub is the
+  first declared sink edge in the enters view and the second in
+  overview/K8s).
+- A face group with one member stacks on the axis (the fan's odd-n
+  align-centre), so its arrow joins the N/S face midpoints.
+- Single-type fans keep the band rule (side by side above; with
+  n >= 3 the last spoke below — the declared enters stands).
+
+Also Pass B: a lone spoke feeder hangs IN the hub's row (the fan's
+odd-n align-middle — symmetric with the lone sink's column stack;
+measured: the edited overview's apps fan), and a lone feeder IS the
+spine (required align-middle; the old >=2-feeder gate left the K8s
+spine rows unpinned). A fanned spoke's row stays owned by its own fan
+— a spine align onto a fanned spoke contradicts its plane (measured:
+unit_a above the controller vs the spine align dragging it onto the
+controller's row).
+
+## Amendment (2026-09-21): the spine free-side flip
+
+Reviewer position: "try to avoid diagonal arrows where straight arrows
+are perfectly possible, and minimize arrow/node overlap." A container
+feed whose spine edge originates at a nested child exits through the
+child's free side — no row siblings beyond it at any level of its
+ancestry (structural, declaration order). When that free side faces
+AWAY from the hub, the straight spine is structurally impossible on
+the depth order (measured: unit_agent's east corridor walled by its
+own row — the L detoured 718px through the pod's top corridor); the
+spine pair swaps columns, the hub takes the free side, and the swap
+carries the hub's planes with it (its sink spokes share its column,
+its feeder spokes hang a column east — stranding them contradicts the
+fans' align-centre). Both spine endpoints must be free toward each
+other after the flip, else the honest L stays. Nested spine endpoints
+also align at child level (the declared K8s pins `jujud align-middle
+unit_agent`; the pods' align alone leaves the pads' offset in).
+
+Measured (K8s synth): spine arrow 718px top-corridor L -> 154px
+straight horizontal; every edge of the view axis-aligned.
