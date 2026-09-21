@@ -2370,6 +2370,15 @@ that erases them makes the un-focused region unreadable, which defeats
 focus+context. The audit's label/corridor machinery then treats
 emphasized strokes as wider (corridor budget +1px).
 
+**STATUS 2026-09-21: ratified arms BUILT (both render), ratification
+SHELVED on the reviewer's taste pushback** — on the rendered A/B the
+weight-3 emphasized arrows are "humongous" and the 0.35 dim is too
+much. Pop-out is contrast-driven, not size-driven; the working
+candidate is weight 2 + dim ~0.5 with no grammar change, corpus-gated
+before anything lands. The owed corridor bump (+0.5px for weight-3
+strokes) dies with the weight reduction. Both arms stay servable
+(render(salience_mode=)); nothing is deleted.
+
 ### The grammar (proposed, view-level — salience is view rhetoric)
 
 ```
