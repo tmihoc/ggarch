@@ -678,6 +678,20 @@ def _route_candidates_eval(
                         cost = direct + TURN_PENALTY * bends + reuse
                         if (fs, ft) != preferred:
                             cost += FACE_DISCIPLINE_COST
+                            # A DECLARED fan's faces are content: an
+                            # off-face escape evades the per-face hint
+                            # miss (the hint is keyed to the declared
+                            # face) and would otherwise pay only the
+                            # flat discipline price — measured: the
+                            # refined cloud pair escaped to the west
+                            # face's bottom corner because the
+                            # corner-to-corner diagonal was 28px
+                            # shorter. The declared scale holds the
+                            # faces; the member/hub slot hints then
+                            # distribute within them.
+                            if (hints.get("declared_src")
+                                    or hints.get("declared_tgt")):
+                                cost += HINT_MISS_DECLARED
                         # Deliberate forms anchor at face centres
                         # (review round 2): a U or L reads best
                         # leaving/entering the middle of an edge —
@@ -703,16 +717,30 @@ def _route_candidates_eval(
                         # costs, so a label-carrying fan can still
                         # spread beyond the ideal slots when its
                         # labels demand room.
-                        hint_price = HINT_MISS_DECLARED \
-                            if hints.get("declared") else HINT_MISS_COST
+                        # The declared price holds only the HUB face
+                        # (the view's declaration is about where the
+                        # fan attaches); the member side stays soft so
+                        # a label-carrying member can still spread off
+                        # its centre when its label demands room
+                        # (measured: cloud_b's centre entry rode app1's
+                        # label strip — the off-centre slot is the
+                        # honest fix).
+                        if hints.get("declared_src"):
+                            src_price = HINT_MISS_DECLARED
+                        else:
+                            src_price = HINT_MISS_COST
+                        if hints.get("declared_tgt"):
+                            tgt_price = HINT_MISS_DECLARED
+                        else:
+                            tgt_price = HINT_MISS_COST
                         sh = hints.get("src", {}).get(fs)
                         if sh is not None and \
                                 abs(_face_coord(a, fs) - sh) > 0.5:
-                            cost += hint_price
+                            cost += src_price
                         th = hints.get("tgt", {}).get(ft)
                         if th is not None and \
                                 abs(_face_coord(b, ft) - th) > 0.5:
-                            cost += hint_price
+                            cost += tgt_price
                         if pair_bias is not None:
                             ba = abs(_face_coord(a, fs)
                                      - (_center(src_rect, fs) + pair_bias))
@@ -1253,6 +1281,17 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
     fan_faces = getattr(layout, "fan_faces", {}) or {}
     edge_hints: dict[int, dict] = {}
     edge_bias: dict[int, float] = {}
+    anti_parallel: dict = {}
+    for it in ordered:
+        anti_parallel.setdefault(frozenset((it[0].source, it[0].target)),
+                                 []).append(it)
+    pair_biased: set[int] = set()
+    for group in anti_parallel.values():
+        if len(group) == 2 and group[0][0].source == group[1][0].target:
+            edge_bias[id(group[0][0])] = PAIR_BIAS
+            edge_bias[id(group[1][0])] = -PAIR_BIAS
+            pair_biased.add(id(group[0][0]))
+            pair_biased.add(id(group[1][0]))
     for node_id, members in list(out_fans.items()) + list(in_fans.items()):
         side = "src" if out_fans.get(node_id) is members else "tgt"
         if len(members) < 2:
@@ -1298,6 +1337,11 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
             # the old ladder snap placed ideal ±12 at the ladder's k=3
             # edge (±46), and the length incentive confirmed it.
             for i, m in enumerate(sorted(ms, key=key)):
+                # Recompute per member: the grouping loop's `declared`
+                # leaks its last iteration's value (an undeclared
+                # sibling edge) into this loop — the declared hint
+                # price and member-face choice would silently miss.
+                m_declared = fan_faces.get((m[0].source, m[0].target))
                 ideal = center + (i - (len(ms) - 1) / 2.0) * spacing
                 # Keep the ladder's label-calibrated mark: the author's
                 # fan spacing was calibrated against label separation
@@ -1319,7 +1363,36 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                 edge_hints.setdefault(
                     id(m[0]), {"src": {}, "tgt": {}})[side][face] \
                     = ideal
-                if declared:
+                # MEMBER side (2026-09-21 reviewer rule, generalized:
+                # ANY fan distributes around the edge midpoint — both
+                # ends): each member's own face anchors at its centre,
+                # so the middle member's arrow is align-middle'ed with
+                # the hub (horizontal for a row fan) and the outer
+                # members mirror. Without it the member side was pure
+                # cost, and convergent arrows hit their nodes off the
+                # midpoint (measured: app2's arrow left its west face
+                # 15px low). The member centre IS the ladder's k=0
+                # slot, so the anchor exists; this hint prices it.
+                member = m[1] if side == "tgt" else m[2]
+                mrect = member.rect
+                if side == "tgt":
+                    mface = (m_declared[0] if m_declared
+                             else _dominant_face(mrect, rect))
+                else:
+                    mface = (m_declared[1] if m_declared
+                             else _dominant_face(mrect, rect))
+                mlo, mhi = ((mrect.x, mrect.x + mrect.w)
+                            if mface in ("top", "bottom")
+                            else (mrect.y, mrect.y + mrect.h))
+                if id(m[0]) not in pair_biased:
+                    # An anti-parallel pair's member side is owned by
+                    # the pair bias (both strokes straddle the midpoint
+                    # at ±PAIR_BIAS — itself a symmetric distribution);
+                    # a centre hint here would fight the mirror.
+                    edge_hints[id(m[0])][
+                        "src" if side == "tgt" else "tgt"][mface] \
+                        = (mlo + mhi) / 2.0
+                if m_declared:
                     # A declared fan face holds its hint against the
                     # length incentive (2026-09-21 reviewer rule: fan
                     # out symmetric about the midpoint and as close to
@@ -1329,16 +1402,7 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                     # hint stays soft so the router can still spread
                     # label-carrying fans beyond the ideal slots when
                     # the label costs demand it.
-                    edge_hints[id(m[0])]["declared"] = True
-
-    anti_parallel: dict = {}
-    for it in ordered:
-        anti_parallel.setdefault(frozenset((it[0].source, it[0].target)),
-                                 []).append(it)
-    for group in anti_parallel.values():
-        if len(group) == 2 and group[0][0].source == group[1][0].target:
-            edge_bias[id(group[0][0])] = PAIR_BIAS
-            edge_bias[id(group[1][0])] = -PAIR_BIAS
+                    edge_hints[id(m[0])]["declared_" + side] = True
 
     for edge, src_node, tgt_node in ordered:
         src_rect, tgt_rect = src_node.rect, tgt_node.rect
