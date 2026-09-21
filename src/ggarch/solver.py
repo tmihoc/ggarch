@@ -260,6 +260,12 @@ def _solve_constraints(
                           diagram.name, model,
                           refine=bool(diagram.constraints))
     _add_uniform_sizing(solver, expanded_constraints, vars_by_id)
+    # Sibling containers share a height: containers stacked in one
+    # parent align their rows only when their midlines coincide, and a
+    # label-driven growth on one must not tilt the rows (the
+    # resilience rule: a label change moves no anchors).
+    _add_sibling_container_heights(solver, selected, vars_by_id,
+                                   diagram.select)
     if diagram.select.sizing == "uniform" or not diagram.constraints:
         # Synthesized views get uniform leaf sizing by default — the
         # user's standing rule (same-rank nodes render the same size;
@@ -1057,6 +1063,37 @@ def _add_uniform_sizing(
                             (vs[i].h >= vs[j].h) | "strong")
 
 
+def _add_sibling_container_heights(
+    solver: Solver,
+    nodes: list[Node],
+    vars_by_id: dict[str, _NodeVars],
+    select: SelectClause,
+) -> None:
+    """Sibling containers share one height (required).
+
+    Containers that share a parent and hold content sit in one row —
+    their rows read off their midlines, so a label-driven growth on
+    one container must lift the whole row, not tilt it (measured: the
+    "executes hooks from" label grew charm_container to 120.5px while
+    workload_container stayed 98px, misaligning the charm and pebble
+    rows by 22px and knocking every anchor off a midpoint). Same-rank
+    boxes render the same size — the standing uniformity rule, extended
+    from leaves to containers.
+    """
+    def _walk(ns: list[Node]) -> None:
+        containers = [c for c in ns
+                      if c.children and c.id not in select.collapse]
+        for i in range(len(containers) - 1):
+            a = vars_by_id[containers[i].id]
+            b = vars_by_id[containers[i + 1].id]
+            solver.addConstraint((a.h >= b.h) | "required")
+            solver.addConstraint((b.h >= a.h) | "required")
+        for c in ns:
+            if c.children:
+                _walk(c.children)
+    _walk(nodes)
+
+
 def _add_uniform_leaf_sizing(
     solver: Solver,
     selected: list[Node],
@@ -1245,6 +1282,14 @@ def _add_containment_for_node(
         solver.addConstraint(
             (cv.y2 <= parent.y2 - CONTAINER_PAD_TOP) | "required"
         )
+        # The child row CENTRES on the container's midline (weak): the
+        # symmetric pads make it possible, and a label-driven growth on
+        # one sibling must not leave another's content top-anchored
+        # (measured: the equal-height sibling containers left pebble's
+        # row 22px above the shared midline -- every anchor off a
+        # midpoint). Weak: containment and the label contract keep
+        # their say; the centring takes the slack.
+        solver.addConstraint((cv.cy == parent.cy) | "weak")
         # Recurse.
         if child.children and child.id not in select.collapse:
             _add_containment_for_node(solver, child, vars_by_id, select)
@@ -1764,13 +1809,23 @@ def _apply_label_contract(
             elif axis == "v":
                 solver.addConstraint((va.y2 + gap <= vb.y) | "strong")
             elif axis == "wall-top":
-                # The strip reaches above the container's top pad:
-                # grow the container (or push the child down).
+                # The strip reaches above the container's top pad: grow
+                # the container - SYMMETRICALLY. The child row must stay
+                # centred on the container's midline (the anchors'
+                # reference): an asymmetric top-only growth tilts every
+                # row that reads off the midline (measured: the longer
+                # "executes hooks from" label pushed the uniter row 22px
+                # off its container's midline and tilted the sibling
+                # containers' shared rows - the fan anchors collapsed at
+                # the first label change).
                 solver.addConstraint((va.y + gap <= vb.y) | "strong")
+                solver.addConstraint((vb.y2 + gap <= va.y2) | "strong")
             elif axis == "wall-right":
                 # The strip reaches past the container's right pad:
-                # grow the container around the child.
+                # grow the container around the child - symmetrically,
+                # for the same midline invariant on the x axis.
                 solver.addConstraint((vb.x2 + gap <= va.x2) | "strong")
+                solver.addConstraint((va.x + gap <= vb.x) | "strong")
         if not added:
             return
         solver.updateVariables()
