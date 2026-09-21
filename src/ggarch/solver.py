@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict, deque
+from dataclasses import replace as _dc_replace
 
 from kiwisolver import Solver, Variable, UnsatisfiableConstraint  # type: ignore
 
@@ -103,6 +104,23 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
             layout, routes = result
             layout.edge_routes = routes
             return layout
+
+    # View-level curation: except pairs drop declared edges before
+    # expansion (source, target, type "" = any type) — the same filter
+    # route() applies before its own materialization. Without it the
+    # synthesized layout layers the graph around edges the view curated
+    # out (measured: the "Juju enters" bootstrap arrows formed a
+    # controller<->cloud cycle that stalled the sink-anchored Kahn and
+    # dragged the clouds into the app column, even though route() later
+    # dropped them — the ELK path already curated for the same reason).
+    except_pairs = {(s, t, ty) for s, t, ty in
+                    getattr(diagram.select, "except_pairs", []) or []}
+    if except_pairs:
+        model = _dc_replace(model, edges=[
+            e for e in model.edges
+            if not any((e.source == es and e.target == et
+                        and (ty == "" or ty == e.type))
+                       for es, et, ty in except_pairs)])
 
     # Materialize instances (stamped subtrees) before selection; the
     # router performs the same expansion via ggarch.instances.
