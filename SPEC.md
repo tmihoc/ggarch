@@ -730,6 +730,20 @@ the between-column emitter parametrize on the flow axis. Sequences are
 unaffected. Build when a view reads better top-to-bottom — do not
 pre-build; the corpus is currently all LR.
 
+**TODO: collapse-projection edge selection.** (Reviewer 2026-09-21,
+to think through with the map-to-meaning pass.) When a view collapses
+a subtree, the materialized child edges project UP to the ancestor
+pair — and several distinct child edges can share one projected pair
+(a container whose children make several calls into another
+container's children). The projection must select the ONE edge most
+relevant to the diagram: relevance is a meaning question (the edge
+whose type/facet the view's select asks for, the channel that carries
+the view's argument), never "first materialized". Open sub-questions:
+is relevance per-view (declared in the select) or derivable (a
+canonical facet ranking)? does the unselected edge disappear or fold
+into a multi-facet rendering? Deliberately not designed yet — the
+reviewer wants the map-to-meaning pass first.
+
 **TODO: collective nodes.** (Reviewer request 2026-09-21, on the Juju
 overview: "clouds and apps referenced in the plural, collectively".)
 A node that abstracts over the instances of its type — the DSL
