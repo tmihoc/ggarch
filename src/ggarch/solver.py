@@ -145,17 +145,40 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     # under one stack order and not the other (measured: the worker
     # tree's provisioner->model_worker_manager chain is unsatisfiable
     # under one ordering, straight under the other).
+    if diagram.constraints:
+        # Refinement (ADR-007): the author's arrangement is the word.
+        # No planes ladder, no align drops — synthesis only fills the
+        # undeclared geometry, and a contradiction raises.
+        return _solve_constraints(
+            diagram, model, selected, mat_edges, planes=True)
     for variant in (0, 1):
-        try:
-            layout = _solve_constraints(
-                diagram, model, selected, mat_edges, planes=True,
-                row_order_variant=variant)
-        except ValidationError:
-            if diagram.constraints:
-                raise
-            continue
-        if diagram.constraints or not _layout_has_overlaps(layout):
-            return layout
+        cons, weak_align, auto_fans = _synthesize_auto_layout(
+            diagram, selected, mat_edges, refine=False, planes=True,
+            row_order_variant=variant)
+        # The flattening aligns (spine chains, lone-feeder/lone-sink
+        # row statements) are PREFERENCES: when the full set is
+        # infeasible against the column stacks, the greedy ladder drops
+        # ONE align and retries — the straight arrows that survive are
+        # exactly the feasible ones (measured: the worker tree's
+        # provisioner->model_worker_manager chain is infeasible with
+        # every align, straight with one dropped).
+        aligns = [c for c in cons
+                  if getattr(c, "kind", None) == "align-middle"
+                  and (getattr(c, "strength", "") or "required")
+                  == "required"]
+        trials: list[list] = [cons]
+        for a in aligns:
+            trials.append([c for c in cons if c is not a])
+        for trial in trials:
+            try:
+                layout = _solve_constraints(
+                    diagram, model, selected, mat_edges, planes=True,
+                    auto_cons=trial, weak_align=weak_align,
+                    auto_fans=auto_fans)
+            except ValidationError:
+                continue
+            if not _layout_has_overlaps(layout):
+                return layout
     auto_cons, weak_align, auto_fans = _synthesize_auto_layout(
         diagram, selected, mat_edges, refine=False, planes=False)
     return _solve_constraints(
@@ -528,6 +551,7 @@ def _synthesize_auto_layout(
     spine_child_aligns: list[tuple[str, str]] = []
     feeder_fans: dict[str, list[str]] = {}
     peer_cons: list[Constraint] = []
+    claimed_rows: set[str] = set()
     if not refine and planes:
         outs: dict[str, list[str]] = {}
         ins: dict[str, list[str]] = {}
@@ -561,6 +585,7 @@ def _synthesize_auto_layout(
             for t in sinks:
                 col[t] = col[h]
             sink_spokes.update(sinks)
+            claimed_rows.update(sinks)
             if len(sinks) == 1:
                 continue
             # A SOURCE hub (no feeders — the actor of the view) reads
@@ -650,6 +675,17 @@ def _synthesize_auto_layout(
             # spine's required align-middle still holds; the old
             # >=2-feeder gate left the K8s spine rows unpinned).
             spine = max(feeders, key=lambda p: fdepth.get(p, -1))
+            # A node's row is claimed by the FIRST hub that makes it a
+            # spine (the align flattens that hub's own edge); a second
+            # hub claiming the same feed would pin the node's row to
+            # two members of one column stack — unsatisfiable
+            # (measured: api_server was the spine of BOTH
+            # domain_services and object_store, which stack in one
+            # column — the whole planes path fell back and the
+            # provisioner->model_worker_manager arrow stayed an L).
+            if spine in claimed_rows:
+                continue
+            claimed_rows.add(spine)
             if col.get(spine) == col.get(h):
                 # The pair shares a column — the within-column stack
                 # owns their rows (the child-stacking reading: charm
@@ -673,6 +709,14 @@ def _synthesize_auto_layout(
             target_col = col.get(h, 0) + 1
             occupied = any(col.get(nid) == target_col for nid in top_ids
                            if nid not in spoke_feeders and nid not in fanned)
+            # The fan's align-middle pins each member's row to the
+            # hub's row — a member whose row another plane already
+            # claimed (a spine align, a sink spoke) must not be
+            # re-pinned (measured: provider_services was claimed by
+            # model_worker_manager's spine align AND change_stream's
+            # feeder fan — unsatisfiable).
+            if any(p in claimed_rows for p in spoke_feeders):
+                occupied = True
             if spoke_feeders and not occupied:
                 feeder_fans[h] = spoke_feeders
                 for p in spoke_feeders:
@@ -691,6 +735,7 @@ def _synthesize_auto_layout(
                     direction="right-of",
                     gap=max(40, int(label_w) + 35), spacing=20))
                 fanned.update(spoke_feeders)
+                claimed_rows.update(spoke_feeders)
 
         # Peer rows (2026-09-21 reviewer, the HA replicaset: "the
         # replicas parallel on the same row... the placement algorithm
@@ -1333,6 +1378,8 @@ def _collect_directions(constraints: list[Constraint]) -> dict[str, str]:
     """Return a map of node_id -> direction from direction constraints."""
     d: dict[str, str] = {}
     for c in constraints:
+        if isinstance(c, FanConstraint):
+            continue
         if c.kind == "direction" and c.value:
             d[c.subject] = c.value
     return d
