@@ -129,6 +129,19 @@ def _legend_dims(node_types: list[str], edge_types: list[str]) -> tuple[float, f
 
 
 
+def _member_box(layout, node_id):
+    n = layout.find(node_id)
+    if n is None:
+        return None
+    r = n.rect
+    return (r.x, r.y, r.x + r.w, r.y + r.h)
+
+
+def _contains(outer, inner):
+    return (outer[0] <= inner[0] and outer[1] <= inner[1]
+            and outer[2] >= inner[2] and outer[3] >= inner[3])
+
+
 def _resolve_annotation_labels(view, layout, routed) -> dict:
     """Engine-chosen annotation label placement + along-leg shifts.
 
@@ -173,13 +186,39 @@ def _resolve_annotation_labels(view, layout, routed) -> dict:
         if tr is not None:
             text_rects.append(tr)
 
-    from ggarch.geometry import strip_for_edge
+    # Node rects join the shift targets: a label riding its fan face
+    # may graze a NEIGHBOURING container's box (measured: app3's
+    # east-face arrow's label grazed the app2 pod) — the label slides
+    # along the leg clear of every node before the face yields.
+    node_boxes = []
+    stack = list(layout.nodes)
+    while stack:
+        n = stack.pop()
+        stack.extend(n.children)
+        r = n.rect
+        node_boxes.append((r.x, r.y, r.x + r.w, r.y + r.h))
+    exempt_pairs = set()
+    for e in routed.edges:
+        exempt_pairs.add((e.source_id, e.target_id))
+
     from ggarch.router import ROUTE_STROKE_W
     for e in routed.edges:
         if e.strip is None or not e.strip.label:
             continue
-        if not any(rects_overlap(e.strip.label, tr)
-                   for tr in text_rects):
+        clashing = any(rects_overlap(e.strip.label, tr)
+                       for tr in text_rects)
+        if not clashing:
+            # A label grazing a NODE box shifts too — but only when the
+            # edge's endpoints are NOT inside that node (a label over
+            # its own container is by design).
+            src_box = _member_box(layout, e.source_id)
+            tgt_box = _member_box(layout, e.target_id)
+            clashing = any(
+                rects_overlap(e.strip.label, nb)
+                for nb in node_boxes
+                if not (src_box and _contains(src_box, nb))
+                and not (tgt_box and _contains(tgt_box, nb)))
+        if not clashing:
             continue
         pts = [(p.x, p.y) for p in e.points]
         owner = f"{e.source_id}->{e.target_id}"
@@ -189,13 +228,20 @@ def _resolve_annotation_labels(view, layout, routed) -> dict:
                                   e.label, frac, owner=owner)
             if cand.label is None:
                 break
+            src_box = _member_box(layout, e.source_id)
+            tgt_box = _member_box(layout, e.target_id)
             if (any(rects_overlap(cand.label, tr) for tr in text_rects)
+                    or any(rects_overlap(cand.label, nb)
+                           for nb in node_boxes
+                           if not (src_box and _contains(src_box, nb))
+                           and not (tgt_box and _contains(tgt_box, nb)))
                     or any(o is not e.strip and o.label is not None
                            and rects_overlap(cand.label, o.label)
                            for o in (x.strip for x in routed.edges)
                            if o is not None)):
                 continue
             e.strip = cand
+            e.label_anchor = frac
             break
     return positions
 
@@ -980,6 +1026,7 @@ def draw_path_label(
     pts,
     label: str,
     fill: str,
+    anchor_frac: float = 0.5,
 ) -> None:
     """The label follows the arrow (ADR-002): one textPath per wrapped
     line, each on its own path translated perpendicular to the stroke —
@@ -992,7 +1039,7 @@ def draw_path_label(
     renderers: one label mechanism across view kinds (ADR-003
     decision 10).
     """
-    lg = label_geometry(pts, label)
+    lg = label_geometry(pts, label, anchor_frac)
     lx0, ly0, lx1, ly1 = lg.leg
     if lg.mirror:
         # Read left-to-right (or top-to-bottom) on a right-to-left leg.
@@ -1001,9 +1048,10 @@ def draw_path_label(
     leg = math.hypot(dx, dy) or 1.0
     ux, uy = dx / leg, dy / leg          # reading direction
     px, py = uy, -ux                     # the label's side of the stroke
-    # The geometric anchor maps to the mirrored path's own arc length.
-    # The midpoint is symmetric under mirroring.
-    frac = 0.5
+    # The geometric anchor maps to the mirrored path's own arc length;
+    # a non-midpoint anchor flips with the mirror (a point at fraction
+    # f from the original start is at 1-f from the mirrored start).
+    frac = 1.0 - anchor_frac if lg.mirror else anchor_frac
     for i, line in enumerate(lg.lines):
         # Reading order: the first wrapped line is the topmost
         # (outermost from the stroke), the last nearest — the block
@@ -1087,7 +1135,8 @@ def _render_edge(
 
     if not edge.label:
         return
-    draw_path_label(g, pts, edge.label, es.font_color)
+    draw_path_label(g, pts, edge.label, es.font_color,
+                    anchor_frac=edge.label_anchor)
 
 
 # ---------------------------------------------------------------------------

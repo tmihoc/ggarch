@@ -94,6 +94,16 @@ HINT_MISS_COST = 18.0    # px — ignoring a fan-slot / pair-bias anchor
                          # clear hinted route beats an unhinted one
                          # unless the hinted geometry is blocked
 HINT_MISS_DECLARED = 30.0  # px — ignoring a DECLARED fan face's ideal
+FAN_FACE_HOLD = 100.0     # px — a GROUPED fan's face holds ABOVE the
+                          # label costs: the fan's reading is the
+                          # structure, a label graze is soft (measured:
+                          # app3's east-face route lost to the
+                          # bottom-face escape because the east route's
+                          # LABEL grazed the neighbouring pod —
+                          # LABEL_NODE_COST 80 vs the escape's
+                          # discipline 20; the reviewer's rule: the
+                          # three apps relate to the controller LIKE A
+                          # FAN).
                          # symmetric slot (2026-09-21 reviewer rule:
                          # fan out symmetric about the midpoint, as
                          # close to it as can be): above the length
@@ -172,6 +182,10 @@ class RoutedEdge:
     url: str = ""      # if set, edge label is clickable
     # Waypoints: first = start anchor, last = end anchor.
     points: list[Point] = field(default_factory=list)
+    # Where along the longest leg the label sits (the along-leg shift;
+    # 0.5 = the midpoint). The renderer and the audit consume the same
+    # frac, so the drawn label and the measured label agree.
+    label_anchor: float = 0.5
     # ADR-003 reporting: bend count, and the residual collisions of the
     # cheapest-collision path — (kind, target) pairs, kind in
     # {"node", "strip", "label"}; empty when the route is collision-free.
@@ -692,6 +706,9 @@ def _route_candidates_eval(
                             if (hints.get("declared_src")
                                     or hints.get("declared_tgt")):
                                 cost += HINT_MISS_DECLARED
+                            if (hints.get("fan_held_src")
+                                    or hints.get("fan_held_tgt")):
+                                cost += FAN_FACE_HOLD
                         # Deliberate forms anchor at face centres
                         # (review round 2): a U or L reads best
                         # leaving/entering the middle of an edge —
@@ -1390,6 +1407,11 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                 edge_hints.setdefault(
                     id(m[0]), {"src": {}, "tgt": {}})[side][face] \
                     = ideal
+                # A same-face group of >=2 members is a FAN: the face
+                # holds against off-face escapes (the label costs
+                # yield; see FAN_FACE_HOLD).
+                if len(ms) >= 2:
+                    edge_hints[id(m[0])]["fan_held_" + side] = True
                 # MEMBER side (2026-09-21 reviewer rule, generalized:
                 # ANY fan distributes around the edge midpoint — both
                 # ends): each member's own face anchors at its centre,

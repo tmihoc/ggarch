@@ -203,7 +203,7 @@ def audit_file(path):
                 continue
             labelled += 1
             pts = [(p.x, p.y) for p in e.points]
-            lg = label_geometry(pts, e.label, 0.5)
+            lg = label_geometry(pts, e.label, e.label_anchor)
             if lg.rotated:
                 rotated += 1
             # The label rect the renderer DRAWS: the routed strip (the
