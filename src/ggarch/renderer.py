@@ -246,8 +246,10 @@ def _resolve_annotation_labels(view, layout, routed) -> dict:
             if (any(rects_overlap(cand.label, tr) for tr in text_rects)
                     or any(rects_overlap(cand.label, nb)
                            for nb in node_boxes
-                           if not (src_box and _contains(src_box, nb))
-                           and not (tgt_box and _contains(tgt_box, nb)))
+                           if not (src_box and nb != src_box
+                                   and _contains(src_box, nb))
+                           and not (tgt_box and nb != tgt_box
+                                    and _contains(tgt_box, nb)))
                     or any(o is not e.strip and o.label is not None
                            and rects_overlap(cand.label, o.label)
                            for o in (x.strip for x in routed.edges)
