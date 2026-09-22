@@ -346,7 +346,9 @@ class SelectClause:
                            # reject diagonal legs (snap-to-grid)
     except_pairs: list[tuple[str, str, str]] = field(default_factory=list)
     # (source, target, type) — edges the view curates OUT (type "" = any)
-    sizing: str = ""       # "uniform" — equalize selected leaf nodes
+    sizing: str = ""       # uniform leaf sizing is the DEFAULT (2026-09-22
+                           # reviewer); "natural" opts out — sizes follow
+                           # each label's own measurement
     # The children's-book scale (2026-09-22 reviewer: "printing for
     # children -- bigger and brighter on purpose"): a PURE root
     # transform, every unit grows together — fonts, boxes, strokes.
@@ -355,6 +357,10 @@ class SelectClause:
     zoom: float = 1.0
     show_records: bool = False  # "records: shown" — render the runtime↔record
                                 # bridges (ADR-005; synthetic, view-level)
+    hide_labels: bool = False   # "labels: hidden" — suppress every edge
+                                # label in the view (the reviewer's
+                                # "lighter" teaching diagrams: the model
+                                # keeps the labels; the view mutes them)
     hide_records: bool = False  # "records: hidden" — suppress the derived
                                 # chips even on nodes carrying records:
                                 # (the chips' label/crowding design is

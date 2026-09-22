@@ -534,6 +534,42 @@ diagram "D" from "M" {
         layout = solve(f.diagrams[0], f.get_model("M"))
         top = layout.find("top")
         assert top is not None
+        # Uniform sizing is THE default now (2026-09-22 reviewer): the
+        # anchored node renders the same size as its sibling — no
+        # emphasis by label length.
+        wide = layout.find("wide")
+        assert wide is not None
+        assert top.rect.w == pytest.approx(wide.rect.w), (
+            f"anchored node not uniform with its sibling: "
+            f"w={top.rect.w:.1f} vs {wide.rect.w:.1f}"
+        )
+
+    def test_natural_sizing_opts_out(self):
+        """`sizing: natural` restores per-label measurement: the short
+        anchor keeps its natural width instead of ballooning to the
+        wide sibling."""
+        src = """\
+model "M" {
+  nodes {
+    top [type: juju-software, label: "Short"]
+    wide [type: juju-software, label: "A considerably wider label"]
+  }
+  edges { top -> wide [type: control, label: "depends on"] }
+}
+diagram "D" from "M" {
+  select { nodes: top wide
+           sizing: natural }
+  positions {
+    top above wide gap: 60
+    top align-centre wide
+  }
+}
+"""
+        f = parse(src)
+        validate(f)
+        layout = solve(f.diagrams[0], f.get_model("M"))
+        top = layout.find("top")
+        assert top is not None
         # Natural width for a 5-char label is far below the ballooned
         # 2x-centre value; assert it stays under a generous bound.
         assert top.rect.w < 120, (

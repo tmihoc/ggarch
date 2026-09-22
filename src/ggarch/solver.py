@@ -289,12 +289,14 @@ def _solve_constraints(
     # resilience rule: a label change moves no anchors).
     _add_sibling_container_heights(solver, selected, vars_by_id,
                                    diagram.select)
-    if diagram.select.sizing == "uniform" or not diagram.constraints:
-        # Synthesized views get uniform leaf sizing by default — the
-        # user's standing rule (same-rank nodes render the same size;
-        # emphasis by label length is never a reason) and the floor's
-        # tidiness precondition: uniform boxes give every column
-        # aligned faces and uniform corridors.
+    # Uniform leaf sizing is THE DEFAULT (2026-09-22 reviewer: "make
+    # uniform sizing the default") — the standing rule (same-rank
+    # nodes render the same size; emphasis by label length is never a
+    # reason) now holds for declared views too; `sizing: natural` is
+    # the explicit opt-out. Uniform boxes give every column aligned
+    # faces and uniform corridors — the floor's tidiness
+    # precondition.
+    if diagram.select.sizing != "natural":
         _add_uniform_leaf_sizing(solver, selected, vars_by_id)
 
     # Edge-aware floor: weak cross-column alignments for the primary

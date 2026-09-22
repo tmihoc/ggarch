@@ -130,3 +130,24 @@ def test_collective_base_kind_must_exist():
     """).strip() + "\n"
     with pytest.raises(ValidationError):
         validate(parse(bad))
+
+def test_labels_hidden_suppresses_labels_before_routing():
+    """`labels: hidden` blanks every edge label BEFORE routing — the
+    router prices label-free corridors, so the diagram gets genuinely
+    lighter (the reviewer's teaching-diagram ask), not just visually
+    muted. The model keeps its labels; other views keep theirs."""
+    f = parse(_diagram(
+        'diagram "v" from "Z" {\n'
+        '  select { nodes: a b\n'
+        '           edges: type api\n'
+        '           labels: hidden } \n'
+        '}'))
+    validate(f)
+    svg, solved = _render(f, "v")
+    assert svg.count("textPath") == 0
+    from ggarch.router import route as _route
+    r = _route(solve(next(x for x in f.diagrams if x.name == "v"),
+                     f.get_model("Z")), f.get_model("Z"),
+               next(x for x in f.diagrams if x.name == "v").select)
+    assert all(e.label == "" for e in r.edges)
+    assert all(e.strip is None or e.strip.label is None for e in r.edges)

@@ -1406,6 +1406,19 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                            for es, et, ty in except_pairs)]
         model = _dc_replace(model, edges=kept)
     _, edges = materialize_instances(select, model)
+    if getattr(select, "hide_labels", False):
+        # "labels: hidden" (2026-09-22 reviewer: the excalidraw teaching
+        # diagrams were lighter because their arrows carried no
+        # labels): the view mutes every edge label BEFORE routing —
+        # the router prices label-free corridors, so the suppressed
+        # labels never reserve width. The model keeps its labels;
+        # other views keep theirs. The muting REPLACES the edge
+        # objects (materialize hands out the model's own Edge
+        # references — mutating them in place leaked the blank into
+        # every later view and flipped their solves; measured: the
+        # worker-synth view detoured at 2.47x once the tutorial
+        # views' blanking ran first).
+        edges = [_dc_replace(e, label="") for e in edges]
 
     # ADR-005: `records: shown` — one bridge edge per recorded node in
     # the view (runtime → record). Synthetic view edges: the records:

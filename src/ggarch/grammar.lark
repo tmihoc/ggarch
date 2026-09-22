@@ -109,6 +109,7 @@ select_item: "nodes" ":" id_list                         -> select_nodes
            | "sizing" ":" ID                             -> select_sizing
            | "zoom" ":" SIGNED_NUMBER                    -> select_zoom
            | "records" ":" ID                            -> select_records
+           | "labels" ":" ID                            -> select_labels
 
 edge_ref_list: edge_ref+
 edge_ref: ID "->" ID [ "[" "type" ":" ID "]" ]               -> edge_ref

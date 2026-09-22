@@ -478,6 +478,13 @@ class _GgarchTransformer(Transformer):
             elif key == "except":     s.except_pairs.extend(value)
             elif key == "sizing":     s.sizing = value
             elif key == "zoom":       s.zoom = float(value)
+            elif key == "labels":
+                if value == "hidden":
+                    s.hide_labels = True
+                else:
+                    raise ParseError(
+                        f"unknown labels mode {value!r}; "
+                        "expected hidden")
             elif key == "records":
                 if value == "shown":
                     s.show_records = True
@@ -516,6 +523,8 @@ class _GgarchTransformer(Transformer):
     def select_zoom(self, num_token) -> tuple: return ("zoom", float(num_token))
 
     def select_records(self, mode_token) -> tuple: return ("records", _str(mode_token))
+
+    def select_labels(self, mode_token) -> tuple: return ("labels", _str(mode_token))
 
     def select_instances(self, type_id, *specs) -> tuple:
         tid = _str(type_id)

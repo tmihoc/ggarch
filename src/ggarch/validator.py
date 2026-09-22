@@ -399,10 +399,10 @@ def _validate_select(select: SelectClause, model: Model, view_name: str) -> None
             hint="the only declared routing mode is 'orthogonal' "
                  "(axis-aligned legs; snap-to-grid)",
         )
-    if select.sizing and select.sizing != "uniform":
+    if select.sizing and select.sizing not in ("uniform", "natural"):
         raise ValidationError(
             f"view {view_name!r}: unknown sizing mode {select.sizing!r}",
-            hint="the only declared sizing mode is 'uniform'",
+            hint="uniform is the default; the opt-out is 'natural'",
         )
     for es, et, _ty in select.except_pairs:
         for nid in (es, et):
