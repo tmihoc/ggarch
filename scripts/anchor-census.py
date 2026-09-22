@@ -98,15 +98,23 @@ def classify_view(d, f, m):
     face_anchors = {}   # (node_id, side) -> list of coords
     endpoints = []      # one record per routed edge endpoint
 
-    def face_of(p, r):
-        """Which face does p sit on? Distance to each boundary side."""
+    def faces_of(p, r):
+        """Every boundary face within ANCHOR_EPS, distance-then-name
+        ordered (deterministic). A CORNER anchor lies on two faces —
+        the census records/checks every face within eps, mirroring the
+        router's corner-safe port closure (ADR-008 rule 4). At an
+        exact corner the single-face pick is 1e-13-noise: kiwi's
+        equivalent-solve last bits flip it run to run (measured:
+        change_stream's src at domain_services' top-right corner
+        flipped right/top and fan-member/UNEXPLAINED with the hash
+        seed while the drawn geometry stayed byte-identical)."""
         cand = []
         cand.append((abs(p.x - r.x), "left"))
         cand.append((abs(p.x - r.x2), "right"))
         cand.append((abs(p.y - r.y), "top"))
         cand.append((abs(p.y - r.y2), "bottom"))
-        best = min(cand)
-        return best[1] if best[0] <= ANCHOR_EPS else None
+        cand.sort()
+        return [s for d, s in cand if d <= ANCHOR_EPS]
 
     def face_mid(r, side):
         if side in ("right", "left"):
@@ -118,24 +126,32 @@ def classify_view(d, f, m):
             nid = e.source_id if end == "src" else e.target_id
             p = e.points[0] if end == "src" else e.points[-1]
             r = rects[nid]
-            side = face_of(p, r.rect)
+            sides = faces_of(p, r.rect)
             rec = {
                 "view": d.name, "source": e.source_id,
                 "target": e.target_id, "end": end, "label": e.label or "",
-                "node": nid, "side": side or "?",
+                "node": nid, "side": sides[0] if sides else "?",
+                "sides": sides,
                 "declared_field": bool(getattr(
                     declared.get((e.source_id, e.target_id)),
                     "source_field" if end == "src" else "target_field",
                     "")),
             }
-            if side is None:
+            if not sides:
                 rec["class"] = UNEXPLAINED
                 rec["reason"] = "not on any boundary face"
                 endpoints.append(rec)
                 continue
-            coord = float(p.y) if side in ("right", "left") else float(p.x)
+            # corner-safe bookkeeping: the coord registers on EVERY
+            # face it sits on (a corner anchor is a member of both)
+            for side in sides:
+                coord = (float(p.y) if side in ("right", "left")
+                         else float(p.x))
+                face_anchors.setdefault((nid, side), []).append(coord)
+            coord = (float(p.y) if rec["side"] in ("right", "left")
+                     else float(p.x))
             rec["coord"] = round(coord, 2)
-            face_anchors.setdefault((nid, side), []).append(coord)
+            rec["point"] = (p.x, p.y)
             endpoints.append(rec)
     # link each record to its edge's other end
     by_edge = {}
@@ -145,24 +161,27 @@ def classify_view(d, f, m):
     # classification pass — port sets first (the router's symmetric
     # slots for multi-edge faces), fan groups next, then the per-face
     # rules. A FAN GROUP is >=2 edges with the same (node, side, sign);
-    # the sign is src (leaves the node) or tgt (arrives).
+    # the sign is src (leaves the node) or tgt (arrives). A corner
+    # anchor registers under BOTH its faces; the verdict takes the
+    # first EXPLAINED face (faces_of order = distance-then-name), the
+    # primary face's verdict when none explains.
     port_sets = getattr(solved, "port_sets", {}) or {}
     fan_groups = collections.defaultdict(list)   # (node, side, sign) -> [rec]
     for rec in endpoints:
         if rec["side"] == "?":
             continue
-        key = (rec["node"], rec["side"], rec["end"])
-        fan_groups[key].append(rec)
-    for rec in endpoints:
-        if "coord" not in rec:
-            continue
-        nid, side, coord = rec["node"], rec["side"], rec["coord"]
+        for side in rec["sides"]:
+            fan_groups[(rec["node"], side, rec["end"])].append(rec)
+
+    def classify_at(rec, side):
+        """The rule cascade for one endpoint at ONE of its faces.
+        Returns (class, reason)."""
+        nid, coord = rec["node"], rec["coord"]
         r = rects[nid]
         mid = face_mid(r.rect, side)
         # 1. field pin — declared field-qualified endpoint (author speech)
         if rec["declared_field"]:
-            rec["class"] = FIELD
-            continue
+            return FIELD, ""
         # 2. the face's symmetric port set (the router's): an anchor ON
         #    the set is a slot; off the set is the measured miss — but
         #    only when the DRAWN face is actually multi-edge (a set
@@ -173,49 +192,37 @@ def classify_view(d, f, m):
         ms = sorted(face_anchors.get((nid, side), []))
         if pset and len(ms) >= 2:
             if any(abs(coord - v) <= 1.0 for v in pset):
-                rec["class"] = SET_SLOT
-            else:
-                rec["class"] = UNEXPLAINED
-                rec["reason"] = (f"off its symmetric set {pset} "
+                return SET_SLOT, ""
+            return UNEXPLAINED, (f"off its symmetric set {pset} "
                                  f"(face {side})")
-            continue
         # 3. this end's face is a fan face (>=2 same-sign edges)?
         own = fan_groups.get((nid, side, rec["end"]), [])
         if len(own) >= 2:
-            ms = sorted(face_anchors.get((nid, side), []))
             if all(any(abs((mid * 2 - c) - m2) <= EPS for m2 in ms)
                    for c in ms):
-                rec["class"] = FAN_SLOT
-            else:
-                rec["class"] = UNEXPLAINED
-                rec["reason"] = (f"fan face {rec['end']}-{side} not "
+                return FAN_SLOT, ""
+            return UNEXPLAINED, (f"fan face {rec['end']}-{side} not "
                                  f"symmetric about mid ({len(ms)} anchors)")
-            continue
         # 4. other end is a fan face — fan member side (principled by
         #    the fan machinery: member anchors follow fan geometry)
         other_end = "tgt" if rec["end"] == "src" else "src"
         other = by_edge.get((rec["source"], rec["target"]), {}).get(other_end)
         if other is not None and other["side"] != "?":
-            ogroup = fan_groups.get(
-                (other["node"], other["side"], other["end"]), [])
-            if len(ogroup) >= 2:
-                rec["class"] = FAN_MEMBER
-                continue
+            for oside in other["sides"]:
+                if len(fan_groups.get(
+                        (other["node"], oside, other["end"]), [])) >= 2:
+                    return FAN_MEMBER, ""
         # 5. face midpoint
         if abs(coord - mid) <= EPS:
-            rec["class"] = MIDPOINT
-            continue
+            return MIDPOINT, ""
         # 6. multi-edge face symmetric about the midpoint (no port set
         #    was guessed for it — the geometric distribution still
         #    ought to hold)
         if len(ms) >= 2:
             if all(any(abs((mid * 2 - c) - m2) <= EPS for m2 in ms)
                    for c in ms):
-                rec["class"] = SYMMETRIC
-                continue
-            rec["class"] = UNEXPLAINED
-            rec["reason"] = f"asymmetric {len(ms)}-edge face"
-            continue
+                return SYMMETRIC, ""
+            return UNEXPLAINED, f"asymmetric {len(ms)}-edge face"
         # 7. single-edge face: the corridor seat is the principled
         #    single (reviewer verdict 2026-09-21: single-edge corridor
         #    seats stay principled classes). A CORNER landing is not a
@@ -225,15 +232,33 @@ def classify_view(d, f, m):
         on_width = side in ("top", "bottom")
         lo, hi = ((r.rect.x, r.rect.x2) if on_width
                   else (r.rect.y, r.rect.y2))
-        rec["class"] = SEAT
         if min(abs(coord - lo), abs(coord - hi)) <= 1.0:
-            rec["class"] = CORNER_SEAT
-            rec["reason"] = "within 1 px of a face-span end"
-        elif len(ms) == 1 and getattr(r, "children", None):
+            return CORNER_SEAT, "within 1 px of a face-span end"
+        if len(ms) == 1 and getattr(r, "children", None):
             if any((cr.x <= coord <= cr.x2) if on_width
                    else (cr.y <= coord <= cr.y2)
                    for ch in r.children for cr in [ch.rect]):
-                rec["class"] = CORRIDOR
+                return CORRIDOR, ""
+        return SEAT, ""
+
+    for rec in endpoints:
+        if "coord" not in rec:
+            continue
+        verdicts = [classify_at(rec, side) for side in rec["sides"]]
+        chosen = next((v for v in verdicts if v[0] != UNEXPLAINED),
+                      verdicts[0])
+        chosen_side = rec["sides"][verdicts.index(chosen)]
+        rec["class"], rec["reason"] = chosen
+        if chosen_side != rec["side"]:
+            # the explaining face is not the nearest: report it (a
+            # corner anchor's face attribution is a census fact)
+            note = f" (face {chosen_side})"
+            rec["reason"] = ((rec["reason"] + note)
+                             if rec["reason"] else note.strip())
+            rec["side"] = chosen_side
+            px, py = rec["point"]
+            rec["coord"] = round(float(py) if chosen_side in
+                                 ("right", "left") else float(px), 2)
     return endpoints, solved
 
 

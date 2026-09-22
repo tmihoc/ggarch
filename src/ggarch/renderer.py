@@ -210,6 +210,18 @@ def _resolve_annotation_labels(view, layout, routed) -> dict:
         clashing = any(rects_overlap(e.strip.label, tr)
                        for tr in text_rects)
         if not clashing:
+            # A label clashing ANOTHER edge's label shifts too — the
+            # labels-NEVER-overlap law (2026-09-21) owns this trigger,
+            # not just annotation text. The candidate loop below only
+            # accepts fracs clear of every other label, so a shift
+            # never CREATES a clash; earlier edges' strips are
+            # respected as-is (a pair resolves by moving the later
+            # edge's label, declaration order = route order).
+            clashing = any(
+                o is not e.strip and o.label is not None
+                and rects_overlap(e.strip.label, o.label)
+                for o in (x.strip for x in routed.edges))
+        if not clashing:
             # A label grazing a NODE box shifts too — but only when the
             # edge's endpoints are NOT inside that node (a label over
             # its own container is by design).
