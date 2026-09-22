@@ -822,14 +822,25 @@ def _route_candidates_eval(
                             tgt_price = HINT_MISS_DECLARED
                         else:
                             tgt_price = HINT_MISS_COST
+                        # A DECLARED fan's slot miss is cheap within
+                        # one ladder step (label-driven escapes ride
+                        # neighbouring rungs — the Juju enters
+                        # precedent) and grows past it: beyond a step
+                        # the drift is pure length-hunting, not label
+                        # demand (measured: the Charm origins
+                        # download entry drifted 124px to the k=5
+                        # rung for an ~84px saving — the fan stopped
+                        # being symmetric about the edge midpoint).
                         sh = hints.get("src", {}).get(fs)
                         if sh is not None and \
                                 abs(_face_coord(a, fs) - sh) > 0.5:
-                            cost += src_price
+                            cost += src_price + max(0.0,
+                                abs(_face_coord(a, fs) - sh) - 45.0)
                         th = hints.get("tgt", {}).get(ft)
                         if th is not None and \
                                 abs(_face_coord(b, ft) - th) > 0.5:
-                            cost += tgt_price
+                            cost += tgt_price + max(0.0,
+                                abs(_face_coord(b, ft) - th) - 45.0)
                         if pair_bias is not None:
                             ba = abs(_face_coord(a, fs)
                                      - (_center(src_rect, fs) + pair_bias))
