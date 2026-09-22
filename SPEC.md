@@ -1789,8 +1789,12 @@ emphasis by label length — whether uniform sizing should be the DEFAULT
 is an open question); `except: a -> b [type: x]` curates edges out of a
 view — the model stays complete, each view tells the story it exists to
 tell (the corollary: multiple arrow kinds on one path are sequence
-material, not topology material). Anchor policy: straight edges take
-fan-distributed or pair-offset anchors; deliberate forms (L/U) anchor
+material, not topology material). Anchor policy (ADR-008, 2026-09-22):
+every multi-edge face distributes its anchors about the face midpoint —
+the axis (the midpoint) is always a member so a spine/align arrow holds
+its row straight; the outer members take the symmetric slots; the
+corner landing is not admissible for a set face; a straight may never
+ride a border. Deliberate forms (L/U) anchor
 at face centres, offsets only for dodging blocked centres; two-way
 arrows carry mirrored tips (auto-start-reverse); vertical labels read
 along the arrow's direction, horizontal ones always left-to-right (the
