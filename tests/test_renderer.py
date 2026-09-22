@@ -548,17 +548,28 @@ class TestAlongPathLabels:
     def test_antiparallel_pair_labels_ride_their_own_strokes(self):
         # ADR-003: pairs route at distinct offsets — each label anchors
         # at the midpoint of its OWN leg (the 1/3-2/3 anchor workaround
-        # is redundant once strokes separate).
+        # is redundant once strokes separate). ADR-009: the pair now
+        # also BOWS — anti-parallel same-corridor strokes draw as
+        # mirrored arcs, and each label path is that arc (a quadratic),
+        # translated outward. The anchor contract is unchanged: the
+        # label sits at the midpoint of its own path.
         svg = pipeline(PAIR_SRC)
         # The label path each textPath references, with its length.
-        paths = {
-            m.group(5): math.hypot(
+        paths = {}
+        for m in re.finditer(
+                r'<path d="M ([\d.-]+) ([\d.-]+) L ([\d.-]+) ([\d.-]+)"'
+                r' id="([^"]+)"', svg):
+            paths[m.group(5)] = math.hypot(
                 float(m.group(3)) - float(m.group(1)),
                 float(m.group(4)) - float(m.group(2)))
-            for m in re.finditer(
-                r'<path d="M ([\d.-]+) ([\d.-]+) L ([\d.-]+) ([\d.-]+)"'
-                r' id="([^"]+)"', svg)
-        }
+        for m in re.finditer(
+                r'<path d="M ([\d.-]+) ([\d.-]+) Q ([\d.-]+) ([\d.-]+)'
+                r' ([\d.-]+) ([\d.-]+)" id="([^"]+)"', svg):
+            # The label path's length along its own reading direction:
+            # the chord between the path's endpoints.
+            paths[m.group(7)] = math.hypot(
+                float(m.group(5)) - float(m.group(1)),
+                float(m.group(6)) - float(m.group(2)))
         pairs = re.findall(
             r'<textPath xlink:href="#([^"]+)"[^>]*startOffset="([\d.-]+)"',
             svg)
@@ -566,6 +577,29 @@ class TestAlongPathLabels:
         for href, off in pairs:
             leg = paths[href]
             assert float(off) == pytest.approx(leg / 2, abs=3), (href, off, leg)
+
+    def test_antiparallel_pair_strokes_bow_apart(self):
+        # ADR-009: the pair's strokes are mirrored arcs — each stroke's
+        # control point bows AWAY from the other's: the signed area
+        # (cross product) of (control - chord midpoint) against the
+        # chord direction is OPPOSITE for the two strokes.
+        svg = pipeline(PAIR_SRC)
+        edges = svg.split('id="ggarch-edges"')[1]
+        quads = [m for m in re.finditer(
+            r'<path[^>]*d="M ([\d.-]+) ([\d.-]+) Q ([\d.-]+) ([\d.-]+)'
+            r' ([\d.-]+) ([\d.-]+)"[^>]*>', edges)
+            if "marker-end" in m.group(0)]
+        assert len(quads) == 2, quads
+        signs = []
+        for m in quads:
+            x0, y0, cx, cy = (float(m.group(1)), float(m.group(2)),
+                              float(m.group(3)), float(m.group(4)))
+            x1, y1 = float(m.group(5)), float(m.group(6))
+            mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+            # World-space apex offset: the two arcs' bows oppose, so
+            # the strokes separate at mid-corridor.
+            signs.append(cy - my)
+        assert signs[0] * signs[1] < 0, signs
 
     def test_dashed_labelled_edge_keeps_one_dashed_path(self):
         # Dash rhythm is content: the pattern must never restart at a

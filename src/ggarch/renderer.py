@@ -77,6 +77,7 @@ from ggarch.geometry import (  # noqa: E402 — re-export
     Strip,
     ANN_LABEL_LINE_H,
     ann_band_h,
+    _chord_normal,
     label_geometry,
     rects_overlap,
     strip_for_edge,
@@ -231,14 +232,19 @@ def _resolve_annotation_labels(view, layout, routed) -> dict:
                 rects_overlap(e.strip.label, nb)
                 for nb in node_boxes
                 if not (src_box and _contains(src_box, nb))
-                and not (tgt_box and _contains(tgt_box, nb)))
+                and not (tgt_box and _contains(tgt_box, nb))
+                # A label over the endpoint's own CONTAINER is by
+                # design (the bowed corridor pair's labels live inside
+                # the wrapping box) — exempt ancestors of the members.
+                and not (src_box and _contains(nb, src_box))
+                and not (tgt_box and _contains(nb, tgt_box)))
         if not clashing:
             continue
         pts = [(p.x, p.y) for p in e.points]
         owner = f"{e.source_id}->{e.target_id}"
         for frac in LABEL_SHIFT_FRACS:
             cand = strip_for_edge(pts, ROUTE_STROKE_W, e.arrow,
-                                  e.label, frac, owner=owner)
+                                  e.label, frac, owner=owner, bow=e.bow)
             if cand.label is None:
                 break
             src_box = _member_box(layout, e.source_id)
@@ -249,7 +255,9 @@ def _resolve_annotation_labels(view, layout, routed) -> dict:
                            if not (src_box and nb != src_box
                                    and _contains(src_box, nb))
                            and not (tgt_box and nb != tgt_box
-                                    and _contains(tgt_box, nb)))
+                                    and _contains(tgt_box, nb))
+                           and not (src_box and _contains(nb, src_box))
+                           and not (tgt_box and _contains(nb, tgt_box)))
                     or any(o is not e.strip and o.label is not None
                            and rects_overlap(cand.label, o.label)
                            for o in (x.strip for x in routed.edges)
@@ -1082,6 +1090,7 @@ def draw_path_label(
     label: str,
     fill: str,
     anchor_frac: float = 0.5,
+    bow: float = 0.0,
 ) -> None:
     """The label follows the arrow (ADR-002): one textPath per wrapped
     line, each on its own path translated perpendicular to the stroke —
@@ -1093,8 +1102,12 @@ def draw_path_label(
     paths are renderer-proof. Shared by the diagram and state
     renderers: one label mechanism across view kinds (ADR-003
     decision 10).
+
+    `bow` (ADR-009): when set, the label path is the stroke's quadratic
+    bezier translated OUTWARD (the arc's convex side), so a bowed
+    corridor pair's labels ride apart with their strokes.
     """
-    lg = label_geometry(pts, label, anchor_frac)
+    lg = label_geometry(pts, label, anchor_frac, bow)
     lx0, ly0, lx1, ly1 = lg.leg
     if lg.mirror:
         # Read left-to-right (or top-to-bottom) on a right-to-left leg.
@@ -1103,6 +1116,15 @@ def draw_path_label(
     leg = math.hypot(dx, dy) or 1.0
     ux, uy = dx / leg, dy / leg          # reading direction
     px, py = uy, -ux                     # the label's side of the stroke
+    if bow:
+        # Bowed pair: the label rides the arc's OUTER side — the same
+        # normal convention label_geometry used for the strip. The
+        # normal comes from the UNMIRRORED leg (the bow's frame); the
+        # mirrored reading direction must not flip it.
+        gx0, gy0, gx1, gy1 = lg.leg
+        nx, ny = _chord_normal((gx0, gy0), (gx1, gy1))
+        side = 1.0 if bow > 0 else -1.0
+        px, py = nx * side, ny * side
     # The geometric anchor maps to the mirrored path's own arc length;
     # a non-midpoint anchor flips with the mirror (a point at fraction
     # f from the original start is at 1-f from the mirrored start).
@@ -1113,10 +1135,22 @@ def draw_path_label(
         # reads top-to-bottom. For rotated labels the same formula
         # puts the first-read column outermost (rotate-the-block).
         depth = (LABEL_DESCENT + LABEL_CLEARANCE
-                + (len(lg.lines) - 1 - i) * LABEL_LINE_H)
+                 + (len(lg.lines) - 1 - i) * LABEL_LINE_H)
         ox, oy = px * depth, py * depth
-        line_path = dw.Path(d=_path_d(
-            [(lx0 + ox, ly0 + oy), (lx1 + ox, ly1 + oy)]))
+        if bow:
+            # The line's path is the stroke's bezier translated by the
+            # line's outward offset (a bezier translates exactly). The
+            # control comes from the UNMIRRORED leg, like the strip.
+            gx0, gy0, gx1, gy1 = lg.leg
+            nx, ny = _chord_normal((gx0, gy0), (gx1, gy1))
+            cx = (gx0 + gx1) / 2.0 + nx * 2.0 * bow + ox
+            cy = (gy0 + gy1) / 2.0 + ny * 2.0 * bow + oy
+            line_path = dw.Path(d=(
+                f"M {lx0 + ox:.1f} {ly0 + oy:.1f}"
+                f" Q {cx:.1f} {cy:.1f} {lx1 + ox:.1f} {ly1 + oy:.1f}"))
+        else:
+            line_path = dw.Path(d=_path_d(
+                [(lx0 + ox, ly0 + oy), (lx1 + ox, ly1 + oy)]))
         g.append(dw.Text(
             line, LABEL_FONT_SIZE, path=line_path,
             text_anchor="middle",
@@ -1136,6 +1170,21 @@ def _path_d(pts: list[tuple[float, float]]) -> str:
     for x, y in pts[1:]:
         d += f" L {x:.1f} {y:.1f}"
     return d
+
+
+def _edge_path_d(pts, bow: float = 0.0) -> str:
+    """SVG path data for an edge stroke: a straight polyline, or a
+    quadratic bezier through the bowed apex (ADR-009 bow pairs)."""
+    if not bow or len(pts) != 2:
+        return _path_d(pts)
+    from ggarch.geometry import _chord_normal
+    (x0, y0), (x1, y1) = ((pts[0].x, pts[0].y), (pts[1].x, pts[1].y)) \
+        if hasattr(pts[0], "x") else ((pts[0][0], pts[0][1]),
+                                      (pts[1][0], pts[1][1]))
+    nx, ny = _chord_normal((x0, y0), (x1, y1))
+    cx = (x0 + x1) / 2.0 + nx * 2.0 * bow
+    cy = (y0 + y1) / 2.0 + ny * 2.0 * bow
+    return f"M {x0:.1f} {y0:.1f} Q {cx:.1f} {cy:.1f} {x1:.1f} {y1:.1f}"
 
 
 def _render_edge(
@@ -1196,12 +1245,12 @@ def _render_edge(
             path_kwargs["marker_end"] = f"url(#arrow{suffix})"
         if edge.arrow in ("back", "both"):
             path_kwargs["marker_start"] = f"url(#arrow{suffix}-start)"
-    g.append(dw.Path(d=_path_d(pts), **path_kwargs))
+    g.append(dw.Path(d=_edge_path_d(pts, edge.bow), **path_kwargs))
 
     if not edge.label:
         return
     draw_path_label(g, pts, edge.label, es.font_color,
-                    anchor_frac=edge.label_anchor)
+                    anchor_frac=edge.label_anchor, bow=edge.bow)
 
 
 # ---------------------------------------------------------------------------

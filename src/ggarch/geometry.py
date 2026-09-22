@@ -80,13 +80,40 @@ def wrap_label_lines(label: str, max_chars: int) -> list[str]:
     return wrapped
 
 
-def label_geometry(points, label: str, anchor_frac: float = 0.5) -> LabelGeometry:
+def _chord_normal(p0, p1):
+    """World perpendicular of the chord p0->p1, unit length:
+    (dy, -dx)/len — the convention both the router's bow assignment
+    and label_geometry consume (the bow is a signed offset of the
+    curve's apex along this normal)."""
+    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+    leg = math.hypot(dx, dy) or 1.0
+    return dy / leg, -dx / leg
+
+
+def _quad_point(p0, p1, normal, bow, t):
+    """Point at parameter t on the quadratic bezier P0 -> (bowed
+    control) -> P1: the control sits at the chord midpoint displaced
+    by 2*bow so the curve passes through midpoint + bow*normal."""
+    mx, my = (p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0
+    cx, cy = mx + normal[0] * 2.0 * bow, my + normal[1] * 2.0 * bow
+    s = 1.0 - t
+    return (s * s * p0[0] + 2 * t * s * cx + t * t * p1[0],
+            s * s * p0[1] + 2 * t * s * cy + t * t * p1[1])
+
+
+def label_geometry(points, label: str, anchor_frac: float = 0.5,
+                   bow: float = 0.0) -> LabelGeometry:
     """Measure the along-path label an edge with `points` would draw.
 
     The label rides the longest leg; `anchor_frac` positions its
     centre along that leg. The strip is the one-sided text extent
     above the stroke — the collision currency for strike checks.
-    """
+
+    `bow` (0.26.2, ADR-009): a signed offset of the drawn curve's apex
+    from the chord midpoint, along the chord's world normal. Bowed
+    (anti-parallel corridor pairs) labels ride the curve's OUTER side:
+    the anchor point is the bezier point at anchor_frac and the depth
+    stacks outward, away from the paired stroke."""
     pts = [(float(x), float(y)) for x, y in points]
     seg_lens = [
         math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1])
@@ -127,6 +154,15 @@ def label_geometry(points, label: str, anchor_frac: float = 0.5) -> LabelGeometr
 
     ax = x0 + (x1 - x0) * anchor_frac
     ay = y0 + (y1 - y0) * anchor_frac
+    if bow:
+        # Bowed label: the anchor is the bezier point; the depth stacks
+        # OUTWARD (the convex side of the arc — away from the paired
+        # stroke), and the strip carries the arc's bulge.
+        nx, ny = _chord_normal((x0, y0), (x1, y1))
+        ax, ay = _quad_point((x0, y0), (x1, y1), (nx, ny), bow,
+                             anchor_frac)
+        side = 1.0 if bow > 0 else -1.0
+        up_x, up_y = nx * side, ny * side
     # Text extent: max_line_w centred on the anchor along the leg,
     # stacked `up` from the stroke (clearance cancels the descent: the
     # bottom line's descent sits `clearance` above the stroke, the top
@@ -139,6 +175,13 @@ def label_geometry(points, label: str, anchor_frac: float = 0.5) -> LabelGeometr
         (ax + ux * half_w + up_x * depth, ay + uy * half_w + up_y * depth),
         (ax - ux * half_w + up_x * depth, ay - uy * half_w + up_y * depth),
     )
+    if bow:
+        # The arc bulges past the anchor's corners toward the apex:
+        # include the curve's extreme point so the strip covers the
+        # drawn stroke's bow.
+        nx, ny = _chord_normal((x0, y0), (x1, y1))
+        mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+        corners += ((mx + nx * bow, my + ny * bow),)
     xs = [p[0] for p in corners]
     ys = [p[1] for p in corners]
     return LabelGeometry(
@@ -436,20 +479,27 @@ def strip_for_edge(
     label_text: str = "",
     anchor_frac: float = 0.5,
     owner: str = "",
+    bow: float = 0.0,
 ) -> Strip:
     """Build the strip a routed edge sweeps.
 
     The label extent is measured by label_geometry on the longest leg
     (the placement the renderer draws); the corridor is the stroke
     half-width plus STRIP_PAD clearance; arrowheads sweep caps of
-    ARROWHEAD_SIZE/2 beyond the corridor at each arrowed end.
+    ARROWHEAD_SIZE/2 beyond the corridor at each arrowed end. A bowed
+    edge (bow != 0) sweeps the 3-point polyline through the curve's
+    apex — the corridor covers the drawn arc's deviation.
     """
     pts = [(float(x), float(y)) for x, y in points]
+    if bow and len(pts) == 2:
+        nx, ny = _chord_normal(pts[0], pts[1])
+        mx, my = (pts[0][0] + pts[1][0]) / 2.0, (pts[0][1] + pts[1][1]) / 2.0
+        pts = [pts[0], (mx + nx * bow, my + ny * bow), pts[1]]
     half_w = stroke_width / 2 + STRIP_PAD
     cap = ARROWHEAD_SIZE / 2 + half_w
     label = None
     if label_text:
-        lg = label_geometry(pts, label_text, anchor_frac)
+        lg = label_geometry(points, label_text, anchor_frac, bow)
         label = lg.strip
     return Strip(
         points=pts,

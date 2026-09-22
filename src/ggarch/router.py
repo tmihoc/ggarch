@@ -207,6 +207,11 @@ class RoutedEdge:
     # The swept strip this edge occupies — the shared collision currency
     # (the audit measures these; the renderer draws the path).
     strip: Strip | None = None
+    # ADR-009 bow pairs: a signed apex offset (px, along the chord's
+    # world normal) for anti-parallel same-corridor strokes — the
+    # "back and forth" pair draws as two shallow mirrored arcs so the
+    # strokes AND their labels separate. 0 = the straight vocabulary.
+    bow: float = 0.0
 
     @property
     def start(self) -> Point:
@@ -1185,10 +1190,14 @@ def route_between(
 # Residuals and label retries
 # ---------------------------------------------------------------------------
 
-def _edge_strip(points, edge) -> Strip:
+def _edge_strip(points, edge, bow: float = 0.0, owner: str = "") -> Strip:
     pts = [(p.x, p.y) for p in points]
+    if not owner:
+        src = getattr(edge, "source", None) or getattr(edge, "source_id", "?")
+        tgt = getattr(edge, "target", None) or getattr(edge, "target_id", "?")
+        owner = f"{src}->{tgt}"
     return strip_for_edge(pts, ROUTE_STROKE_W, edge.arrow, edge.label,
-                          0.5, owner=f"{edge.source}->{edge.target}")
+                          0.5, owner=owner, bow=bow)
 
 
 def _path_residuals(points, obstacles, strips, clear,
@@ -1388,6 +1397,7 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                 arrow=e.arrow, url=e.url, points=pts,
                 turns=_count_turns([(p.x, p.y) for p in pts]), residuals=[],
                 direct=direct, ratio=plen / max(direct, 1.0), strip=strip))
+        _assign_bows(routed_edges, layout)
         return RoutedLayout(layout=layout, edges=routed_edges)
 
     clear = ROUTE_STROKE_W / 2 + STRIP_PAD
@@ -1769,7 +1779,200 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
         ))
         strips_done.append(strip)
 
+    _assign_bows(routed_edges, layout)
     return RoutedLayout(layout=layout, edges=routed_edges)
+
+
+BOW_OFFSET   = 8.0  # px — the apex offset of a bowed corridor pair
+BOW_MAX_DIST = 30.0  # px — max perpendicular distance between paired chords
+
+
+def _assign_bows(edges, layout) -> None:
+    """ADR-009 bow pairs: anti-parallel straight strokes that share a
+    corridor (nearly parallel, overlapping, within BOW_MAX_DIST) draw
+    as two shallow mirrored arcs — the strokes separate AND each label
+    rides its own arc's outer side, so the back-and-forth pair reads
+    as two lanes instead of one overprinted stroke.
+
+    The axis member stays straight: when exactly one chord is already
+    dead straight and the other is not, only the sloped one bows (the
+    straight chord is a spine/align seat — an align-middle arrow must
+    stay straight, the worker-tree lesson)."""
+    straight = [e for e in edges
+                if len(e.points) == 2 and e.source_id != e.target_id]
+    info = []
+    for e in straight:
+        (x0, y0), (x1, y1) = ((e.points[0].x, e.points[0].y),
+                              (e.points[1].x, e.points[1].y))
+        dx, dy = x1 - x0, y1 - y0
+        leg = math.hypot(dx, dy)
+        if leg < 1:
+            continue
+        info.append((e, (x0, y0), (x1, y1),
+                     (dx / leg, dy / leg), leg,
+                     (dy / leg, -dx / leg), abs(dy) < 0.5, abs(dx) < 0.5))
+    done: set[int] = set()
+    for i in range(len(info)):
+        e1, p0a, p1a, d1, l1, n1, flat1, _ = info[i]
+        if id(e1) in done:
+            continue
+        for j in range(i + 1, len(info)):
+            e2, p0b, p1b, d2, l2, n2, flat2, _ = info[j]
+            if id(e2) in done:
+                continue
+            if d1[0] * d2[0] + d1[1] * d2[1] > -0.99:
+                continue  # not anti-parallel
+            # Perpendicular distance of e2's midpoint from e1's line.
+            t = ((p0b[0] - p0a[0]) * n1[0]
+                 + (p0b[1] - p0a[1]) * n1[1])
+            if abs(t) > BOW_MAX_DIST:
+                continue
+            # Chord projections along d1 must overlap. e2 runs
+            # ANTI-parallel: its projection goes backwards along d1 —
+            # the interval is [s0 - l2, s0] (measured: the machine
+            # designations pair's chords touch at the controller face
+            # and the naive forward interval rejected the overlap).
+            s0 = (p0b[0] - p0a[0]) * d1[0] + (p0b[1] - p0a[1]) * d1[1]
+            end = s0 + (d2[0] * d1[0] + d2[1] * d1[1]) * l2
+            lo, hi = (s0, end) if s0 <= end else (end, s0)
+            if min(hi, l1) - max(lo, 0.0) < 0.5 * min(l1, l2):
+                continue
+            # Away directions: from the other edge's line outward.
+            away2 = (t / abs(t) if t else 1.0) * n1[0], \
+                    (t / abs(t) if t else 1.0) * n1[1]
+            t2 = ((p0a[0] - p0b[0]) * n2[0]
+                  + (p0a[1] - p0b[1]) * n2[1])
+            away1 = (t2 / abs(t2) if t2 else 1.0) * n2[0], \
+                    (t2 / abs(t2) if t2 else 1.0) * n2[1]
+            if flat1 and not flat2:
+                e2.bow = BOW_OFFSET * _towards(away2, n2)
+            elif flat2 and not flat1:
+                e1.bow = BOW_OFFSET * _towards(away1, n1)
+            else:
+                e1.bow = BOW_OFFSET * _towards(away1, n1)
+                e2.bow = BOW_OFFSET * _towards(away2, n2)
+            # Safety veto: keep a bow only when its rebuilt strip —
+            # label + corridor — stays clear of every node box that is
+            # not the edge's own endpoint (measured: the Agent
+            # taxonomy's controller<->containeragent corridor passes
+            # OVER the middle row; bowing its labels onto those nodes
+            # manufactures strikes. The straight vocabulary stays when
+            # the bow cannot pay for itself).
+            ok = True
+            for e in (e1, e2):
+                if not e.bow:
+                    continue
+                e.strip = _edge_strip(
+                    e.points, e, bow=e.bow,
+                    owner=f"{e.source_id}->{e.target_id}")
+                # Corridor veto: the bowed sweep must not overlap any
+                # OTHER edge's swept strip (measured: the Agent
+                # taxonomy's half-bowed corridor pair swept into
+                # controller->containeragent's strip — two SCROSSes).
+                half = ROUTE_STROKE_W / 2.0 + 2.0
+                for o in edges:
+                    if o is e1 or o is e2 or o.strip is None:
+                        continue
+                    opt = [(p[0], p[1]) for p in o.strip.points]
+                    swept = [(p[0], p[1]) for p in e.strip.points]
+                    hit = False
+                    for i in range(len(swept) - 1):
+                        for j in range(len(opt) - 1):
+                            a, b = swept[i], swept[i + 1]
+                            c0, c1 = opt[j], opt[j + 1]
+                            if (_seg_dist(a, b, c0, c1)
+                                    < half + o.strip.half_w):
+                                hit = True
+                                break
+                        if hit:
+                            break
+                    if hit:
+                        e.bow = 0.0
+                        e.strip = _edge_strip(
+                            e.points, e,
+                            owner=f"{e.source_id}->{e.target_id}")
+                        break
+                src_box = _member_rect(layout, e.source_id)
+                tgt_box = _member_rect(layout, e.target_id)
+                if e.strip.label is not None:
+                    for n in _layout_rects(layout):
+                        box = (n.rect.x, n.rect.y,
+                               n.rect.x + n.rect.w, n.rect.y + n.rect.h)
+                        if (src_box and _rect_contains(src_box, box)) \
+                                or (tgt_box and _rect_contains(tgt_box, box)):
+                            continue
+                        # A label over the endpoint's own CONTAINER is
+                        # by design too (the box wraps the endpoint's
+                        # corridor) — exempt ancestors of the members.
+                        if (src_box and _rect_contains(box, src_box)) \
+                                or (tgt_box and _rect_contains(box, tgt_box)):
+                            continue
+                        if rects_overlap(e.strip.label, box):
+                            e.bow = 0.0
+                            e.strip = _edge_strip(
+                                e.points, e,
+                                owner=f"{e.source_id}->{e.target_id}")
+                            break
+                if not e.bow:
+                    ok = False
+            if not ok:
+                # Either member vetoed: revert both to the straight
+                # vocabulary — a half-bowed pair is worse than none.
+                e1.bow = e2.bow = 0.0
+                e1.strip = _edge_strip(
+                    e1.points, e1, owner=f"{e1.source_id}->{e1.target_id}")
+                e2.strip = _edge_strip(
+                    e2.points, e2, owner=f"{e2.source_id}->{e2.target_id}")
+            done.update((id(e1), id(e2)))
+            break
+
+
+def _towards(away, normal) -> float:
+    """+1 when the away direction matches the chord normal's sign."""
+    return 1.0 if away[0] * normal[0] + away[1] * normal[1] >= 0 else -1.0
+
+
+
+def _member_rect(layout, node_id):
+    n = layout.find(node_id)
+    if n is None:
+        return None
+    r = n.rect
+    return (r.x, r.y, r.x + r.w, r.y + r.h)
+
+
+def _layout_rects(layout):
+    out = []
+    stack = list(layout.nodes)
+    while stack:
+        n = stack.pop()
+        out.append(n)
+        stack.extend(n.children)
+    return out
+
+
+def _rect_contains(outer, inner):
+    return (outer[0] <= inner[0] and outer[1] <= inner[1]
+            and outer[2] >= inner[2] and outer[3] >= inner[3])
+
+
+
+def _seg_dist(a, b, c, d):
+    """Minimum distance between segments ab and cd (dense sampling —
+    the veto runs over a handful of candidate pairs, not the corpus)."""
+    best = float("inf")
+    n = 8
+    for i in range(n + 1):
+        t = i / n
+        px = a[0] + (b[0] - a[0]) * t / n
+        py = a[1] + (b[1] - a[1]) * t / n
+        for j in range(n + 1):
+            qx = c[0] + (d[0] - c[0]) * j / n
+            qy = c[1] + (d[1] - c[1]) * j / n
+            dd = math.hypot(px - qx, py - qy)
+            if dd < best:
+                best = dd
+    return best
 
 
 def _default_style(edge_type: str) -> str:
