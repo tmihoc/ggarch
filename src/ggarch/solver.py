@@ -281,7 +281,9 @@ def _solve_constraints(
     # Add user-declared constraints, with label-aware gap expansion.
     _add_user_constraints(solver, expanded_constraints, vars_by_id,
                           diagram.name, model,
-                          refine=bool(diagram.constraints))
+                          refine=bool(diagram.constraints),
+                          hide_labels=getattr(diagram.select,
+                                              "hide_labels", False))
     _add_uniform_sizing(solver, expanded_constraints, vars_by_id)
     # Sibling containers share a height: containers stacked in one
     # parent align their rows only when their midlines coincide, and a
@@ -1842,6 +1844,14 @@ def _apply_label_contract(
         solver.addConstraint((v.h == v.h.value()) | "weak")
 
     reserved: dict[tuple[str, str, str], float] = {}
+    if getattr(diagram.select, "hide_labels", False):
+        # "labels: hidden" — the view will never draw the labels, so
+        # the contract reserves nothing for them (measured: the
+        # tutorial reveal's declared gap: 24 silently inflated to the
+        # corridor budget of labels the renderer was about to
+        # suppress — the canvas stayed wide and the reveal looked
+        # small on the page).
+        mat_edges = [_dc_replace(e, label="") for e in mat_edges]
     for _ in range(3):
         shortfalls = _measure_label_reservations(
             diagram, selected, mat_edges, vars_by_id)
@@ -1891,6 +1901,7 @@ def _add_user_constraints(
     view_name: str,
     model: Model | None = None,
     refine: bool = False,
+    hide_labels: bool = False,
 ) -> None:
     """Apply user position constraints."""
     # Build maps from node pair → min gap, separated by axis.
@@ -1909,8 +1920,12 @@ def _add_user_constraints(
                     h_pairs.add(pair)
                 elif c.kind in v_kinds:
                     v_pairs.add(pair)
+        # "labels: hidden" — the view will never draw the labels, so
+        # their corridor reservations do not apply (measured: the
+        # tutorial reveal's declared gap: 24 silently inflated to the
+        # label corridor and the canvas stayed wide).
         for edge in model.edges:
-            if edge.label:
+            if edge.label and not hide_labels:
                 pair = frozenset([edge.source, edge.target])
                 if pair in h_pairs:
                     lg = _label_min_gap(edge.label)
