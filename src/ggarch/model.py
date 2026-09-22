@@ -347,6 +347,12 @@ class SelectClause:
     except_pairs: list[tuple[str, str, str]] = field(default_factory=list)
     # (source, target, type) — edges the view curates OUT (type "" = any)
     sizing: str = ""       # "uniform" — equalize selected leaf nodes
+    # The children's-book scale (2026-09-22 reviewer: "printing for
+    # children -- bigger and brighter on purpose"): a PURE root
+    # transform, every unit grows together — fonts, boxes, strokes.
+    # No geometry is re-measured, so corridors and clash invariants
+    # hold unchanged. 1.0 = the default document scale.
+    zoom: float = 1.0
     show_records: bool = False  # "records: shown" — render the runtime↔record
                                 # bridges (ADR-005; synthetic, view-level)
     hide_records: bool = False  # "records: hidden" — suppress the derived

@@ -396,6 +396,14 @@ def render(
 
     bg = "#1E1E2E" if dark else "#FFFFFF"
     drawing = dw.Drawing(vw, vh, origin=(0, 0))
+    # The children's-book scale (view select `zoom: N`): a pure root
+    # transform via pixel_scale — every unit (fonts, boxes, strokes)
+    # grows together and nothing is re-measured, so the router's
+    # corridor and clash invariants hold unchanged. Applied before the
+    # first append; the background covers the full scaled canvas.
+    zoom = getattr(view.select, "zoom", 1.0) or 1.0
+    if zoom != 1.0:
+        drawing.set_pixel_scale(zoom)
     drawing.append(dw.Rectangle(0, 0, vw, vh, fill=bg))
     _add_arrowhead_defs(drawing, dark, preset)
 
@@ -628,6 +636,26 @@ def _render_node_content(
     salience: dict | None = None,
 ) -> None:
     """Render the visual content of a node (shape, children, badge) into g."""
+    collective = str(node.properties.get("collective", "") or "")
+    if collective and not node.children:
+        # The plurality mark (SPEC "collective nodes", built for the
+        # tutorial reveal, 2026-09-22): the node abstracts over the
+        # instances of its base kind, so the renderer draws the
+        # overlapping-rectangles stack behind the box — two layers
+        # stepping up-right by 5px, same fill and stroke, the only
+        # visible part the margins that read as MORE OF THE SAME.
+        # Nodes whose views expand to `instances:` never take the
+        # mark (the mark IS the non-individuated reading); the glyph
+        # is a drawing-layer idiom: no anchor moves, no measurement
+        # changes, the audit sees the same geometry.
+        for depth in (10, 5):
+            g.append(dw.Rectangle(
+                x + depth, y - depth, w, h,
+                fill=style.fill if style.fill != "none" else "none",
+                stroke=style.stroke,
+                stroke_width=style.stroke_width,
+                rx=style.border_radius, ry=style.border_radius,
+            ))
     if node.fields and node.type in ("record", "class"):
         _render_structured_node(g, node, style, x, y, w, h, dark)
     elif style.shape == "person":

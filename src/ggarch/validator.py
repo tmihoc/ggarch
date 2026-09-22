@@ -221,6 +221,23 @@ def _validate_model(model: Model) -> None:
     for node in model.nodes:
         _validate_records(node, model)
 
+    # Check collective: targets — the base kind must exist in the model
+    # (SPEC "collective nodes": the abstraction references the kind it
+    # abstracts over; a typo would silently draw a meaningless stack).
+    def _validate_collective(node, model):
+        base = str(node.properties.get("collective", "") or "")
+        if base and model.find_node(base) is None:
+            raise ValidationError(
+                f"model {model.name!r}: node {node.id} declares "
+                f"collective: {base!r} but no node with that id exists",
+                hint="the collective's value is the base kind's node id "
+                     "(e.g. clouds [collective: cloud])")
+        for child in node.children:
+            _validate_collective(child, model)
+
+    for node in model.nodes:
+        _validate_collective(node, model)
+
     # Build field index: node_id -> set of field ids (for qualified endpoint checks).
     field_ids: dict[str, set[str]] = {}
     for node in model.nodes:

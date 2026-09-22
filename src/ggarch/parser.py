@@ -477,6 +477,7 @@ class _GgarchTransformer(Transformer):
             elif key == "routing":    s.routing = value
             elif key == "except":     s.except_pairs.extend(value)
             elif key == "sizing":     s.sizing = value
+            elif key == "zoom":       s.zoom = float(value)
             elif key == "records":
                 if value == "shown":
                     s.show_records = True
@@ -511,6 +512,8 @@ class _GgarchTransformer(Transformer):
     def select_except(self, refs) -> tuple: return ("except", refs)
 
     def select_sizing(self, mode_token) -> tuple: return ("sizing", _str(mode_token))
+
+    def select_zoom(self, num_token) -> tuple: return ("zoom", float(num_token))
 
     def select_records(self, mode_token) -> tuple: return ("records", _str(mode_token))
 
