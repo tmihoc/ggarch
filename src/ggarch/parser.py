@@ -478,6 +478,7 @@ class _GgarchTransformer(Transformer):
             elif key == "except":     s.except_pairs.extend(value)
             elif key == "sizing":     s.sizing = value
             elif key == "zoom":       s.zoom = float(value)
+            elif key == "hidden":    s.hidden_nodes.extend(value)
             elif key == "labels":
                 if value == "hidden":
                     s.hide_labels = True
@@ -525,6 +526,8 @@ class _GgarchTransformer(Transformer):
     def select_records(self, mode_token) -> tuple: return ("records", _str(mode_token))
 
     def select_labels(self, mode_token) -> tuple: return ("labels", _str(mode_token))
+
+    def select_hidden(self, id_list) -> tuple: return ("hidden", list(id_list))
 
     def select_instances(self, type_id, *specs) -> tuple:
         tid = _str(type_id)

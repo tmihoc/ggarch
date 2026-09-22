@@ -413,7 +413,8 @@ def render(
     _render_nodes(nodes_g, layout.nodes, node_styles, ox, oy, view, dark, model,
                   salience=salience)
     for edge in routed.edges:
-        _render_edge(edges_g, edge, edge_styles, ox, oy, salience=salience)
+        _render_edge(edges_g, edge, edge_styles, ox, oy, salience=salience,
+                     hidden=set(getattr(view.select, "hidden_nodes", []) or []))
 
     for i, ann in enumerate(view.annotations):
         if skip_legend and isinstance(ann, AnnotationLegend):
@@ -506,12 +507,23 @@ def _render_nodes(
     model=None,
     salience: dict | None = None,
 ) -> None:
+    hidden = set(getattr(view.select, "hidden_nodes", []) or [])
     for node in nodes:
         if node.children:
             _render_node(g, node, node_styles, ox, oy, view, dark,
                          model, salience=salience)
     for node in nodes:
         if not node.children:
+            if node.id in hidden:
+                # "hidden: a b" (the progressive reveal): the node keeps
+                # its solved slot and prints at ZERO OPACITY — the same
+                # full diagram at every stage; the reveal is literally
+                # the opacity schedule.
+                quiet = dw.Group(opacity="0")
+                g.append(quiet)
+                _render_node(quiet, node, node_styles, ox, oy, view, dark,
+                             model, salience=salience)
+                continue
             _render_node(g, node, node_styles, ox, oy, view, dark,
                          model, salience=salience)
 
@@ -1133,7 +1145,17 @@ def _render_edge(
     ox: float,
     oy: float,
     salience: dict | None = None,
+    hidden: set | None = None,
 ) -> None:
+    # The reveal's 0-opacity (2026-09-22): an edge whose endpoint is
+    # hidden prints invisibly — the full diagram routes and renders;
+    # the stage only changes the opacity.
+    if hidden and (edge.source_id in hidden or edge.target_id in hidden):
+        quiet = dw.Group(opacity="0")
+        g.append(quiet)
+        _render_edge(quiet, edge, edge_styles, ox, oy,
+                     salience=salience, hidden=None)
+        return
     pts = [(p.x + ox, p.y + oy) for p in edge.points]
     es = edge_styles.get(edge.edge_type, edge_styles.get("default", EdgeStyle()))
     emphasized = _is_emphasized_edge(edge, salience or {})

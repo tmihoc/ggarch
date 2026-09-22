@@ -357,6 +357,13 @@ class SelectClause:
     zoom: float = 1.0
     show_records: bool = False  # "records: shown" — render the runtime↔record
                                 # bridges (ADR-005; synthetic, view-level)
+    hidden_nodes: list[str] = field(default_factory=list)
+                           # "hidden: a b" — the progressive reveal: the
+                           # FULL diagram solves and renders; hidden
+                           # elements print at ZERO OPACITY (the same
+                           # full picture, some parts invisible). The
+                           # geometry is identical across stages: the
+                           # reveal fills reserved space.
     hide_labels: bool = False   # "labels: hidden" — suppress every edge
                                 # label in the view (the reviewer's
                                 # "lighter" teaching diagrams: the model
