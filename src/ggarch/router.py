@@ -52,6 +52,7 @@ from ggarch.geometry import (
     seg_enters_rect,
     seg_seg_dist,
     strip_for_edge,
+    strips_overlap,
 )
 
 # ---------------------------------------------------------------------------
@@ -539,19 +540,53 @@ def _ride_len(pts, src_rect, tgt_rect):
     return total
 
 
-def _corner_snap(pts, src_rect, tgt_rect):
+SNAP_SKIP = object()  # _corner_snap sentinel: the ride collapse's
+# target would leave a set face — drop the candidate form instead of
+# landing a multi-edge face off its symmetric port set.
+
+
+def _leg_rides(pts, src_rect, tgt_rect):
+    """Does the first or last leg ride a node border? (2026-09-21 hard
+    law: a stroke meets its face perpendicularly — it never runs along
+    the border before landing). The pinned candidate path filtered Ls
+    directly; the vocabulary loop's free straights/Ls relied on
+    _corner_snap, which only fires on >=3-point candidates — a
+    STRAIGHT collinear with an endpoint face line slipped through
+    until the port sets made it the cheapest clear route."""
+    for p_end, p_in, rect in ((pts[0], pts[1], src_rect),
+                              (pts[-1], pts[-2], tgt_rect)):
+        if abs(p_end.x - p_in.x) < 0.5:      # vertical leg
+            if (abs(p_end.x - rect.x) < 0.5
+                    or abs(p_end.x - rect.x2) < 0.5):
+                ylo, yhi = sorted((p_end.y, p_in.y))
+                if min(yhi, rect.y2) - max(ylo, rect.y) > 0.5:
+                    return True
+        elif abs(p_end.y - p_in.y) < 0.5:    # horizontal leg
+            if (abs(p_end.y - rect.y) < 0.5
+                    or abs(p_end.y - rect.y2) < 0.5):
+                xlo, xhi = sorted((p_end.x, p_in.x))
+                if min(xhi, rect.x2) - max(xlo, rect.x) > 0.5:
+                    return True
+    return False
+
+
+def _corner_snap(pts, src_rect, tgt_rect, src_set=None, tgt_set=None):
     """Collapse a border ride (2026-09-21 hard law: a stroke meets its
     face perpendicularly — it never runs along the border before
     landing). When a candidate's first or last leg is collinear with
     its own node's face line, the riding endpoint slides to the
     face-span end nearest the penultimate point: the stroke arrives
     from outside and lands at the corner. Returns the (possibly
-    point-reduced) pts, or None when nothing rode."""
+    point-reduced) pts; None when nothing rode; SNAP_SKIP when the
+    collapse target is off a set face's symmetric port set (the
+    corner is not a valid anchor there — the honest form is the
+    perpendicular L / U from a slot)."""
     pts = list(pts)
     if len(pts) < 3:
         return None
     changed = False
-    for i, rect in ((0, src_rect), (len(pts) - 1, tgt_rect)):
+    for i, rect, port_set in ((0, src_rect, src_set),
+                              (len(pts) - 1, tgt_rect, tgt_set)):
         p_end = pts[i]
         p_in = pts[1] if i == 0 else pts[-2]
         vertical_leg = abs(p_end.x - p_in.x) < 0.5
@@ -580,6 +615,17 @@ def _corner_snap(pts, src_rect, tgt_rect):
             new_v = lo if abs(in_v - lo) <= abs(in_v - hi) else hi
             if abs(new_v - free_end) <= 0.5:
                 continue
+            if port_set is not None:
+                # A set face's anchor lives on the symmetric port set:
+                # the corner landing is not admissible. Land on the
+                # nearest slot when the ride is that close; otherwise
+                # drop the candidate (SNAP_SKIP) — the ride cannot be
+                # resolved at an admissible anchor.
+                nv = min(port_set, key=lambda v: abs(v - new_v))
+                if abs(nv - new_v) <= 0.5:
+                    new_v = nv
+                else:
+                    return SNAP_SKIP
             if vertical_leg:
                 pts[i] = Point(fixed_v, new_v)
             else:
@@ -607,6 +653,7 @@ def _route_candidates_eval(
     pair_bias: float | None = None,
     orthogonal: bool = False,
     pref: tuple[str, str] | None = None,
+    port_sets: dict | None = None,
 ):
     """Evaluate every vocabulary candidate. Returns (best_clear,
     best_soft): each is (points, bends, cost, order, crossings) or
@@ -616,7 +663,11 @@ def _route_candidates_eval(
     hidden. hints: predictable anchor coordinates per (side, face)
     (fan slots, mirrored pair strokes); pair_bias: symmetric
     off-centre bias for the first edge of an anti-parallel pair;
-    orthogonal: reject diagonal legs (declared orthogonal views)."""
+    orthogonal: reject diagonal legs (declared orthogonal views).
+    port_sets: {node_id: {face: sorted coords}} — the symmetric port
+    sets of multi-edge faces. For set faces the ONLY admissible
+    source/target anchors are the set points: the ladder is replaced
+    by the set, and the ride-collapse may land only ON a set slot."""
     best_clear = None   # (points, bends, cost, order, ())
     best_soft = None    # (points, bends, cost, order, crossings)
     hints = hints or {}
@@ -665,9 +716,18 @@ def _route_candidates_eval(
                                 direct + TURN_PENALTY * bends >= \
                                 best_clear[2]:
                             continue
-                        snapped = _corner_snap(pts, src_rect, tgt_rect)
+                        snapped = _corner_snap(
+                            pts, src_rect, tgt_rect,
+                            src_set=port_sets.get(src_key, {}).get(fs)
+                            if port_sets else None,
+                            tgt_set=port_sets.get(tgt_key, {}).get(ft)
+                            if port_sets else None)
+                        if snapped is SNAP_SKIP:
+                            continue
                         if snapped is not None:
                             pts = snapped
+                        if _leg_rides(pts, src_rect, tgt_rect):
+                            continue
                         reuse = 0.0
                         if used_anchors is not None and not pinned:
                             # Keyed by (node, face) regardless of edge
@@ -878,6 +938,7 @@ def _route_edge_full(
     pair_bias: float | None = None,
     orthogonal: bool = False,
     pref: tuple[str, str] | None = None,
+    port_sets: dict | None = None,
 ) -> tuple[list[Point], bool]:
     """Route between two rects within the vocabulary.
 
@@ -946,11 +1007,49 @@ def _route_edge_full(
                       else _snap(rect.y2)) if on_width else coord
                 slots.append(Point(px, py))
                 slots.sort(key=lambda p: _face_coord(p, face))
-        best_clear, best_soft = _route_candidates_eval(
-            src_rect, tgt_rect, src_ladder, tgt_ladder, search,
-            src_key, tgt_key, used_anchors,
-            hints=hints, pair_bias=pair_bias, orthogonal=orthogonal,
-            pref=pref)
+        base_src = {f: list(v) for f, v in src_ladder.items()}
+        base_tgt = {f: list(v) for f, v in tgt_ladder.items()}
+        if port_sets:
+            for ladder, key, rect in ((src_ladder, src_key, src_rect),
+                                      (tgt_ladder, tgt_key, tgt_rect)):
+                for face in list(ladder):
+                    slots = port_sets.get(key, {}).get(face)
+                    if not slots:
+                        continue
+                    on_width = face in ("top", "bottom")
+                    pts = []
+                    for v in slots:
+                        if face == "right":
+                            pts.append(Point(_snap(rect.x2), v))
+                        elif face == "left":
+                            pts.append(Point(_snap(rect.x), v))
+                        elif face == "top":
+                            pts.append(Point(v, _snap(rect.y)))
+                        else:
+                            pts.append(Point(v, _snap(rect.y2)))
+                    ladder[face] = pts
+            best_clear, best_soft = _route_candidates_eval(
+                src_rect, tgt_rect, src_ladder, tgt_ladder, search,
+                src_key, tgt_key, used_anchors,
+                hints=hints, pair_bias=pair_bias, orthogonal=orthogonal,
+                pref=pref, port_sets=port_sets)
+            if best_clear is None and (soft or best_soft is None):
+                # No set-anchored candidate exists (dense geometry):
+                # retry unrestricted — the corner landing the hard law
+                # sanctions — so a border ride is never forced; the
+                # audit measures the set-miss instead.
+                src_ladder, tgt_ladder = base_src, base_tgt
+                best_clear, best_soft = _route_candidates_eval(
+                    src_rect, tgt_rect, src_ladder, tgt_ladder, search,
+                    src_key, tgt_key, used_anchors,
+                    hints=hints, pair_bias=pair_bias,
+                    orthogonal=orthogonal, pref=pref, port_sets=None)
+        else:
+            best_clear, best_soft = _route_candidates_eval(
+                src_rect, tgt_rect, src_ladder, tgt_ladder, search,
+                src_key, tgt_key, used_anchors,
+                hints=hints, pair_bias=pair_bias, orthogonal=orthogonal,
+                pref=pref, port_sets=None)
 
     chosen = best_clear if best_clear is not None else \
         (best_soft if soft else None)
@@ -991,24 +1090,8 @@ def _pinned_candidates(src_rect, tgt_rect, a: Point, b: Point, search,
     # node border before meeting the face. Tested directly (corner
     # anchors make nearest-face classification ambiguous); only
     # ride-free orientations are kept.
-    def _rides(pts):
-        for p_end, p_in, rect in ((pts[0], pts[1], src_rect),
-                                  (pts[-1], pts[-2], tgt_rect)):
-            if abs(p_end.x - p_in.x) < 0.5:      # vertical leg
-                if (abs(p_end.x - rect.x) < 0.5
-                        or abs(p_end.x - rect.x2) < 0.5):
-                    ylo, yhi = sorted((p_end.y, p_in.y))
-                    if min(yhi, rect.y2) - max(ylo, rect.y) > 0.5:
-                        return True
-            elif abs(p_end.y - p_in.y) < 0.5:    # horizontal leg
-                if (abs(p_end.y - rect.y) < 0.5
-                        or abs(p_end.y - rect.y2) < 0.5):
-                    xlo, xhi = sorted((p_end.x, p_in.x))
-                    if min(xhi, rect.x2) - max(xlo, rect.x) > 0.5:
-                        return True
-        return False
     for cand in ([a, Point(b.x, a.y), b], [a, Point(a.x, b.y), b]):
-        if not _rides(cand):
+        if not _leg_rides(cand, src_rect, tgt_rect):
             forms.append((cand, 1))
     if not forms and orthogonal:
         # The vocabulary cannot express this pair orthogonally without
@@ -1184,6 +1267,82 @@ def _route_order(items):
     rest = [g for g in groups.values() if len(g) > 1]
     for g in singles + rest:
         out.extend(g)
+    return out
+
+
+def _port_sets(ordered, layout, fan_faces, pair_biased):
+    """Symmetric port sets for every multi-edge face (>=2 edges
+    touching one face, any direction): the anchors distribute about
+    the face midpoint — mid ± (2i+1)*d/2 (even count) or mid ± i*d
+    (odd), d = min(PORT_GAP, usable/(n-1)); a same-pair anti-parallel
+    keeps its pair-bias mirrors (mid ± PAIR_BIAS — itself a symmetric
+    distribution, already calibrated for its label corridor).
+
+    The axis (the face midpoint) is ALWAYS a member: a spine/align
+    edge holds the row axis (the straightest line), and the fan/peer
+    edges distribute about it at the symmetric slots (measured: the
+    worker-tree machine-cloud column tilted when the axis seat was
+    excluded — an align-middle arrow must stay straight).
+
+    Returns {node_id: {face: tuple(sorted coords)}}. The face of each
+    end is the geometric dominant face (declared fan faces override).
+    The router restricts set faces' candidates to these points; a
+    face whose edges end up elsewhere lands no set and the audit
+    measures the miss."""
+    groups: dict[tuple[str, str], list] = defaultdict(list)
+    for edge, src_node, tgt_node in ordered:
+        if (edge.source, edge.target) in fan_faces:
+            # declared fan: the author's face/spacing owns the ports
+            continue
+        declared = fan_faces.get((edge.source, edge.target))
+        for end, nid, mine, other in (
+                ("src", edge.source, src_node, tgt_node),
+                ("tgt", edge.target, tgt_node, src_node)):
+            face = (declared[0] if declared else None) if end == "src" \
+                else (declared[1] if declared else None)
+            if face is None:
+                face = _dominant_face(mine.rect, other.rect)
+            groups[(nid, face)].append(edge)
+    out: dict[str, dict[str, tuple]] = {}
+    for (nid, face), edges in groups.items():
+        if len(edges) < 2:
+            continue
+        node = layout.find(nid)
+        if node is None:
+            continue
+        r = node.rect
+        on_width = face in ("top", "bottom")
+        lo, hi = ((r.x, r.x + r.w) if on_width
+                  else (r.y, r.y + r.h))
+        center = (lo + hi) / 2.0
+        usable = hi - lo - 2 * SEED_INSET
+        pair_edges = [e for e in edges if id(e) in pair_biased]
+        pair_same = (len(edges) == 2 and len(pair_edges) == 2
+                     and pair_edges[0].source == pair_edges[1].target
+                     and pair_edges[0].target == pair_edges[1].source)
+        if pair_same:
+            d = PAIR_BIAS * 2.0
+        else:
+            d = min(PORT_GAP, usable / (len(edges) - 1))
+            if d < 1.0:
+                d = 1.0
+        slots = [center]
+        if len(edges) % 2 == 1:
+            for i in range(1, len(edges) // 2 + 1):
+                slots.append(center - i * d)
+                slots.append(center + i * d)
+        else:
+            for i in range(len(edges) // 2):
+                slots.append(center - (2 * i + 1) * d / 2.0)
+                slots.append(center + (2 * i + 1) * d / 2.0)
+        vals = []
+        for v in slots:
+            v = min(max(_snap(v), lo + SEED_INSET), hi - SEED_INSET)
+            if all(abs(v - u) > 1e-9 for u in vals):
+                vals.append(v)
+        if len(vals) < 2:
+            continue
+        out.setdefault(nid, {})[face] = tuple(sorted(vals))
     return out
 
 
@@ -1473,6 +1632,17 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                     # the label costs demand it.
                     edge_hints[id(m[0])]["declared_" + side] = True
 
+    # The symmetric-port rule excludes edges under a DECLARED fan
+    # constraint (ADR-007: their placement is the author's fan
+    # declaration — the declared spacing and the measured label-clean
+    # stubs outrank the generic PORT_GAP pitch; measured: the refined
+    # cloud pair clashed when the set re-pinned the hub slots).
+    # Undeclared fans (the full spine's corner stack) keep the rule.
+    port_sets = _port_sets(ordered, layout, fan_faces, pair_biased)
+    # Expose to the audit/gate: the symmetric-port rule's measurement
+    # must see the sets the router enforced.
+    layout.port_sets = port_sets
+
     for edge, src_node, tgt_node in ordered:
         src_rect, tgt_rect = src_node.rect, tgt_node.rect
         exempt_ids = (anc.get(edge.source, set()) | {edge.source}
@@ -1496,7 +1666,42 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
             pref=(fan_faces.get((edge.source, edge.target))
                   if fan_faces else None),
             pair_bias=edge_bias.get(id(edge)),
-            orthogonal=(getattr(select, "routing", "") == "orthogonal"))
+            orthogonal=(getattr(select, "routing", "") == "orthogonal"),
+            port_sets=port_sets)
+        if edge.label and port_sets and pts:
+            # Label-aware escape (the rule's "as close as can be"):
+            # the set is the tightest symmetric spread; when the
+            # set-bound result's label strip CLASHES an earlier label
+            # strip (labels NEVER overlap), retry unrestricted and
+            # keep the clash-free result — the wider spread stays
+            # symmetric about the face midpoint, so the gate still
+            # counts it principled.
+            lb = getattr(_edge_strip(pts, edge), "label", None)
+            clash = (lb is not None and any(
+                getattr(es, "label", None) is not None
+                and rects_overlap(lb, es.label)
+                for es in strips_done))
+            if clash:
+                try_pts, _try_clear = _route_edge_full(
+                    src_rect, tgt_rect, obstacles, strips_done,
+                    exempt_rects, src_anchor, tgt_anchor,
+                    src_key=edge.source, tgt_key=edge.target,
+                    used_anchors=used_anchors, label=edge.label,
+                    hints=edge_hints.get(id(edge)),
+                    pref=(fan_faces.get((edge.source, edge.target))
+                          if fan_faces else None),
+                    pair_bias=edge_bias.get(id(edge)),
+                    orthogonal=(getattr(select, "routing", "")
+                                == "orthogonal"),
+                    port_sets=None)
+                if try_pts:
+                    tlb = getattr(_edge_strip(try_pts, edge), "label",
+                                  None)
+                    if tlb is None or not any(
+                            getattr(es, "label", None) is not None
+                            and rects_overlap(tlb, es.label)
+                            for es in strips_done):
+                        pts = try_pts
         if not pts:
             # Complete search failure (degenerate geometry): fall back
             # to the dominant-face pair so the edge still renders.
