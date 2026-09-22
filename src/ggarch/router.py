@@ -89,6 +89,12 @@ LABEL_OTHER_COST = 24.0  # px — label overlapping an earlier strip's
                          # (6px) twice over, so a farther anchor slot is
                          # cheaper than clashing labels (lesser, audited
                          # defect)
+# The along-leg shift fracs, shared with the renderer's along-leg
+# shift pass — one source of truth (the convention lives in one
+# place, not re-typed at each draw site; the recurrence lesson of the
+# multi-line label convention applies).
+LABEL_SHIFT_FRACS = (0.5, 0.35, 0.65, 0.25, 0.75, 0.15, 0.85,
+                     0.92, 0.08, 0.96, 0.04)
 HINT_MISS_COST = 18.0    # px — ignoring a fan-slot / pair-bias anchor
                          # hint: hints encode predictable, distributed
                          # anchor points and parallel pair strokes; a
@@ -400,13 +406,14 @@ class _Search:
                     break
         return hits
 
-    def label_score(self, pts):
-        """(node_hits, other_hits) of the label this route would draw:
-        the label strip vs node rects (weight-heavy — nodes are solid)
-        and vs earlier strips' corridors, labels and caps."""
+    def label_score(self, pts, frac=0.5):
+        """(node_hits, other_hits) of the label this route would draw
+        at `frac` along its longest leg: the label strip vs node rects
+        (weight-heavy — nodes are solid) and vs earlier strips'
+        corridors, labels and caps."""
         if not self.label:
             return 0, 0
-        lg = label_geometry([(p.x, p.y) for p in pts], self.label, 0.5)
+        lg = label_geometry([(p.x, p.y) for p in pts], self.label, frac)
         if lg.strip is None:
             return 0, 0
         node_hits = 0

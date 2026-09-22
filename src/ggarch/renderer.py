@@ -203,7 +203,7 @@ def _resolve_annotation_labels(view, layout, routed) -> dict:
     for e in routed.edges:
         exempt_pairs.add((e.source_id, e.target_id))
 
-    from ggarch.router import ROUTE_STROKE_W
+    from ggarch.router import ROUTE_STROKE_W, LABEL_SHIFT_FRACS
     for e in routed.edges:
         if e.strip is None or not e.strip.label:
             continue
@@ -236,8 +236,7 @@ def _resolve_annotation_labels(view, layout, routed) -> dict:
             continue
         pts = [(p.x, p.y) for p in e.points]
         owner = f"{e.source_id}->{e.target_id}"
-        for frac in (0.5, 0.35, 0.65, 0.25, 0.75, 0.15, 0.85,
-                     0.92, 0.08, 0.96, 0.04):
+        for frac in LABEL_SHIFT_FRACS:
             cand = strip_for_edge(pts, ROUTE_STROKE_W, e.arrow,
                                   e.label, frac, owner=owner)
             if cand.label is None:
