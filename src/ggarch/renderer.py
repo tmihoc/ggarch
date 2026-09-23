@@ -690,6 +690,10 @@ def _render_node_content(
                       model, salience=salience)
     if node.cardinality:
         _render_cardinality_badge(g, x + w - 4, y + 4, node.cardinality)
+    if style.badge and not (node.fields and node.type in ("record", "class")):
+        # Structured records already carry the amber table identity in
+        # their header strip; the badge is for the plain-box kinds.
+        _render_kind_badge(g, x, y, style.badge)
     scope = node.properties.get("scope", "")
     if scope:
         _render_scope_chip(g, x, y, w, h, scope, dark)
@@ -967,6 +971,43 @@ def _render_label(
 # ---------------------------------------------------------------------------
 # Cardinality badge
 # ---------------------------------------------------------------------------
+
+_KIND_BADGE_SIZE = 14
+
+
+def _render_kind_badge(
+    g: dw.Group,
+    x: float,
+    y: float,
+    kind: str,
+) -> None:
+    """Round 24 verdict A: semantic kind moves into a ~14px corner
+    badge — the person's top-left icon is the in-house precedent
+    (_render_person) — while node fills go light/grey across the
+    board. juju: filled orange badge with the Juju J; charm: the same
+    badge shape, empty fill, Juju orange border (the wrapped external
+    software); record: the amber table mark. The badge is a
+    drawing-layer idiom like the person icon: no anchor moves, no
+    measurement changes, the audit sees the same geometry."""
+    s = _KIND_BADGE_SIZE
+    bx, by = x + 5, y + 4
+    if kind == "juju":
+        g.append(dw.Rectangle(bx, by, s, s,
+                              fill="#E95420", stroke="none", rx=3, ry=3))
+        g.append(dw.Text("J", 10, bx + s / 2, by + s / 2,
+                         font_family=LABEL_FONT, fill="#FFFFFF",
+                         text_anchor="middle", dominant_baseline="central",
+                         font_weight="bold"))
+    elif kind == "charm":
+        g.append(dw.Rectangle(bx, by, s, s,
+                              fill="none", stroke="#E95420",
+                              stroke_width=1.5, rx=3, ry=3))
+    elif kind == "record":
+        g.append(dw.Rectangle(bx, by, s, s,
+                              fill="#F9A825", stroke="none", rx=2, ry=2))
+        g.append(dw.Line(bx + 2.5, by + s / 2, bx + s - 2, by + s / 2,
+                         stroke="#FFFFFF", stroke_width=1.5))
+
 
 def _render_cardinality_badge(
     g: dw.Group,
@@ -1523,6 +1564,8 @@ def _render_ann_legend(
         display = ann.labels.get(ntype, ntype)
         g.append(dw.Rectangle(lx + _LEGEND_PAD, y, SWATCH_W, SWATCH_H,
                               fill=fill, stroke=stroke, stroke_width=1, rx=2, ry=2))
+        if style.badge:
+            _render_kind_badge(g, lx + _LEGEND_PAD, y, style.badge)
         g.append(dw.Text(display, 10, lx + TEXT_X, y + SWATCH_H / 2,
                          font_family=LABEL_FONT, fill=text_col,
                          dominant_baseline="central"))

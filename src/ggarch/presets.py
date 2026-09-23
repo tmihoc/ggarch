@@ -30,6 +30,10 @@ class NodeStyle:
     stroke_width: int = 1
     stroke_dash: str = ""      # "" | "4" | "2"
     border_radius: int = 4
+    badge: str = ""            # kind badge (round 24 verdict A): "" |
+                               # "juju" | "charm" | "record" — the ~14px
+                               # corner badge carries the semantic kind
+                               # (the person's icon is the precedent)
 
 
 @dataclass
@@ -71,10 +75,12 @@ _JUJU_LIGHT_NODES: dict[str, NodeStyle] = {
         fill="#F0F0F0", stroke="#777777", font_color="#444444", shape="person",
     ),
     "juju-software": NodeStyle(
-        fill="#E95420", stroke="#C74210", font_color="#FFFFFF",
+        fill="#F0F0F0", stroke="#C74210", font_color="#333333",
+        badge="juju",
     ),
     "charm": NodeStyle(
         fill="#F0F0F0", stroke="#E95420", font_color="#000000", stroke_width=2,
+        badge="charm",
     ),
     "workload": NodeStyle(
         fill="#F5F5F5", stroke="#AAAAAA", font_color="#444444",
@@ -103,6 +109,7 @@ _JUJU_LIGHT_NODES: dict[str, NodeStyle] = {
     "record": NodeStyle(
         fill="#FFFDE7", stroke="#F9A825", font_color="#333333",
         border_radius=2,
+        badge="record",
     ),
 }
 
@@ -132,10 +139,12 @@ _JUJU_DARK_NODES: dict[str, NodeStyle] = {
         fill="#252525", stroke="#999999", font_color="#CCCCCC", shape="person",
     ),
     "juju-software": NodeStyle(
-        fill="#E95420", stroke="#C74210", font_color="#FFFFFF",
+        fill="#2A2A3E", stroke="#E95420", font_color="#CDD6F4",
+        badge="juju",
     ),
     "charm": NodeStyle(
         fill="#252525", stroke="#E95420", font_color="#CDD6F4", stroke_width=2,
+        badge="charm",
     ),
     "workload": NodeStyle(
         fill="#2A2A2A", stroke="#666666", font_color="#CCCCCC",
@@ -164,6 +173,7 @@ _JUJU_DARK_NODES: dict[str, NodeStyle] = {
     "record": NodeStyle(
         fill="#2A2200", stroke="#F9A825", font_color="#FFE082",
         border_radius=2,
+        badge="record",
     ),
 }
 

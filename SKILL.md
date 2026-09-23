@@ -97,16 +97,20 @@ sequence "View name" from "Model Name" {
 
 | Type | Rendered as | Meaning |
 |---|---|---|
-| `juju-software` | Orange rect | Juju process or agent |
+| `juju-software` | Grey rect + Juju badge (orange "J") | Juju process or agent |
 | `container` | Warm orange tint, rounded | Juju-owned pod or machine |
-| `charm` | Grey rect, orange border | Charm code |
+| `charm` | Grey rect, orange border + empty badge | Charm code (external software wrapped in Juju packaging) |
 | `workload` | Gray rect | Application workload |
 | `pebble` | Light blue rect | Pebble supervisor |
 | `external` | Gray rect, solid border | Outside Juju's ownership |
 | `person` | Gray rect + head icon | Human actor |
 | `database` | Amber cylinder | Database or storage |
-| `record` | Amber table | Database record / ER row |
+| `record` | Amber table (+ record badge on plain records) | Database record / ER row |
 | `class` | Amber compartment | Class or component |
+
+Node kinds carry a ~14px corner badge (the person's head icon is the
+precedent); fills go light/grey across the board and the badge — not
+the fill — says what the node is (round 24, verdict A).
 
 Any string not in this list falls back to the default style. Custom node and
 edge types are defined in the `style` block:

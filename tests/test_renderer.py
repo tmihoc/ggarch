@@ -70,7 +70,7 @@ class TestNodeRendering:
         assert "Controller" in svg
         assert "Charm" in svg
 
-    def test_orange_fill_for_juju_software(self):
+    def test_juju_software_badge_stays_orange(self):
         svg = pipeline(SIMPLE)
         assert "#E95420" in svg
 
