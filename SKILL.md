@@ -278,6 +278,13 @@ stores exactly one directed fact per association: **which column holds
 the pointer** (child table's FK column → parent table's PK). A Data
 model view is a portrait of that fact -- nothing more, nothing less.
 
+Crow's-foot glyphs (round 24, verdict B): `data` edges whose label
+carries the cardinality vocabulary grow a multiplicity glyph at the
+TARGET end — a fork for many (`0..N`, `1..N`), a bar for one
+(`(one)`, `1:1`, `1..1`, `0..1`). The verb stays in the label (ADR-002);
+the glyph is draw-only (no anchor moves, the audit sees the same
+geometry).
+
 - Arrows run FK → PK: the only direction the storage layer states.
   Labels align to that arrow, child-first ("belongs to").
 - **Field badges are the count witnesses.** `fk:` (non-null) asserts

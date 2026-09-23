@@ -975,6 +975,57 @@ def _render_label(
 _KIND_BADGE_SIZE = 14
 
 
+def _crowfoot_kind(label: str) -> str:
+    """Verdict B (round 24): crow's-foot glyphs on data edges, parsed
+    from the existing cardinality label vocabulary — the multiplicity
+    becomes preattentive at the edge's far end instead of living only
+    in the label. Verbs stay as edge labels (ADR-002)."""
+    if not label:
+        return ""
+    if "0..N" in label or "1..N" in label:
+        return "many"
+    if "0..1" in label or "1..1" in label or "1:1" in label:
+        return "one"
+    if "(one" in label:
+        return "one"
+    return ""
+
+
+def _render_crowfoot(
+    g: dw.Group,
+    pts: list[tuple[float, float]],
+    kind: str,
+    stroke: str,
+) -> None:
+    """Draw the crow's-foot glyph at the TARGET end of the path: a
+    fork (three prongs spreading onto the target face) for many, a
+    single perpendicular bar for one. Draw-only idiom: no anchor
+    moves, no measurement changes, the audit sees the same geometry.
+    The arrowhead keeps the direction channel (ADR-004); the glyph
+    carries the multiplicity."""
+    if len(pts) < 2:
+        return
+    ex, ey = pts[-1]
+    px, py = pts[-2]
+    dx, dy = ex - px, ey - py
+    length = (dx * dx + dy * dy) ** 0.5
+    if length < 14:
+        return
+    ux, uy = dx / length, dy / length
+    nx, ny = -uy, ux
+    if kind == "many":
+        bx, by = ex - ux * 8, ey - uy * 8
+        for ox_, oy_ in ((nx * 4, ny * 4), (0.0, 0.0), (-nx * 4, -ny * 4)):
+            g.append(dw.Line(bx, by, ex + ox_, ey + oy_,
+                             stroke=stroke, stroke_width=1.2,
+                             stroke_linejoin="round"))
+    elif kind == "one":
+        bx, by = ex - ux * 8, ey - uy * 8
+        g.append(dw.Line(bx + nx * 4, by + ny * 4,
+                         bx - nx * 4, by - ny * 4,
+                         stroke=stroke, stroke_width=1.2))
+
+
 def _render_kind_badge(
     g: dw.Group,
     x: float,
@@ -1300,6 +1351,10 @@ def _render_edge(
 
     if not edge.label:
         return
+    if edge.edge_type == "data":
+        kind = _crowfoot_kind(edge.label)
+        if kind:
+            _render_crowfoot(g, pts, kind, es.stroke)
     draw_path_label(g, pts, edge.label, es.font_color,
                     anchor_frac=edge.label_anchor, bow=edge.bow,
                     label_side=edge.label_side)

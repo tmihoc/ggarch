@@ -697,3 +697,47 @@ class TestArrowheadChannel:
         assert re.search(
             r'<marker[^>]*id="arrow-open"[^>]*>.*?fill="none"', svg,
             re.DOTALL)
+
+
+# ---------------------------------------------------------------------------
+# Crow's-foot glyphs on data edges (verdict B, round 24)
+# ---------------------------------------------------------------------------
+
+class TestCrowfoot:
+    def test_crowfoot_parses_cardinality_vocabulary(self):
+        from ggarch.renderer import _crowfoot_kind
+        # many: the ..N vocabulary
+        assert _crowfoot_kind("hosts 0..N") == "many"
+        assert _crowfoot_kind("owns 0..N") == "many"
+        assert _crowfoot_kind("groups 1..N") == "many"
+        # one: the (one)/1:1/1..1/0..1 vocabulary
+        assert _crowfoot_kind("uses (one)") == "one"
+        assert _crowfoot_kind("runs on (one unit)") == "one"
+        assert _crowfoot_kind("marks the action (1:1)") == "one"
+        assert _crowfoot_kind("attaches 1..1") == "one"
+        assert _crowfoot_kind("belongs to 0..1") == "one"
+        # no vocabulary, no glyph
+        assert _crowfoot_kind("calls Pebble API") == ""
+        assert _crowfoot_kind("") == ""
+
+    def test_fork_draws_three_prongs(self):
+        from ggarch.renderer import _render_crowfoot
+        import drawsvg as dw
+        g = dw.Group()
+        _render_crowfoot(g, [(0, 0), (100, 0)], "many", "#F9A825")
+        # fork: three prong lines
+        assert len(g.children) == 3
+
+    def test_bar_draws_one_stroke(self):
+        from ggarch.renderer import _render_crowfoot
+        import drawsvg as dw
+        g = dw.Group()
+        _render_crowfoot(g, [(0, 0), (100, 0)], "one", "#F9A825")
+        assert len(g.children) == 1
+
+    def test_short_shaft_draws_nothing(self):
+        from ggarch.renderer import _render_crowfoot
+        import drawsvg as dw
+        g = dw.Group()
+        _render_crowfoot(g, [(0, 0), (5, 0)], "many", "#F9A825")
+        assert len(g.children) == 0
