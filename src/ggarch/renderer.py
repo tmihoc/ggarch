@@ -321,27 +321,43 @@ def render(
     # bottom row, a corridor-shifted leg beside its column, a label
     # rides above the stroke. Include every routed point and label
     # extent, or the canvas clips them (2026-09-19 review: the
-    # primary->lease U lost its bottom to the viewport).
+    # primary->lease U lost its bottom to the viewport). The extent is
+    # the MINIMUM above/left-bounds coordinate, taken once — the
+    # branch below is per-point MAX (idempotent), but the above/left
+    # shifts were per-point ADDITIVE: every corridor corner above the
+    # bounds re-added its full distance, inflating the canvas by
+    # (#points x depth) — the Databag permissions view carried a
+    # ~250px empty band at the top (reviewer round 25, measured
+    # oy=275 vs the needed ~96).
+    min_px = min((p.x for e in routed.edges for p in e.points),
+                 default=bounds.x)
+    min_py = min((p.y for e in routed.edges for p in e.points),
+                 default=bounds.y)
+    if min_px < bounds.x:
+        expand = bounds.x - min_px
+        vw += expand; ox += expand
+    if min_py < bounds.y:
+        expand = bounds.y - min_py
+        vh += expand; oy += expand
     for e in routed.edges:
         for p in e.points:
-            if p.x < bounds.x:
-                expand = bounds.x - p.x
-                vw += expand; ox += expand
-            if p.y < bounds.y:
-                expand = bounds.y - p.y
-                vh += expand; oy += expand
             if p.x > bounds.x + bounds.w:
                 vw = max(vw, p.x - bounds.x + MARGIN + left_extra)
             if p.y > bounds.y + bounds.h:
                 vh = max(vh, p.y - bounds.y + MARGIN + top_extra)
+    label_xs = [e.strip.label[0] for e in routed.edges
+                if e.strip is not None and e.strip.label is not None]
+    label_ys = [e.strip.label[1] for e in routed.edges
+                if e.strip is not None and e.strip.label is not None]
+    if label_xs and min(label_xs) < bounds.x:
+        expand = bounds.x - min(label_xs)
+        vw += expand; ox += expand
+    if label_ys and min(label_ys) < bounds.y:
+        expand = bounds.y - min(label_ys)
+        vh += expand; oy += expand
+    for e in routed.edges:
         if e.strip is not None and e.strip.label is not None:
-            lx, ly, lx2, ly2 = e.strip.label
-            if lx < bounds.x:
-                expand = bounds.x - lx
-                vw += expand; ox += expand
-            if ly < bounds.y:
-                expand = bounds.y - ly
-                vh += expand; oy += expand
+            lx2, ly2 = e.strip.label[2], e.strip.label[3]
             if lx2 > bounds.x + bounds.w:
                 vw = max(vw, lx2 - bounds.x + MARGIN + left_extra)
             if ly2 > bounds.y + bounds.h:
