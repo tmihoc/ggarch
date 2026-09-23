@@ -677,8 +677,63 @@ Model edges expand to the copies by **pairing**:
 Multiple `instances:` clauses accumulate (one per instanced type).
 Instances are view-local: they exist only in the view that declares
 them; the model holds the type. Known gap: specific declared pairs
-("only copy 1 to copy 2") cannot be expressed; view-level edges are the
-answer if a real case appears.
+("only copy 1 to copy 2") cannot be expressed; view-level edges are
+the answer if a real case appears.
+
+---
+
+## Diagrams in docs: placement and slideshows
+
+How views compose into the docs (ADR-010; ratified with the reviewer
+2026-09-23).
+
+**Placement — the diagram is a preview on top of the text.** A
+diagram (drawing + caption) sits at the TOP of its section, before
+the prose — a visual redundancy the reader previews, the
+GitHub-README pattern. Consequences:
+
+- Captions must be self-sufficient (no lead-in paragraph frames the
+  figure) and SHORT — the caption is the figure's voice, not a
+  second prose pass. The Databag permissions budget: max ~25% of the
+  narration you were tempted to write.
+- Connective prose survives — as body text UNDER the figures.
+- Source-path and symbol-name detail stays out of captions; it lives
+  in the model's ground pointers and the catalogue, not user docs.
+
+**Slideshows — the seed → mechanism → result grammar.** A diagram's
+role in an argument is one of three: the SEED (the ERD/data model —
+the records), the MECHANISM (the sequence — what turns intent into
+records), the RESULT (the topology — the settled state), optionally
+closed by a VERIFICATION beat (juju status: what you built is what
+status projects). The composition law is **shared node identity**:
+the sequence's actors ARE the topology's nodes; the records it
+writes ARE the ERD's entities. A slideshow is one world observed at
+three levels of abstraction.
+
+- One diagram per beat → a plain embed (the placement rule above).
+- Multiple beats in one spot → a `:slides:` carousel whose
+  `:slide-captions:` carry the per-slide connection (the reviewer's
+  bar: it must be obvious how consecutive slides relate).
+- Slides are filled only when the argument needs them: a bootstrap
+  pair is sequence → result (no ERD beat — bootstrap writes
+  controller records, not the model-DB records the data model
+  draws); a deploy quartet is seed → mechanism → result →
+  verification.
+
+**Section naming in the docs.** Entity reference pages carry layers
+(structure / mechanism / records / lifecycle):
+
+- Lifecycle sections are named for the event, entity-scoped (*Unit
+  removal*, *Relation creation*); activity titles stay in the
+  how-tos.
+- Lifecycle content groups under an `<Entity> lifecycle` umbrella
+  with event-named subsections — whenever the page carries lifecycle
+  content, never an empty scaffold (the secret.md precedent).
+- Title-announces-nesting is a default, not a law: keep the full
+  explicit title when the section must stand alone in search/AI
+  retrieval (*Hook execution guarantees* = h3 with its full name —
+  the title text is the retrieval surface, the level carries the
+  nesting).
 
 ---
 
