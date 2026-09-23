@@ -108,14 +108,17 @@ class _Transition:
 class _RoutedTransition:
     """A routed state transition, with the ADR-009 channels the
     diagram router's edges carry: a signed bow apex (mirrored arcs
-    for anti-parallel pairs) and an outside label side for pairs that
-    render straight."""
+    for anti-parallel pairs), an outside label side for pairs that
+    render straight, and the along-leg label anchor (the label-shift
+    pass; 0.5 = the midpoint)."""
     source: str
     target: str
     label: str
     pts: list[tuple[float, float]]
     bow: float = 0.0
     label_side: float = 0.0
+    anchor_frac: float = 0.5
+    strip: object = field(default=None, compare=False, repr=False)
 
 
 def _collect_transitions(steps: list, transitions: list[_Transition]) -> None:
@@ -236,6 +239,69 @@ def _assign_state_bows(
             break
 
 
+def _shift_state_labels(
+    routed: list[_RoutedTransition],
+    state_pos: dict[str, tuple[float, float]],
+    box_h: dict[str, int],
+) -> None:
+    """The diagram router's along-leg label shift, state-local
+    (round 24): a transition label clashing ANOTHER transition's
+    label — the Secret lifecycle's multi-way crossing fan (active ->
+    expiry-due, expiry-due -> removed, active -> removed share one
+    corridor) — slides ALONG its own leg to a frac whose label rect
+    clears every other transition's label and every third state's
+    box. A shift never CREATES a clash: the candidate loop only
+    accepts fracs clear of every other label (the router's
+    labels-never-overlap law); earlier transitions keep their
+    placements (a pair resolves by moving the later edge's label)."""
+    from ggarch.router import LABEL_SHIFT_FRACS
+
+    # Final strips: the bow assignment changed the swept geometry.
+    for t in routed:
+        if not t.label:
+            continue
+        t.strip = strip_for_edge(
+            t.pts, ROUTE_STROKE_W, "forward", t.label, t.anchor_frac,
+            bow=t.bow, label_side=t.label_side)
+
+    def _rect(sid: str) -> tuple:
+        cx, cy = state_pos[sid]
+        return (cx - STATE_W / 2, cy - STATE_H / 2,
+                cx + STATE_W / 2, cy - STATE_H / 2 + box_h[sid])
+
+    for t in routed:
+        if not t.label or t.strip is None or t.strip.label is None:
+            continue
+        strip = t.strip
+        clashing = any(
+            o is not strip and o.label is not None
+            and rects_overlap(strip.label, o.label)
+            for o in (x.strip for x in routed))
+        if not clashing:
+            clashing = any(
+                rects_overlap(strip.label, _rect(sid))
+                for sid in state_pos if sid not in (t.source, t.target))
+        if not clashing:
+            continue
+        for frac in LABEL_SHIFT_FRACS:
+            cand = strip_for_edge(
+                t.pts, ROUTE_STROKE_W, "forward", t.label, frac,
+                bow=t.bow, label_side=t.label_side)
+            if cand.label is None:
+                break
+            if any(o is not strip and o.label is not None
+                   and rects_overlap(cand.label, o.label)
+                   for o in (x.strip for x in routed)):
+                continue
+            if any(rects_overlap(cand.label, _rect(sid))
+                   for sid in state_pos
+                   if sid not in (t.source, t.target)):
+                continue
+            t.strip = cand
+            t.anchor_frac = frac
+            break
+
+
 def render_state(
     view: StateView,
     model: Model,
@@ -333,7 +399,8 @@ def render_state(
             pts_t, ROUTE_STROKE_W, "forward", t.label, 0.5,
             owner=f"{t.source}->{t.target}"))
         routed.append(_RoutedTransition(
-            t.source, t.target, t.label, pts_t))
+            t.source, t.target, t.label, pts_t,
+            strip=strips_done[-1]))
 
     # ADR-009 in the state view: anti-parallel straight pairs (the
     # active <-> rotate-due back-and-forth) draw as mirrored arcs so
@@ -342,6 +409,7 @@ def render_state(
     # colliding labels'). Vetoed pairs fall back to the straight
     # vocabulary with OUTSIDE label sides.
     _assign_state_bows(routed, state_pos, box_h)
+    _shift_state_labels(routed, state_pos, box_h)
 
     # Canvas: fit states, the init pseudostate, routed paths and their
     # label extents, with margin.
@@ -371,7 +439,7 @@ def render_state(
                     (ay0 + ay1) / 2 + ny * 2 * t.bow)
             _extend(apex[0] - 6, apex[1] - 6, apex[0] + 6, apex[1] + 6)
         if t.label:
-            lg = label_geometry(t.pts, t.label)
+            lg = label_geometry(t.pts, t.label, t.anchor_frac)
             _extend(lg.strip[0], lg.strip[1], lg.strip[2], lg.strip[3])
 
     _extend(MARGIN, MARGIN, MARGIN, MARGIN)
@@ -484,6 +552,7 @@ def render_state(
         if not t.label:
             continue
         draw_path_label(content, t.pts, t.label, text_color,
+                        anchor_frac=t.anchor_frac,
                         bow=t.bow, label_side=t.label_side)
 
     drawing.append(content)
