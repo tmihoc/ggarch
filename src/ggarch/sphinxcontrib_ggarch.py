@@ -385,7 +385,7 @@ figure.ggarch-figure figcaption {
 .ggarch-legend-line {
     display: inline-block;
     width: 28px;
-    height: 0;
+    height: 12px;
     flex-shrink: 0;
     vertical-align: middle;
 }
