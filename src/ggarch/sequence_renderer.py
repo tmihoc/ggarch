@@ -52,7 +52,9 @@ LIFELINE_LINE_H    = 16    # px — line height inside a header label
 LIFELINE_SPACING   = 60    # px — horizontal gap between lifeline columns
 STEP_HEIGHT        = 36    # px — vertical space per step row
 STEP_LEAD_IN       = int(STEP_HEIGHT * 1.5)  # px — header→first-arrow breathing room
-BLOCK_PAD          = 8     # px — padding inside loop/alt/opt/par regions
+BLOCK_PAD          = 24    # px — padding inside loop/alt/opt/par regions
+                                  # (round 24 V-item: 8 left block borders
+                                  # cutting arrowheads; ~24 clears them)
 MARGIN_TOP         = 20    # px
 MARGIN_SIDE        = 30    # px
 MARGIN_BOTTOM      = 30    # px

@@ -74,7 +74,7 @@ _JUJU_LIGHT_NODES: dict[str, NodeStyle] = {
         fill="#E95420", stroke="#C74210", font_color="#FFFFFF",
     ),
     "charm": NodeStyle(
-        fill="#FFFFFF", stroke="#E95420", font_color="#000000", stroke_width=2,
+        fill="#F0F0F0", stroke="#E95420", font_color="#000000", stroke_width=2,
     ),
     "workload": NodeStyle(
         fill="#F5F5F5", stroke="#AAAAAA", font_color="#444444",
@@ -135,7 +135,7 @@ _JUJU_DARK_NODES: dict[str, NodeStyle] = {
         fill="#E95420", stroke="#C74210", font_color="#FFFFFF",
     ),
     "charm": NodeStyle(
-        fill="#1E1E2E", stroke="#E95420", font_color="#CDD6F4", stroke_width=2,
+        fill="#252525", stroke="#E95420", font_color="#CDD6F4", stroke_width=2,
     ),
     "workload": NodeStyle(
         fill="#2A2A2A", stroke="#666666", font_color="#CCCCCC",

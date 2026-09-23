@@ -99,7 +99,7 @@ sequence "View name" from "Model Name" {
 |---|---|---|
 | `juju-software` | Orange rect | Juju process or agent |
 | `container` | Warm orange tint, rounded | Juju-owned pod or machine |
-| `charm` | White rect, orange border | Charm code |
+| `charm` | Grey rect, orange border | Charm code |
 | `workload` | Gray rect | Application workload |
 | `pebble` | Light blue rect | Pebble supervisor |
 | `external` | Gray rect, solid border | Outside Juju's ownership |
