@@ -30,7 +30,8 @@ from typing import Sequence
 
 import drawsvg as dw
 
-from ggarch.layout import FONT_SIZE, Rect, SolvedLayout, SolvedNode
+from ggarch.layout import (CHAR_WIDTH, FONT_SIZE, PADDING_X, Rect,
+                           SolvedLayout, SolvedNode)
 from ggarch.model import (
     AnnotationBadge,
     AnnotationBox,
@@ -756,11 +757,16 @@ def _render_box(
         rect_kwargs["stroke_dasharray"] = stroke_dash
     g.append(dw.Rectangle(x, y, w, h, **rect_kwargs))
 
+    # Shrink-to-fit (round 25, the metadata.md defect): a label whose
+    # longest manual line measurably overflows the box drops font size
+    # down to the LABEL_FLOOR floor — the box never grows.
+    fs = _fit_label_font(label, w - 2 * PADDING_X, style.font_size)
+
     if is_container:
         label_y = y + CONTAINER_PAD_TOP / 2
-        _render_label(g, x + w / 2, label_y, label, style)
+        _render_label(g, x + w / 2, label_y, label, style, font_size=fs)
     else:
-        _render_label(g, x + w / 2, y + h / 2, label, style)
+        _render_label(g, x + w / 2, y + h / 2, label, style, font_size=fs)
 
 
 def _render_structured_node(
@@ -958,6 +964,34 @@ def _render_cylinder(
     _render_label(g, x + w / 2, y + h / 2, label, style)
 
 
+LABEL_FLOOR = 9  # px — node-label shrink-to-fit floor (the edge-label size)
+
+# Sub-pixel estimator ties (the width model runs generous — 7.2px/char
+# against a real ~6.2px/char for 13px Ubuntu Sans) must not trigger a
+# shrink of their own.
+_FIT_TOLERANCE = 2.0  # px
+
+
+def _fit_label_font(label: str, avail_w: float, base_fs: float) -> float:
+    """Shrink-to-fit for node labels (round 25, the metadata.md defect).
+
+    When a node's label measurably overflows its box, reduce the label
+    font size until the longest manual line fits — down to a floor
+    (LABEL_FLOOR), never growing the box (sizing is content). Uses the
+    same CHAR_WIDTH convention the box sizing itself runs (7.2px/char at
+    the 13px base), so a label that fits its own size estimate never
+    triggers. Shared by topology boxes and sequence participant boxes.
+    """
+    lines = label.split("\\n")
+    longest = max((len(l) for l in lines), default=0)
+    if not longest:
+        return base_fs
+    need = longest * CHAR_WIDTH * base_fs / 13.0
+    if need <= avail_w + _FIT_TOLERANCE:
+        return base_fs
+    return max(LABEL_FLOOR, min(base_fs, base_fs * avail_w / need))
+
+
 def _render_label(
     g: dw.Group,
     cx: float,
@@ -966,15 +1000,17 @@ def _render_label(
     style: NodeStyle,
     anchor: str = "middle",
     baseline: str = "central",
+    font_size: float | None = None,
 ) -> None:
+    fs = style.font_size if font_size is None else font_size
     lines = label.split("\\n")
-    lh = style.font_size * 1.4
+    lh = fs * 1.4
     total_h = lh * len(lines)
     start_y = cy - total_h / 2 + lh * 0.5
     for i, line in enumerate(lines):
         g.append(dw.Text(
             line,
-            style.font_size,
+            fs,
             cx,
             start_y + i * lh,
             font_family=LABEL_FONT,
