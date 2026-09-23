@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
-     width="761.2" height="208.0" viewBox="0 0 761.2 208.0">
+     width="761.2" height="220.0" viewBox="0 0 761.2 220.0">
 <defs>
 <marker markerWidth="8" markerHeight="8" viewBox="0 0 8 8" orient="auto" id="arrow" refX="8" refY="4.0">
 <path d="M0,0 L8,4.0 L0,8 Z" fill="#555555" />
@@ -15,22 +15,28 @@
 <path d="M0,0 L8,4.0 L0,8" fill="none" stroke="#555555" stroke-width="1.5" />
 </marker>
 </defs>
-<rect x="0" y="0" width="761.2" height="208.0" fill="#FFFFFF" />
+<rect x="0" y="0" width="761.2" height="220.0" fill="#FFFFFF" />
 <g id="ggarch-nodes">
-<rect x="20.0" y="102.0" width="345.6" height="86.0" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="6" ry="6" />
+<rect x="20.0" y="102.0" width="345.6" height="98.0" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="6" ry="6" />
 <text x="192.8" y="116.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#5A2800" text-anchor="middle" dominant-baseline="central">postgresql/0</text>
-<rect x="36.0" y="130.0" width="104.0" height="42.0" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
-<text x="88.0" y="151.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Unit agent</text>
-<rect x="160.0" y="130.0" width="80.0" height="42.0" fill="#FFFFFF" stroke="#E95420" stroke-width="2" rx="4" ry="4" />
+<rect x="36.0" y="130.0" width="104.0" height="42.0" fill="#F0F0F0" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="88.0" y="151.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">Unit agent</text>
+<rect x="41.0" y="134.0" width="14" height="14" fill="#E95420" stroke="none" rx="3" ry="3" />
+<text x="48.0" y="141.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-weight="bold">J</text>
+<rect x="160.0" y="130.0" width="80.0" height="42.0" fill="#F0F0F0" stroke="#E95420" stroke-width="2" rx="4" ry="4" />
 <text x="200.0" y="151.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#000000" text-anchor="middle" dominant-baseline="central">Charm</text>
+<rect x="165.0" y="134.0" width="14" height="14" fill="none" stroke="#E95420" stroke-width="1.5" rx="3" ry="3" />
 <rect x="260.0" y="130.0" width="89.6" height="42.0" fill="#F5F5F5" stroke="#AAAAAA" stroke-width="1" rx="4" ry="4" />
 <text x="304.8" y="151.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">Workload</text>
-<rect x="395.6" y="102.0" width="345.6" height="86.0" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="6" ry="6" />
+<rect x="395.6" y="102.0" width="345.6" height="98.0" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="6" ry="6" />
 <text x="568.4000000000001" y="116.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#5A2800" text-anchor="middle" dominant-baseline="central">pgbouncer/0</text>
-<rect x="411.6" y="130.0" width="104.0" height="42.0" fill="#E95420" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
-<text x="463.6" y="151.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Unit agent</text>
-<rect x="535.6" y="130.0" width="80.0" height="42.0" fill="#FFFFFF" stroke="#E95420" stroke-width="2" rx="4" ry="4" />
+<rect x="411.6" y="130.0" width="104.0" height="42.0" fill="#F0F0F0" stroke="#C74210" stroke-width="1" rx="4" ry="4" />
+<text x="463.6" y="151.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#333333" text-anchor="middle" dominant-baseline="central">Unit agent</text>
+<rect x="416.6" y="134.0" width="14" height="14" fill="#E95420" stroke="none" rx="3" ry="3" />
+<text x="423.6" y="141.0" font-size="10" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" font-weight="bold">J</text>
+<rect x="535.6" y="130.0" width="80.0" height="42.0" fill="#F0F0F0" stroke="#E95420" stroke-width="2" rx="4" ry="4" />
 <text x="575.6" y="151.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#000000" text-anchor="middle" dominant-baseline="central">Charm</text>
+<rect x="540.6" y="134.0" width="14" height="14" fill="none" stroke="#E95420" stroke-width="1.5" rx="3" ry="3" />
 <rect x="635.6" y="130.0" width="89.6" height="42.0" fill="#F5F5F5" stroke="#AAAAAA" stroke-width="1" rx="4" ry="4" />
 <text x="680.4" y="151.0" font-size="13" font-family="'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif" fill="#444444" text-anchor="middle" dominant-baseline="central">Workload</text>
 <rect x="20.0" y="20.0" width="721.2" height="42.0" fill="#FFF3EE" stroke="#E0956A" stroke-width="1" rx="6" ry="6" />

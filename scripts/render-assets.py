@@ -35,6 +35,7 @@ import argparse
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -169,6 +170,48 @@ def render_assets(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------
 # Build GIF
 # ---------------------------------------------------------------------------
+
+def _rasterize(svg_path: pathlib.Path, png_path: pathlib.Path,
+               width: int, height: int) -> bool:
+    """Rasterize a slide SVG to PNG. Chromium first: cairosvg drops the
+    embedded figure's textPath edge labels and marker glyphs when a
+    diagram SVG is embedded raw in a slide (round-22 note: rasterize
+    via Chromium). Falls back to cairosvg when no Chromium is
+    available. Snap-confined Chromium cannot read /tmp, so slides go
+    through ~/.cache."""
+    chromium = (shutil.which("chromium")
+                or shutil.which("chromium-browser")
+                or shutil.which("google-chrome"))
+    if chromium:
+        # Snap-confined Chromium: hidden dirs (~/.cache) and /tmp are
+        # outside the home plug — use a non-hidden dir under home.
+        cache = pathlib.Path.home() / "ggarch-raster"
+        cache.mkdir(parents=True, exist_ok=True)
+        real_svg = cache / svg_path.name
+        real_png = cache / png_path.name
+        real_svg.write_text(svg_path.read_text(encoding="utf-8"),
+                            encoding="utf-8")
+        result = subprocess.run(
+            [chromium, "--headless", "--disable-gpu", "--no-sandbox",
+             "--hide-scrollbars", "--default-background-color=FFFFFFFF",
+             f"--screenshot={real_png}",
+             f"--window-size={width},{height}",
+             real_svg.as_uri()],
+            capture_output=True, timeout=120)
+        if result.returncode == 0 and real_png.exists():
+            shutil.copyfile(real_png, png_path)
+            return True
+        print(f"  chromium raster failed "
+              f"({result.stderr.decode(errors='ignore')[:200]}) "
+              f"-- cairosvg fallback", file=sys.stderr)
+    try:
+        import cairosvg
+    except ImportError:
+        return False
+    cairosvg.svg2png(url=str(svg_path), write_to=str(png_path),
+                     output_width=width, output_height=height)
+    return True
+
 
 def build_gif(assets_dir: pathlib.Path) -> None:
     try:
@@ -405,8 +448,10 @@ def build_gif(assets_dir: pathlib.Path) -> None:
             svg_path = pathlib.Path(tmp) / f"slide{i}.svg"
             png_path = pathlib.Path(tmp) / f"slide{i}.png"
             slide.save_svg(str(svg_path))
-            cairosvg.svg2png(url=str(svg_path), write_to=str(png_path),
-                             output_width=SLIDE_W, output_height=SLIDE_H)
+            if not _rasterize(svg_path, png_path, SLIDE_W, SLIDE_H):
+                print("no rasterizer available -- skipping GIF",
+                      file=sys.stderr)
+                return
             pngs.append(str(png_path))
 
         gif_path = assets_dir / "ggarch-demo.gif"

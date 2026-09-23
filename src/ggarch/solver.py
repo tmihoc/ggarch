@@ -586,6 +586,35 @@ def _synthesize_auto_layout(
                      and t not in fanned]
             if not sinks:
                 continue
+            if len(sinks) == 1 and len(ins.get(sinks[0], [])) > 1:
+                # Junction sink (round 24, attempt 3 — the feeder-fan
+                # build): a sink with MULTIPLE feeders is the chain's
+                # convergence, not this hub's satellite. Keep its
+                # Sugiyama column (do NOT pull west — measured: the
+                # pull inverts the schema chain, cloud_credential west
+                # of cloud/model) and fan the feeders that sit in the
+                # sink-adjacent column onto the sink's TOP face — the
+                # mirror of this very fan, per the reviewer-approved
+                # declared Credential chain (`fan [cloud_rec model_rec]
+                # above credential_rec`). The far feeder (e.g. user, a
+                # pure source) keeps the west seat. The fan fires only
+                # when >= 2 feeders share the adjacent column and none
+                # of the sink's feeders is row-claimed (the fan owns
+                # its members' rows).
+                sink = sinks[0]
+                feeders = [p for p in ins.get(sink, []) if p != h]
+                adjacent = [p for p in feeders
+                            if col.get(p) == col.get(sink) - 1
+                            and p not in fanned and p not in claimed_rows
+                            and p not in cycle]
+                if (len(adjacent) >= 2
+                        and not any(p in claimed_rows for p in feeders)):
+                    fan_cons.append(FanConstraint(
+                        members=adjacent, anchor=sink,
+                        direction="above", gap=56, spacing=20))
+                    fanned.update(adjacent)
+                    claimed_rows.update(adjacent)
+                continue
             for t in sinks:
                 col[t] = col[h]
             sink_spokes.update(sinks)

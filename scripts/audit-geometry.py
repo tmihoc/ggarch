@@ -397,14 +397,11 @@ def audit_file(path):
 # Named gate exemptions (traceability ratio only). Each entry carries
 # its reason and its owning item — the anchor-census precedent ("needs
 # its ADR-003 exemption or a layout fix before wiring into the gate").
-GATE_RATIO_EXEMPT_VIEWS = {
-    # The corrected 23-arrow permission matrix (reviewer round 24, V6)
-    # saturates the synthesized channel: two leader reads wrap around
-    # the canvas because the router will not cross edge strips. The
-    # DECLARED view passes (max-ratio 1.57). Owned by the
-    # plane-snapping / dense-web synthesis item (TODOS V5 queue).
-    "Databag permissions (synthesized)",
-}
+# The 'Databag permissions (synthesized)' exemption (round 24) is
+# REMOVED: the feeder-fan synthesis (junction sinks keep their
+# Sugiyama column; adjacent-column feeders fan above the sink) drops
+# its max-ratio to 1.27 with 0 >2x.
+GATE_RATIO_EXEMPT_VIEWS: set[str] = set()
 
 
 def main(paths=None, gate=False):
