@@ -153,7 +153,7 @@ def strip_rect(lg):
 
 def audit_file(path):
     f = parse(open(path).read())
-    validate(f, check_orphans=True)
+    validate(f, check_orphans=True, check_labels=True)
     report = {}
     for d in f.diagrams:
         m = f.get_model(d.model_name)

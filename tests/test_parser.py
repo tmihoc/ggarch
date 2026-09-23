@@ -676,6 +676,91 @@ diagram "D" from "M" {
         with pytest.raises(ValidationError, match="no edges"):
             validate(f, check_orphans=True)
 
+    # -- arrow-label intelligibility (reviewer round 24 V2: every
+    # -- arrow carries a label unless deliberately muted) --------------
+
+    def test_unlabelled_drawn_edge_rejected(self):
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+  }
+  edges { a -> b [type: api] }
+}
+diagram "D" from "M" {
+  select { nodes: a b }
+}
+"""
+        f = parse(src)
+        with pytest.raises(ValidationError, match="no label"):
+            validate(f, check_labels=True)
+
+    def test_labels_hidden_view_is_sanctioned(self):
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+  }
+  edges { a -> b [type: api] }
+}
+diagram "D" from "M" {
+  select {
+    nodes: a b
+    labels: hidden
+  }
+}
+"""
+        f = parse(src)
+        validate(f, check_labels=True)  # must not raise
+
+    def test_unlabelled_sequence_step_rejected(self):
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+  }
+  edges { a -> b [type: api, label: "x"] }
+  behaviours {
+    behaviour "b" {
+      a -> b: call
+    }
+  }
+}
+sequence "S" from "M" {
+  select { behaviour: "b" }
+}
+"""
+        f = parse(src)
+        with pytest.raises(ValidationError, match="no label"):
+            validate(f, check_labels=True)
+
+    def test_labelled_edge_and_step_pass(self):
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+  }
+  edges { a -> b [type: api, label: "calls"] }
+  behaviours {
+    behaviour "b" {
+      a -> b: call "do the thing"
+    }
+  }
+}
+diagram "D" from "M" {
+  select { nodes: a b }
+}
+sequence "S" from "M" {
+  select { behaviour: "b" }
+}
+"""
+        f = parse(src)
+        validate(f, check_labels=True)  # must not raise
+
 
 # ---------------------------------------------------------------------------
 # Integration — real juju.ggarch example

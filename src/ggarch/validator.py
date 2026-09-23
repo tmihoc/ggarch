@@ -29,7 +29,8 @@ from ggarch.model import (
 )
 
 
-def validate(f: GgarchFile, *, check_orphans: bool = False) -> None:
+def validate(f: GgarchFile, *, check_orphans: bool = False,
+             check_labels: bool = False) -> None:
     """Validate f in place. Raises ValidationError on the first problem
     found.
 
@@ -38,14 +39,23 @@ def validate(f: GgarchFile, *, check_orphans: bool = False) -> None:
     gate) and by audit-geometry.py --gate. Default off: the engine
     test suite builds geometry probes whose edge-less nodes are the
     point of the fixture, and adding edges to them would break the
-    measurements they assert."""
+    measurements they assert.
+
+    check_labels: the arrow-label intelligibility law (reviewer round
+    24, V2 — 'every arrow should have a label unless deliberately
+    removed to avoid overwhelm'): a drawn edge without a label is an
+    error; a view that declares `labels: hidden` is the sanctioned
+    exception (the model keeps the labels, the view mutes them).
+    Sequence steps: the same rule over the behaviour's arrows. Same
+    enforcement points as check_orphans; same default-off rationale."""
     for model in f.models:
         _validate_model(model)
     for diagram in f.diagrams:
         _validate_diagram_view(diagram, f,
-                               check_orphans=check_orphans)
+                               check_orphans=check_orphans,
+                               check_labels=check_labels)
     for seq in f.sequences:
-        _validate_sequence_view(seq, f)
+        _validate_sequence_view(seq, f, check_labels=check_labels)
     for state in f.states:
         _validate_state_view(state, f)
 
@@ -466,11 +476,14 @@ def _validate_constraints(
 
 
 def _validate_diagram_view(diagram: DiagramView, f: GgarchFile,
-                           *, check_orphans: bool = False) -> None:
+                           *, check_orphans: bool = False,
+                           check_labels: bool = False) -> None:
     model = _resolve_model(diagram.name, diagram.model_name, f)
     _validate_select(diagram.select, model, diagram.name)
     if check_orphans:
         _validate_orphans(diagram, model)
+    if check_labels:
+        _validate_labels(diagram, model)
     instance_ids = {spec.instance_id for spec in diagram.select.instances}
     # Include abstract ids resolvable in the environment as valid constraint targets.
     env_ids: set[str] = set()
@@ -536,6 +549,65 @@ def _validate_emphasize(diagram: DiagramView, model: Model) -> None:
         )
 
 
+def _resolve_drawn(diagram: DiagramView, model: Model):
+    """The view's drawn node/edge set, resolved the way the solver
+    draws it: except pairs and the edge-type filter apply to MODEL
+    edges BEFORE instance stamping (a type-id except — client -> cloud
+    — must also suppress its stamped copies), then instances stamp,
+    then the selection resolves. An edge draws only when BOTH
+    endpoints resolve into the selected set (the deepest top ancestor
+    on each side) and the two tops differ — self-edges and same-top
+    internal edges are never drawn.
+
+    Returns (nodes, [(edge, top_source, top_target), ...])."""
+    from dataclasses import replace as _dc_replace
+
+    from ggarch.instances import materialize_instances
+    from ggarch.solver import _selected_nodes
+
+    except_pairs = {(s, t, ty) for s, t, ty in diagram.select.except_pairs}
+    if except_pairs:
+        model = _dc_replace(model, edges=[
+            e for e in model.edges
+            if not any(e.source == es and e.target == et
+                       and (ty == "" or ty == e.type)
+                       for es, et, ty in except_pairs)])
+    mat_nodes, edges = materialize_instances(diagram.select, model)
+    nodes = _selected_nodes(diagram.select, model, mat_nodes)
+    types = (set(diagram.select.edge_types)
+             if diagram.select.edge_types else None)
+
+    top_set = {n.id for n in nodes}
+    parent: dict[str, str] = {}
+
+    def _walk(n) -> None:
+        for c in n.children:
+            parent[c.id] = n.id
+            _walk(c)
+
+    for n in nodes:
+        _walk(n)
+
+    def _top(nid: str) -> str | None:
+        chain = [nid]
+        while nid in parent:
+            nid = parent[nid]
+            chain.append(nid)
+        return chain[-1] if chain[-1] in top_set else None
+
+    drawn = []
+    for e in edges:
+        if e.source == e.target:
+            continue
+        if types is not None and e.type not in types:
+            continue
+        ts, tt = _top(e.source), _top(e.target)
+        if ts is None or tt is None or ts == tt:
+            continue
+        drawn.append((e, ts, tt))
+    return nodes, drawn
+
+
 def _validate_orphans(diagram: DiagramView, model: Model) -> None:
     """Everything connects (reviewer round 24, V4): a selected node
     whose whole subtree no drawn edge touches is an error — 'a diagram
@@ -549,26 +621,7 @@ def _validate_orphans(diagram: DiagramView, model: Model) -> None:
     connects both of its endpoints. Diagram views only: sequence
     lifelines and state-machine states are edge-connected by
     construction (every step is a declared edge)."""
-    from ggarch.instances import materialize_instances
-    from ggarch.solver import _selected_nodes
-
-    mat_nodes, edges = materialize_instances(diagram.select, model)
-    nodes = _selected_nodes(diagram.select, model, mat_nodes)
-    except_pairs = {(s, t, ty) for s, t, ty in diagram.select.except_pairs}
-    types = (set(diagram.select.edge_types)
-             if diagram.select.edge_types else None)
-
-    drawn = []
-    for e in edges:
-        if e.source == e.target:
-            continue
-        if types is not None and e.type not in types:
-            continue
-        if any(es == e.source and et == e.target
-               and (ty == "" or ty == e.type)
-               for es, et, ty in except_pairs):
-            continue
-        drawn.append(e)
+    nodes, drawn = _resolve_drawn(diagram, model)
 
     top_set = {n.id for n in nodes}
     parent: dict[str, str] = {}
@@ -589,10 +642,7 @@ def _validate_orphans(diagram: DiagramView, model: Model) -> None:
         return chain[-1] if chain[-1] in top_set else None
 
     touched: set[str] = set()
-    for e in drawn:
-        ts, tt = _top(e.source), _top(e.target)
-        if ts is None or tt is None or ts == tt:
-            continue
+    for _e, ts, tt in drawn:
         touched.add(ts)
         touched.add(tt)
 
@@ -634,9 +684,60 @@ def _walk_ids(node) -> list[str]:
     return out
 
 
-def _validate_sequence_view(seq: SequenceView, f: GgarchFile) -> None:
+def _validate_labels(diagram: DiagramView, model: Model) -> None:
+    """Arrow-label intelligibility (reviewer round 24, V2): every
+    drawn edge carries a label — 'every arrow should have a label
+    unless deliberately removed to avoid overwhelm'. The sanctioned
+    exception is `labels: hidden` (the model keeps the labels; the
+    view mutes them before routing), plus the tutorial reveal views
+    that use it. Runs on the same drawn-edge resolution as the orphan
+    check."""
+    if getattr(diagram.select, "hide_labels", False):
+        return
+    _nodes, drawn = _resolve_drawn(diagram, model)
+    for e, _ts, _tt in drawn:
+        if not e.label:
+            raise ValidationError(
+                f"view {diagram.name!r}: edge {e.source}->{e.target} "
+                f"({e.type!r}) draws with no label — every arrow "
+                f"carries a label unless the view deliberately mutes "
+                f"them",
+                hint="label the edge in the model (one verb, the "
+                     "coherent-sentence rule), or declare "
+                     "`labels: hidden` on the view if it is a "
+                     "deliberately muted view",
+            )
+
+
+def _validate_sequence_view(seq: SequenceView, f: GgarchFile,
+                            *, check_labels: bool = False) -> None:
     model = _resolve_model(seq.name, seq.model_name, f)
     _validate_select(seq.select, model, seq.name)
+    if check_labels:
+        behaviour = model.find_behaviour(seq.select.behaviour)
+        if behaviour is not None and not seq.select.participants:
+            _validate_step_labels(behaviour.steps, seq.name)
+
+
+def _validate_step_labels(steps: list, view_name: str) -> None:
+    """V2 over sequences: every message arrow prints a label (the
+    renderer draws bare arrows for label-less steps). Block branches
+    are walked so alt/loop bodies are covered."""
+    for item in steps:
+        if isinstance(item, Step):
+            if not item.label:
+                raise ValidationError(
+                    f"view {view_name!r}: behaviour step "
+                    f"{item.source} -> {item.target} "
+                    f"({item.kind.value}) has no label — every "
+                    f"sequence arrow carries one",
+                    hint="label the step with what crosses the arrow "
+                         "(the call's subject, the returned thing)",
+                )
+        elif isinstance(item, Block):
+            _validate_step_labels(item.body, view_name)
+            for _, branch in item.else_branches:
+                _validate_step_labels(branch, view_name)
 
 
 def _validate_state_view(state: StateView, f: GgarchFile) -> None:
