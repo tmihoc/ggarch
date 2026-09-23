@@ -1327,7 +1327,12 @@ def _port_sets(ordered, layout, fan_faces, pair_biased):
     groups: dict[tuple[str, str], list] = defaultdict(list)
     for edge, src_node, tgt_node in ordered:
         if (edge.source, edge.target) in fan_faces:
-            # declared fan: the author's face/spacing owns the ports
+            # declared/synthesized fan: the fan's vocabulary owns the
+            # ports — each spoke joins ITS member at the member's own
+            # centre (the census's fan-face class measures this by
+            # design; forcing symmetric hub-face slots measured worse:
+            # label-clashes 8 -> 12, strip-crossings 58 -> 61, >2x 0
+            # -> 3, and misses FARTHER off the sets — round 24).
             continue
         declared = fan_faces.get((edge.source, edge.target))
         for end, nid, mine, other in (

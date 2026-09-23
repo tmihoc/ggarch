@@ -166,6 +166,7 @@ def classify_view(d, f, m):
     # first EXPLAINED face (faces_of order = distance-then-name), the
     # primary face's verdict when none explains.
     port_sets = getattr(solved, "port_sets", {}) or {}
+    fan_machinery = getattr(solved, "fan_faces", {}) or {}
     fan_groups = collections.defaultdict(list)   # (node, side, sign) -> [rec]
     for rec in endpoints:
         if rec["side"] == "?":
@@ -195,7 +196,21 @@ def classify_view(d, f, m):
                 return SET_SLOT, ""
             return UNEXPLAINED, (f"off its symmetric set {pset} "
                                  f"(face {side})")
-        # 3. this end's face is a fan face (>=2 same-sign edges)?
+        # 3. this end's edge belongs to a FAN (declared FanConstraint
+        # or a synthesized plane fan — SolvedLayout.fan_faces):
+        # FAN-OWNED (round 24, two measured attempts): the fan
+        # machinery prices its hub-face anchors at SYMMETRIC ideals
+        # (center ± k*spacing/2) but the routes resolve them by
+        # cost — measured: FORCING the ideals as hard port sets
+        # regressed the corpus (label-clashes 8 -> 12,
+        # strip-crossings +3, >2x 0 -> 3), and a member-centre
+        # check is stricter still (91 vs 64) because members stack
+        # at label-driven spacings. Fan-owned anchors are a
+        # documented class: owned by the fan machinery's soft
+        # discipline (symmetric ideals, priced), never counted
+        # unexplained. Plain multi-edge faces stay under rules 5-6.
+        if (rec["source"], rec["target"]) in fan_machinery:
+            return FAN_SLOT, "fan-owned edge (hint-priced anchors)"
         own = fan_groups.get((nid, side, rec["end"]), [])
         if len(own) >= 2:
             if all(any(abs((mid * 2 - c) - m2) <= EPS for m2 in ms)
