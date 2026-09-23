@@ -181,29 +181,35 @@ def render_state(
     col_remap = {c: i for i, c in enumerate(used_cols)}
     col_of = {sid: col_remap[c] for sid, c in layer.items()}
 
-    slots: dict[int, int] = {}
-    slot_of: dict[str, int] = {}
-    for sid in state_ids:
-        slot_of[sid] = slots.get(col_of[sid], 0)
-        slots[col_of[sid]] = slot_of[sid] + 1
+    # Internal actions grow a state's box downward; the slots must
+    # stack with each state's OWN height (the old spacing assumed
+    # STATE_H and let tall boxes overlap the next slot — reviewer
+    # round 24 V3: 'overlaps').
+    actions_of = {sid: _collect_internal_actions(sid, behaviour.steps)
+                  for sid in state_ids}
+    box_h = {sid: STATE_H + len(a) * 14 for sid, a in actions_of.items()}
 
-    chain_cy = MARGIN + INIT_R * 2 + STATE_GAP_Y + STATE_H / 2
+    chain_cy = MARGIN + STATE_H / 2
     state_pos: dict[str, tuple[float, float]] = {}  # id -> (cx, cy)
+    col_next_cy: dict[int, float] = {}
+
+    def _col_cx(c: int) -> float:
+        return (MARGIN + INIT_R * 2 + STATE_GAP_X
+                + c * (STATE_W + STATE_GAP_X) + STATE_W / 2)
+
     for sid in state_ids:
-        cx = MARGIN + INIT_R * 2 + STATE_GAP_X \
-            + col_of[sid] * (STATE_W + STATE_GAP_X) + STATE_W / 2
-        cy = chain_cy + slot_of[sid] * (STATE_H + STATE_GAP_Y)
-        state_pos[sid] = (cx, cy)
+        c = col_of[sid]
+        cy = col_next_cy.get(c, chain_cy)
+        state_pos[sid] = (_col_cx(c), cy)
+        # Next slot's centre clears this box's bottom edge + the gap.
+        col_next_cy[c] = (cy - STATE_H / 2 + box_h[sid]
+                          + STATE_GAP_Y + STATE_H / 2)
 
     # -- Edge geometry ----------------------------------------------------
     # Transitions are routed strips (ADR-003): obstacle-aware search
     # over the other states' boxes, earlier transitions' strips included
     # (offsets emergent); labels ride the path (ADR-002). Computed
     # before the canvas so paths and label extents size the drawing.
-    actions_of = {sid: _collect_internal_actions(sid, behaviour.steps)
-                  for sid in state_ids}
-    box_h = {sid: STATE_H + len(a) * 14 for sid, a in actions_of.items()}
-
     def _state_rect(sid: str) -> Rect:
         cx, cy = state_pos[sid]
         return Rect(cx - STATE_W / 2, cy - STATE_H / 2, STATE_W, box_h[sid])
@@ -284,15 +290,22 @@ def render_state(
 
     content = dw.Group()
 
-    # Initial pseudostate: filled circle at top-left, arrow to first state.
-    init_cx = MARGIN + INIT_R
-    init_cy = MARGIN + INIT_R
-    content.append(dw.Circle(init_cx, init_cy, INIT_R, fill=arrow_color))
+    # Initial pseudostate: filled circle LEFT of the first state, one
+    # straight horizontal arrow into its west face (UML convention).
+    # The old top-corner dot drew a steep diagonal into the chain row
+    # (reviewer round 24 V3: 'funny-angle start-arrow').
     if state_ids:
         first_cx, first_cy = state_pos[state_ids[0]]
         first_left_x = first_cx - STATE_W / 2
+        init_cx = first_left_x - 2 * INIT_R - 20
+        init_cy = first_cy
+    else:
+        init_cx = MARGIN + INIT_R
+        init_cy = MARGIN + INIT_R
+    content.append(dw.Circle(init_cx, init_cy, INIT_R, fill=arrow_color))
+    if state_ids:
         content.append(dw.Line(
-            init_cx, init_cy + INIT_R,
+            init_cx + INIT_R, init_cy,
             first_left_x, first_cy,
             stroke=arrow_color, stroke_width=1.5,
             marker_end="url(#st-arrow)",
