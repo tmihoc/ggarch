@@ -102,7 +102,7 @@ def _quad_point(p0, p1, normal, bow, t):
 
 
 def label_geometry(points, label: str, anchor_frac: float = 0.5,
-                   bow: float = 0.0) -> LabelGeometry:
+                   bow: float = 0.0, label_side: float = 0.0) -> LabelGeometry:
     """Measure the along-path label an edge with `points` would draw.
 
     The label rides the longest leg; `anchor_frac` positions its
@@ -142,6 +142,13 @@ def label_geometry(points, label: str, anchor_frac: float = 0.5,
     # Text-local "above" (SVG y grows downward): quarter turn
     # counter-clockwise from the reading direction.
     up_x, up_y = uy, -ux
+    if label_side and not bow:
+        # Straight anti-parallel pair (reviewer round 22): the label
+        # rides the OUTSIDE lane — the pair assignment chose the side
+        # (the sign of the chord's world normal); the depth stacks
+        # along it instead of the reading-direction side.
+        nx, ny = _chord_normal((x0, y0), (x1, y1))
+        up_x, up_y = nx * label_side, ny * label_side
 
     budget = max(leg_len - LABEL_SIDE_PAD * 2, 1.0)
     max_chars = max(int(budget / LABEL_CHAR_W), 1)
@@ -480,6 +487,7 @@ def strip_for_edge(
     anchor_frac: float = 0.5,
     owner: str = "",
     bow: float = 0.0,
+    label_side: float = 0.0,
 ) -> Strip:
     """Build the strip a routed edge sweeps.
 
@@ -499,7 +507,8 @@ def strip_for_edge(
     cap = ARROWHEAD_SIZE / 2 + half_w
     label = None
     if label_text:
-        lg = label_geometry(points, label_text, anchor_frac, bow)
+        lg = label_geometry(points, label_text, anchor_frac, bow,
+                            label_side=label_side)
         label = lg.strip
     return Strip(
         points=pts,

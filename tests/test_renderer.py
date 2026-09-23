@@ -579,27 +579,20 @@ class TestAlongPathLabels:
             assert float(off) == pytest.approx(leg / 2, abs=3), (href, off, leg)
 
     def test_antiparallel_pair_strokes_bow_apart(self):
-        # ADR-009: the pair's strokes are mirrored arcs — each stroke's
-        # control point bows AWAY from the other's: the signed area
-        # (cross product) of (control - chord midpoint) against the
-        # chord direction is OPPOSITE for the two strokes.
+        # ADR-009 amended (reviewer round 22): an anti-parallel pair
+        # renders as TWO PARALLEL STRAIGHT strokes on the symmetric
+        # pair ports (mid ± PAIR_BIAS) — the "same look", with the
+        # labels riding the OUTSIDE lanes. No arcs.
         svg = pipeline(PAIR_SRC)
         edges = svg.split('id="ggarch-edges"')[1]
-        quads = [m for m in re.finditer(
-            r'<path[^>]*d="M ([\d.-]+) ([\d.-]+) Q ([\d.-]+) ([\d.-]+)'
-            r' ([\d.-]+) ([\d.-]+)"[^>]*>', edges)
+        lines = [m for m in re.finditer(
+            r'<path[^>]*d="M ([\d.-]+) ([\d.-]+) L ([\d.-]+) ([\d.-]+)"'
+            r'[^>]*>', edges)
             if "marker-end" in m.group(0)]
-        assert len(quads) == 2, quads
-        signs = []
-        for m in quads:
-            x0, y0, cx, cy = (float(m.group(1)), float(m.group(2)),
-                              float(m.group(3)), float(m.group(4)))
-            x1, y1 = float(m.group(5)), float(m.group(6))
-            mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
-            # World-space apex offset: the two arcs' bows oppose, so
-            # the strokes separate at mid-corridor.
-            signs.append(cy - my)
-        assert signs[0] * signs[1] < 0, signs
+        assert len(lines) == 2, lines
+        ys = sorted(float(m.group(2)) for m in lines)
+        # Both strokes horizontal, separated by 2*PAIR_BIAS = 12px.
+        assert ys[1] - ys[0] >= 10.0, ys
 
     def test_dashed_labelled_edge_keeps_one_dashed_path(self):
         # Dash rhythm is content: the pattern must never restart at a

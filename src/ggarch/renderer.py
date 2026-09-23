@@ -1091,6 +1091,7 @@ def draw_path_label(
     fill: str,
     anchor_frac: float = 0.5,
     bow: float = 0.0,
+    label_side: float = 0.0,
 ) -> None:
     """The label follows the arrow (ADR-002): one textPath per wrapped
     line, each on its own path translated perpendicular to the stroke —
@@ -1107,7 +1108,8 @@ def draw_path_label(
     bezier translated OUTWARD (the arc's convex side), so a bowed
     corridor pair's labels ride apart with their strokes.
     """
-    lg = label_geometry(pts, label, anchor_frac, bow)
+    lg = label_geometry(pts, label, anchor_frac, bow,
+                        label_side=label_side)
     lx0, ly0, lx1, ly1 = lg.leg
     if lg.mirror:
         # Read left-to-right (or top-to-bottom) on a right-to-left leg.
@@ -1125,6 +1127,14 @@ def draw_path_label(
         nx, ny = _chord_normal((gx0, gy0), (gx1, gy1))
         side = 1.0 if bow > 0 else -1.0
         px, py = nx * side, ny * side
+    elif label_side:
+        # Straight anti-parallel pair (reviewer round 22): the label
+        # stacks on the OUTSIDE lane — the side the pair assignment
+        # chose (the sign of the chord's world normal), overriding the
+        # default reading-direction side.
+        gx0, gy0, gx1, gy1 = lg.leg
+        nx, ny = _chord_normal((gx0, gy0), (gx1, gy1))
+        px, py = nx * label_side, ny * label_side
     # The geometric anchor maps to the mirrored path's own arc length;
     # a non-midpoint anchor flips with the mirror (a point at fraction
     # f from the original start is at 1-f from the mirrored start).
@@ -1250,7 +1260,8 @@ def _render_edge(
     if not edge.label:
         return
     draw_path_label(g, pts, edge.label, es.font_color,
-                    anchor_frac=edge.label_anchor, bow=edge.bow)
+                    anchor_frac=edge.label_anchor, bow=edge.bow,
+                    label_side=edge.label_side)
 
 
 # ---------------------------------------------------------------------------

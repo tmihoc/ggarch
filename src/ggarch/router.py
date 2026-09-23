@@ -212,6 +212,13 @@ class RoutedEdge:
     # "back and forth" pair draws as two shallow mirrored arcs so the
     # strokes AND their labels separate. 0 = the straight vocabulary.
     bow: float = 0.0
+    # Straight-pair label sides (reviewer round 22): for an
+    # anti-parallel pair that renders STRAIGHT (bow == 0), the two
+    # labels ride the OUTSIDE lanes — each edge's label stacks on the
+    # side of its chord AWAY from the pair's axis. -1/0/+1 = the sign
+    # of the world normal the label stacks along (0 = the default
+    # reading-direction side).
+    label_side: float = 0.0
 
     @property
     def start(self) -> Point:
@@ -1208,7 +1215,8 @@ def _edge_strip(points, edge, bow: float = 0.0, owner: str = "") -> Strip:
         tgt = getattr(edge, "target", None) or getattr(edge, "target_id", "?")
         owner = f"{src}->{tgt}"
     return strip_for_edge(pts, ROUTE_STROKE_W, edge.arrow, edge.label,
-                          0.5, owner=owner, bow=bow)
+                          0.5, owner=owner, bow=bow,
+                          label_side=getattr(edge, "label_side", 0.0))
 
 
 def _path_residuals(points, obstacles, strips, clear,
@@ -1347,13 +1355,53 @@ def _port_sets(ordered, layout, fan_faces, pair_biased):
         pair_same = (len(edges) == 2 and len(pair_edges) == 2
                      and pair_edges[0].source == pair_edges[1].target
                      and pair_edges[0].target == pair_edges[1].source)
+        # A shared-endpoint through-pair (both edges touch this face
+        # of the same node, one in, one out — the "back and forth"
+        # between two entities, measured: controller->machine0 +
+        # ma0->controller on the controller's east face) gets the same
+        # symmetric ±PAIR_BIAS treatment as a same-pair anti-parallel:
+        # both strokes parallel about the midpoint, 12px apart — the
+        # "same look" (reviewer round 22). The edges must leave to the
+        # same side (their other endpoints on one side of the face's
+        # plane); opposite-side second endpoints are NOT a through
+        # pair (traffic passes through the node).
+        if not pair_same and len(edges) == 2:
+            ends = {e.source == nid for e in edges}
+            if ends == {True, False}:
+                sides = set()
+                for e in edges:
+                    other_id = e.target if e.source == nid else e.source
+                    orect = layout.find(other_id)
+                    if orect is None:
+                        sides.add(None)
+                        break
+                    ocx = orect.rect.x + orect.rect.w / 2.0
+                    cy = r.y + r.h / 2.0
+                    cx = r.x + r.w / 2.0
+                    if face == "right":
+                        sides.add(ocx_ok := ocx > r.x2 - 0.5)
+                    elif face == "left":
+                        sides.add(ocx_ok := ocx < r.x + 0.5)
+                    elif face == "top":
+                        sides.add((orect.rect.y + orect.rect.h / 2.0)
+                                  < r.y + 0.5)
+                    else:
+                        sides.add((orect.rect.y + orect.rect.h / 2.0)
+                                  > r.y + r.h - 0.5)
+                if sides == {True}:
+                    pair_same = True
         if pair_same:
             d = PAIR_BIAS * 2.0
         else:
             d = min(PORT_GAP, usable / (len(edges) - 1))
             if d < 1.0:
                 d = 1.0
-        slots = [center]
+        # A pair face drops the CENTER slot: both strokes take the
+        # symmetric ±d/2 slots — the whole point of the pair is that
+        # neither stroke rides the axis (the "same look", reviewer
+        # round 22; the axis member rule (ADR-008) serves spine/align
+        # edges, and a through-pair has no align member).
+        slots = [] if pair_same else [center]
         if len(edges) % 2 == 1:
             for i in range(1, len(edges) // 2 + 1):
                 slots.append(center - i * d)
@@ -1838,6 +1886,19 @@ def _assign_bows(edges, layout) -> None:
                  + (p0b[1] - p0a[1]) * n1[1])
             if abs(t) > BOW_MAX_DIST:
                 continue
+            # Already-separated pairs (a through-pair's port slots put
+            # the anchors ±PAIR_BIAS about the shared face) don't need
+            # the bow: the strokes are already parallel and apart —
+            # bowing again doubles the separation and re-curves what
+            # the ports straightened (measured: the machine
+            # designations pair after the through-pair port fix).
+            t_start = ((p0b[0] - p0a[0]) * n1[0]
+                       + (p0b[1] - p0a[1]) * n1[1])
+            t_end = ((p1b[0] - p1a[0]) * n1[0]
+                     + (p1b[1] - p1a[1]) * n1[1])
+            if min(abs(t_start), abs(t_end)) >= 1.5 * PAIR_BIAS \
+                    and abs(t_start - t_end) < 4.0:
+                continue
             # Chord projections along d1 must overlap. e2 runs
             # ANTI-parallel: its projection goes backwards along d1 —
             # the interval is [s0 - l2, s0] (measured: the machine
@@ -1928,8 +1989,13 @@ def _assign_bows(edges, layout) -> None:
                     ok = False
             if not ok:
                 # Either member vetoed: revert both to the straight
-                # vocabulary — a half-bowed pair is worse than none.
+                # vocabulary — a half-bowed pair is worse than none —
+                # and give the straight pair OUTSIDE label sides
+                # (reviewer round 22: straight works too if the labels
+                # ride the outside lanes so they don't overlap).
                 e1.bow = e2.bow = 0.0
+                e1.label_side = _towards(away1, n1)
+                e2.label_side = _towards(away2, n2)
                 e1.strip = _edge_strip(
                     e1.points, e1, owner=f"{e1.source_id}->{e1.target_id}")
                 e2.strip = _edge_strip(
