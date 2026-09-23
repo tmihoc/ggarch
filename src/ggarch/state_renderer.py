@@ -38,19 +38,22 @@ from ggarch.model import (
 )
 
 from ggarch.presets import resolve_style
-from ggarch.geometry import label_geometry, strip_for_edge
+from ggarch.geometry import label_geometry, rects_overlap, strip_for_edge
 from ggarch.layout import Rect
 from ggarch.renderer import (
     ANNOTATION_FONT,
     ARROWHEAD_SIZE,
     LABEL_FONT,
-    _path_d,
+    _edge_path_d,
     draw_path_label,
 )
 from ggarch.router import (
+    BOW_MAX_DIST,
+    BOW_OFFSET,
     ROUTE_STROKE_W,
     _route_edge,
     _route_order,
+    _towards,
 )
 
 
@@ -101,6 +104,20 @@ class _Transition:
     label: str   # trigger [guard] / action
 
 
+@dataclass
+class _RoutedTransition:
+    """A routed state transition, with the ADR-009 channels the
+    diagram router's edges carry: a signed bow apex (mirrored arcs
+    for anti-parallel pairs) and an outside label side for pairs that
+    render straight."""
+    source: str
+    target: str
+    label: str
+    pts: list[tuple[float, float]]
+    bow: float = 0.0
+    label_side: float = 0.0
+
+
 def _collect_transitions(steps: list, transitions: list[_Transition]) -> None:
     """Recursively collect directed steps as transitions."""
     for item in steps:
@@ -139,6 +156,85 @@ def _collect_internal_actions(state_id: str, steps: list) -> list[str]:
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
+
+def _assign_state_bows(
+    routed: list[_RoutedTransition],
+    state_pos: dict[str, tuple[float, float]],
+    box_h: dict[str, int],
+) -> None:
+    """ADR-009 in the state view (round 24): anti-parallel straight
+    transition pairs — the active <-> rotate-due back-and-forth that
+    overprinted one stroke and collided its labels — draw as two
+    shallow mirrored arcs, each label riding its own arc's outer side.
+    The veto is state-local: a bowed label that would graze a
+    THIRD state's box reverts the pair to the straight vocabulary
+    with OUTSIDE label sides (the router's measured lesson: a
+    half-bowed pair is worse than none)."""
+    def _rect(sid: str):
+        cx, cy = state_pos[sid]
+        return (cx - STATE_W / 2, cy - STATE_H / 2,
+                cx + STATE_W / 2, cy - STATE_H / 2 + box_h[sid])
+
+    straight = [t for t in routed
+                if len(t.pts) == 2 and t.source != t.target]
+    info = []
+    for t in straight:
+        (x0, y0), (x1, y1) = t.pts
+        dx, dy = x1 - x0, y1 - y0
+        leg = math.hypot(dx, dy)
+        if leg < 1:
+            continue
+        info.append((t, (x0, y0), (x1, y1),
+                     (dx / leg, dy / leg), leg,
+                     (dy / leg, -dx / leg)))
+    done: set[int] = set()
+    for i in range(len(info)):
+        t1, p0a, p1a, d1, l1, n1 = info[i]
+        if id(t1) in done:
+            continue
+        for j in range(i + 1, len(info)):
+            t2, p0b, p1b, d2, l2, n2 = info[j]
+            if id(t2) in done:
+                continue
+            if d1[0] * d2[0] + d1[1] * d2[1] > -0.99:
+                continue  # not anti-parallel
+            tt = (p0b[0] - p0a[0]) * n1[0] + (p0b[1] - p0a[1]) * n1[1]
+            if abs(tt) > BOW_MAX_DIST:
+                continue
+            away1 = ((tt / abs(tt) if tt else 1.0) * n2[0],
+                     (tt / abs(tt) if tt else 1.0) * n2[1])
+            t2v = (p0a[0] - p0b[0]) * n2[0] + (p0a[1] - p0b[1]) * n2[1]
+            away2 = ((t2v / abs(t2v) if t2v else 1.0) * n1[0],
+                     (t2v / abs(t2v) if t2v else 1.0) * n1[1])
+            t1.bow = BOW_OFFSET * _towards(away1, n1)
+            t2.bow = BOW_OFFSET * _towards(away2, n2)
+            # Veto: the bowed label must stay clear of every third
+            # state's box (the endpoints' own boxes are by design).
+            ok = True
+            for t in (t1, t2):
+                if not t.bow:
+                    continue
+                strip = strip_for_edge(
+                    t.pts, ROUTE_STROKE_W, "forward", t.label, 0.5,
+                    bow=t.bow, label_side=t.label_side)
+                if strip.label is not None:
+                    lb = (strip.label[0], strip.label[1],
+                          strip.label[2], strip.label[3])
+                    for sid in state_pos:
+                        if sid in (t.source, t.target):
+                            continue
+                        if rects_overlap(lb, _rect(sid)):
+                            ok = False
+                            break
+                if not ok:
+                    break
+            if not ok:
+                t1.bow = t2.bow = 0.0
+                t1.label_side = _towards(away1, n1)
+                t2.label_side = _towards(away2, n2)
+            done.update((id(t1), id(t2)))
+            break
+
 
 def render_state(
     view: StateView,
@@ -218,7 +314,7 @@ def render_state(
         r = _state_rect(sid)
         return (r.x, r.y, r.x2, r.y2)
 
-    routed: list[tuple[str, str, str, list[tuple[float, float]]]] = []
+    routed: list[_RoutedTransition] = []
     strips_done = []
     ordered = _route_order([
         (t, _state_rect(t.source), _state_rect(t.target))
@@ -236,7 +332,16 @@ def render_state(
         strips_done.append(strip_for_edge(
             pts_t, ROUTE_STROKE_W, "forward", t.label, 0.5,
             owner=f"{t.source}->{t.target}"))
-        routed.append((t.source, t.target, t.label, pts_t))
+        routed.append(_RoutedTransition(
+            t.source, t.target, t.label, pts_t))
+
+    # ADR-009 in the state view: anti-parallel straight pairs (the
+    # active <-> rotate-due back-and-forth) draw as mirrored arcs so
+    # the strokes AND their riding labels separate — the diagram
+    # router's vocabulary (round 24: 'overprinted strokes and
+    # colliding labels'). Vetoed pairs fall back to the straight
+    # vocabulary with OUTSIDE label sides.
+    _assign_state_bows(routed, state_pos, box_h)
 
     # Canvas: fit states, the init pseudostate, routed paths and their
     # label extents, with margin.
@@ -252,12 +357,21 @@ def render_state(
         cx, cy = state_pos[sid]
         _extend(cx - STATE_W / 2, cy - STATE_H / 2,
                 cx + STATE_W / 2 + 8, cy - STATE_H / 2 + box_h[sid])
-    for _s, _t, label, pts_t in routed:
-        xs = [p[0] for p in pts_t]
-        ys = [p[1] for p in pts_t]
+    for t in routed:
+        xs = [p[0] for p in t.pts]
+        ys = [p[1] for p in t.pts]
         _extend(min(xs), min(ys), max(xs), max(ys))
-        if label:
-            lg = label_geometry(pts_t, label)
+        if t.bow:
+            # The arc deviates from the chord: sweep the apex.
+            (ax0, ay0), (ax1, ay1) = t.pts
+            nx, ny = -((ax1 - ax0) or 1e-9), ((ax1 - ax0) or 1e-9)
+            ln = (nx * nx + ny * ny) ** 0.5
+            nx, ny = nx / ln, ny / ln
+            apex = ((ax0 + ax1) / 2 + nx * 2 * t.bow,
+                    (ay0 + ay1) / 2 + ny * 2 * t.bow)
+            _extend(apex[0] - 6, apex[1] - 6, apex[0] + 6, apex[1] + 6)
+        if t.label:
+            lg = label_geometry(t.pts, t.label)
             _extend(lg.strip[0], lg.strip[1], lg.strip[2], lg.strip[3])
 
     _extend(MARGIN, MARGIN, MARGIN, MARGIN)
@@ -269,8 +383,8 @@ def render_state(
     if pad_x or pad_y:
         state_pos = {s: (cx + pad_x, cy + pad_y)
                      for s, (cx, cy) in state_pos.items()}
-        routed = [(s, t, lbl, [(x + pad_x, y + pad_y) for x, y in pts_t])
-                  for s, t, lbl, pts_t in routed]
+        for t in routed:
+            t.pts = [(x + pad_x, y + pad_y) for x, y in t.pts]
 
     bg = "#1E1E2E" if dark else "#FFFFFF"
     text_color = "#CDD6F4" if dark else "#333333"
@@ -359,17 +473,18 @@ def render_state(
 
     # Transitions (replayed from the routed geometry): the stroke is
     # content — paths first, then labels riding their own strokes.
-    for _s, _t, label, pts_t in routed:
+    for t in routed:
         content.append(dw.Path(
-            d=_path_d(pts_t), fill="none",
+            d=_edge_path_d(t.pts, t.bow), fill="none",
             stroke=arrow_color, stroke_width=1.5,
             marker_end="url(#st-arrow)",
             stroke_linejoin="round",
         ))
-    for _s, _t, label, pts_t in routed:
-        if not label:
+    for t in routed:
+        if not t.label:
             continue
-        draw_path_label(content, pts_t, label, text_color)
+        draw_path_label(content, t.pts, t.label, text_color,
+                        bow=t.bow, label_side=t.label_side)
 
     drawing.append(content)
     return drawing.as_svg()
