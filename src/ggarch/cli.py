@@ -70,7 +70,7 @@ def main() -> None:
     source = args.file.read_text(encoding="utf-8")
     try:
         f = parse(source)
-        validate(f)
+        validate(f, check_orphans=True)
     except GgarchError as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)

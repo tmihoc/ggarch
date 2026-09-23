@@ -309,7 +309,7 @@ model "M" {
     }
     b [type: t, label: "B"]
   }
-  edges {}
+  edges { a -> b [type: api, label: "x"] }
 }
 diagram "D" from "M" {
   select {
@@ -487,7 +487,194 @@ model "M" {
 }
 """
         f = parse(src)
-        validate(f)  # must not raise
+        validate(f, check_orphans=True)  # must not raise
+
+    # -- orphan nodes (reviewer round 24 V4: a diagram means everything
+    # -- is connected) -------------------------------------------------
+
+    def test_orphan_node_rejected(self):
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+    c [type: t, label: "C"]
+  }
+  edges { a -> b [type: api, label: "x"] }
+}
+diagram "D" from "M" {
+  select { nodes: a b c }
+}
+"""
+        f = parse(src)
+        with pytest.raises(ValidationError, match="no edges"):
+            validate(f, check_orphans=True)
+
+    def test_orphan_node_rejected_message_names_node(self):
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+    lonely [type: t, label: "L"]
+  }
+  edges { a -> b [type: api, label: "x"] }
+}
+diagram "D" from "M" {
+  select { nodes: a b lonely }
+}
+"""
+        f = parse(src)
+        with pytest.raises(ValidationError, match="lonely"):
+            validate(f, check_orphans=True)
+
+    def test_connected_view_passes(self):
+        f = parse(MINIMAL_MODEL + """\
+diagram "D" from "Sys" {
+  select { nodes: a b }
+}
+""")
+        validate(f, check_orphans=True)  # must not raise
+
+    def test_container_connected_through_child(self):
+        """Tree-resolved: a container counts as connected when an edge
+        touches any of its children."""
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    k [type: container, label: "K"] {
+      k1 [type: t, label: "K1"]
+    }
+  }
+  edges { a -> k1 [type: api, label: "x"] }
+}
+diagram "D" from "M" {
+  select { nodes: a k }
+}
+"""
+        f = parse(src)
+        validate(f, check_orphans=True)  # must not raise: k connects through k1
+
+    def test_edgeless_container_rejected(self):
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+    k [type: container, label: "K"] {
+      k1 [type: t, label: "K1"]
+    }
+  }
+  edges { a -> b [type: api, label: "x"] }
+}
+diagram "D" from "M" {
+  select { nodes: a b k }
+}
+"""
+        f = parse(src)
+        with pytest.raises(ValidationError, match=r"\bk\b"):
+            validate(f, check_orphans=True)
+
+    def test_orphan_detected_through_type_filter(self):
+        """The view's edge-type filter decides what counts: an edge the
+        view does not draw cannot connect its endpoints."""
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+    c [type: t, label: "C"]
+  }
+  edges {
+    a -> b [type: api, label: "x"]
+    c -> b [type: ipc, label: "y"]
+  }
+}
+diagram "D" from "M" {
+  select {
+    nodes: a b c
+    edges: type api
+  }
+}
+"""
+        f = parse(src)
+        with pytest.raises(ValidationError, match=r"\bc\b"):
+            validate(f, check_orphans=True)
+
+    def test_except_pair_cannot_create_orphan(self):
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A"]
+    b [type: t, label: "B"]
+  }
+  edges { a -> b [type: api, label: "x"] }
+}
+diagram "D" from "M" {
+  select {
+    nodes: a b
+    except: a -> b
+  }
+}
+"""
+        f = parse(src)
+        with pytest.raises(ValidationError, match="no edges"):
+            validate(f, check_orphans=True)
+
+    def test_hidden_node_with_edges_not_orphan(self):
+        """The progressive reveal: hidden elements print at 0 opacity
+        but stay part of the picture — their edges count."""
+        src = MINIMAL_MODEL + """\
+diagram "D" from "Sys" {
+  select {
+    nodes: a b
+    hidden: b
+  }
+}
+"""
+        f = parse(src)
+        validate(f, check_orphans=True)  # must not raise: a -> b still connects both
+
+    def test_records_bridge_connects_both_ends(self):
+        """ADR-005: with records: shown, the synthetic bridge connects
+        the recorded node and its record even with no model edge."""
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A", records: r]
+    r [type: record, label: "R"]
+  }
+  edges {}
+}
+diagram "D" from "M" {
+  select {
+    nodes: a r
+    records: shown
+  }
+}
+"""
+        f = parse(src)
+        validate(f, check_orphans=True)  # must not raise: the bridge is the connection
+
+    def test_record_without_bridge_or_edges_rejected(self):
+        src = """\
+model "M" {
+  nodes {
+    a [type: t, label: "A", records: r]
+    r [type: record, label: "R"]
+  }
+  edges {}
+}
+diagram "D" from "M" {
+  select { nodes: a r }
+}
+"""
+        f = parse(src)
+        # a has no edges either (the records bridge is only drawn when
+        # records: shown); a is flagged first (declaration order).
+        with pytest.raises(ValidationError, match="no edges"):
+            validate(f, check_orphans=True)
 
 
 # ---------------------------------------------------------------------------
@@ -499,7 +686,7 @@ class TestJujuExample:
         from pathlib import Path
         example = Path(__file__).parent.parent / "examples" / "topology.ggarch"
         src = example.read_text(encoding="utf-8")
-        f = parse_valid(src)
+        f = parse(src)
         assert len(f.models) == 1
         m = f.models[0]
         assert m.name == "Juju"
@@ -508,7 +695,7 @@ class TestJujuExample:
         from pathlib import Path
         example = Path(__file__).parent.parent / "examples" / "topology.ggarch"
         src = example.read_text(encoding="utf-8")
-        f = parse_valid(src)
+        f = parse(src)
         m = f.models[0]
         node_ids = m.all_node_ids()
         for expected in ("controller_pod", "unit_pod",
@@ -520,7 +707,7 @@ class TestJujuExample:
         from pathlib import Path
         example = Path(__file__).parent.parent / "examples" / "topology.ggarch"
         src = example.read_text(encoding="utf-8")
-        f = parse_valid(src)
+        f = parse(src)
         # topology.ggarch is a pure topology model — behaviours live in sequence.ggarch
         assert len(f.models[0].behaviours) == 0
 
@@ -528,7 +715,7 @@ class TestJujuExample:
         from pathlib import Path
         example = Path(__file__).parent.parent / "examples" / "topology.ggarch"
         src = example.read_text(encoding="utf-8")
-        f = parse_valid(src)
+        f = parse(src)
         names = {d.name for d in f.diagrams}
         assert "K8s deployment topology" in names
         assert "Unit focus" in names
@@ -537,7 +724,7 @@ class TestJujuExample:
         from pathlib import Path
         example = Path(__file__).parent.parent / "examples" / "sequence.ggarch"
         src = example.read_text(encoding="utf-8")
-        f = parse_valid(src)
+        f = parse(src)
         names = {s.name for s in f.sequences}
         assert "Hook execution" in names
         assert "Bootstrap K8s" in names
@@ -554,7 +741,7 @@ model "M" {
   edges {}
 }
 """
-        f = parse_valid(src)
+        f = parse(src)
         ua = f.models[0].find_node("ua")
         assert ua is not None
         assert ua.records == "unit_rec"
@@ -570,7 +757,7 @@ model "M" {
 """
         f = parse(src)
         with pytest.raises(ValidationError):
-            validate(f)
+            validate(f, check_orphans=True)
 
     def test_records_target_must_be_record_type(self):
         src = """\
@@ -584,7 +771,7 @@ model "M" {
 """
         f = parse(src)
         with pytest.raises(ValidationError):
-            validate(f)
+            validate(f, check_orphans=True)
 
     def test_records_chip_renders(self):
         from ggarch import solve, route, render
@@ -606,7 +793,7 @@ diagram "D" from "M" {
   }
 }
 """
-        f = parse_valid(src)
+        f = parse(src)
         d = f.diagrams[0]
         m = f.get_model(d.model_name)
         svg = render(route(solve(d, m), m, d.select), m, d)
@@ -632,7 +819,7 @@ diagram "D" from "M" {
 """
         f = parse(src)
         with pytest.raises(ValidationError, match="aip"):
-            validate(f)
+            validate(f, check_orphans=True)
 
     def test_styled_custom_edge_type_accepted(self):
         src = """\
@@ -647,4 +834,4 @@ diagram "D" from "M" {
 }
 """
         f = parse(src)
-        validate(f)  # must not raise
+        validate(f, check_orphans=True)  # must not raise

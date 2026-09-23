@@ -29,12 +29,21 @@ from ggarch.model import (
 )
 
 
-def validate(f: GgarchFile) -> None:
-    """Validate f in place. Raises ValidationError on the first problem found."""
+def validate(f: GgarchFile, *, check_orphans: bool = False) -> None:
+    """Validate f in place. Raises ValidationError on the first problem
+    found.
+
+    check_orphans: the everything-connects law (reviewer round 24, V4)
+    binds product views — it is enforced by `ggarch check` (the docs
+    gate) and by audit-geometry.py --gate. Default off: the engine
+    test suite builds geometry probes whose edge-less nodes are the
+    point of the fixture, and adding edges to them would break the
+    measurements they assert."""
     for model in f.models:
         _validate_model(model)
     for diagram in f.diagrams:
-        _validate_diagram_view(diagram, f)
+        _validate_diagram_view(diagram, f,
+                               check_orphans=check_orphans)
     for seq in f.sequences:
         _validate_sequence_view(seq, f)
     for state in f.states:
@@ -456,9 +465,12 @@ def _validate_constraints(
                 )
 
 
-def _validate_diagram_view(diagram: DiagramView, f: GgarchFile) -> None:
+def _validate_diagram_view(diagram: DiagramView, f: GgarchFile,
+                           *, check_orphans: bool = False) -> None:
     model = _resolve_model(diagram.name, diagram.model_name, f)
     _validate_select(diagram.select, model, diagram.name)
+    if check_orphans:
+        _validate_orphans(diagram, model)
     instance_ids = {spec.instance_id for spec in diagram.select.instances}
     # Include abstract ids resolvable in the environment as valid constraint targets.
     env_ids: set[str] = set()
@@ -522,6 +534,104 @@ def _validate_emphasize(diagram: DiagramView, model: Model) -> None:
         raise ValidationError(
             f"view {view_name!r}: emphasize path visits a node twice",
         )
+
+
+def _validate_orphans(diagram: DiagramView, model: Model) -> None:
+    """Everything connects (reviewer round 24, V4): a selected node
+    whose whole subtree no drawn edge touches is an error — 'a diagram
+    means everything is connected'. Tree-resolved, like the measured
+    orphan scan: containers count as connected through their children
+    (an edge touching any subtree member touches the subtree's top).
+    The view's own curation applies: the edge-type filter and except
+    pairs decide which edges count, and edges the solver does not draw
+    (self-edges, same-top internal edges) do not count. The ADR-005
+    records bridge (records: shown) is a synthetic drawn edge and
+    connects both of its endpoints. Diagram views only: sequence
+    lifelines and state-machine states are edge-connected by
+    construction (every step is a declared edge)."""
+    from ggarch.instances import materialize_instances
+    from ggarch.solver import _selected_nodes
+
+    mat_nodes, edges = materialize_instances(diagram.select, model)
+    nodes = _selected_nodes(diagram.select, model, mat_nodes)
+    except_pairs = {(s, t, ty) for s, t, ty in diagram.select.except_pairs}
+    types = (set(diagram.select.edge_types)
+             if diagram.select.edge_types else None)
+
+    drawn = []
+    for e in edges:
+        if e.source == e.target:
+            continue
+        if types is not None and e.type not in types:
+            continue
+        if any(es == e.source and et == e.target
+               and (ty == "" or ty == e.type)
+               for es, et, ty in except_pairs):
+            continue
+        drawn.append(e)
+
+    top_set = {n.id for n in nodes}
+    parent: dict[str, str] = {}
+
+    def _walk(n) -> None:
+        for c in n.children:
+            parent[c.id] = n.id
+            _walk(c)
+
+    for n in nodes:
+        _walk(n)
+
+    def _top(nid: str) -> str | None:
+        chain = [nid]
+        while nid in parent:
+            nid = parent[nid]
+            chain.append(nid)
+        return chain[-1] if chain[-1] in top_set else None
+
+    touched: set[str] = set()
+    for e in drawn:
+        ts, tt = _top(e.source), _top(e.target)
+        if ts is None or tt is None or ts == tt:
+            continue
+        touched.add(ts)
+        touched.add(tt)
+
+    if getattr(diagram.select, "show_records", False):
+        # ADR-005: one synthetic bridge per recorded node whose record
+        # node is present — the bridge connects both endpoints.
+        all_ids: set[str] = set()
+        for n in nodes:
+            all_ids.update(_walk_ids(n))
+        for n in nodes:
+            stack = [n]
+            while stack:
+                cur = stack.pop()
+                stack.extend(cur.children)
+                rec = cur.records
+                if not rec or rec == cur.id or rec not in all_ids:
+                    continue
+                touched.add(cur.id)
+                rec_top = _top(rec)
+                if rec_top:
+                    touched.add(rec_top)
+
+    for n in nodes:
+        if n.id not in touched:
+            raise ValidationError(
+                f"view {diagram.name!r}: node {n.id!r} (with its whole "
+                f"subtree) has no edges in this view — a diagram means "
+                f"everything is connected",
+                hint="declare the edge that involves the node, remove "
+                     "it from the select, or drop the view if the node "
+                     "belongs to another story",
+            )
+
+
+def _walk_ids(node) -> list[str]:
+    out = [node.id]
+    for c in node.children:
+        out.extend(_walk_ids(c))
+    return out
 
 
 def _validate_sequence_view(seq: SequenceView, f: GgarchFile) -> None:
