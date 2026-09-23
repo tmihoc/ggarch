@@ -38,6 +38,7 @@ from ggarch.renderer import (
     LABEL_FONT,
     _render_box,
     _render_cylinder,
+    _render_kind_badge,
     _render_person,
 )
 
@@ -281,6 +282,12 @@ def _render_participant_box(
         _render_cylinder(g, x, top, LIFELINE_WIDTH, h, style, label)
     else:
         _render_box(g, x, top, LIFELINE_WIDTH, h, style, label, lifecycle)
+    if style.badge:
+        # The kind badge is half the node's visual identity (round 24
+        # verdict A); without it the only kind cue on a lifeline box is
+        # the border hue — two oranges ~90% identical (#C74210 vs
+        # #E95420) that read as noise, not distinction.
+        _render_kind_badge(g, x, top, style.badge)
 
 
 
