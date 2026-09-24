@@ -1714,15 +1714,20 @@ def _render_ann_legend(
         mid_y = y + SWATCH_H / 2
         g.append(dw.Line(lx + _LEGEND_PAD, mid_y,
                          lx + _LEGEND_PAD + SWATCH_W, mid_y, **line_kwargs))
-        # Arrowhead nub.
+        # Arrowhead nub — mirrors the arrowhead channel (ADR-004):
+        # filled (committed), open (fire-and-forget V), hollow
+        # (generalization triangle, background-filled), none (bare line).
         ah = 5
-        g.append(dw.Lines(
-            lx + _LEGEND_PAD + SWATCH_W - ah, mid_y - ah / 2,
-            lx + _LEGEND_PAD + SWATCH_W,      mid_y,
-            lx + _LEGEND_PAD + SWATCH_W - ah, mid_y + ah / 2,
-            fill=es.stroke, close=False,
-            stroke=es.stroke, stroke_width=es.stroke_width,
-        ))
+        if es.arrowhead != "none":
+            nub_fill = {"filled": es.stroke,
+                        "hollow": bg}.get(es.arrowhead, "none")
+            g.append(dw.Lines(
+                lx + _LEGEND_PAD + SWATCH_W - ah, mid_y - ah / 2,
+                lx + _LEGEND_PAD + SWATCH_W,      mid_y,
+                lx + _LEGEND_PAD + SWATCH_W - ah, mid_y + ah / 2,
+                fill=nub_fill, close=(es.arrowhead == "hollow"),
+                stroke=es.stroke, stroke_width=es.stroke_width,
+            ))
         g.append(dw.Text(display, 10, lx + TEXT_X, mid_y,
                          font_family=LABEL_FONT, fill=text_col,
                          dominant_baseline="central"))
