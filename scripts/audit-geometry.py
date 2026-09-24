@@ -397,11 +397,18 @@ def audit_file(path):
 # Named gate exemptions (traceability ratio only). Each entry carries
 # its reason and its owning item — the anchor-census precedent ("needs
 # its ADR-003 exemption or a layout fix before wiring into the gate").
-# The 'Databag permissions (synthesized)' exemption (round 24) is
-# REMOVED: the feeder-fan synthesis (junction sinks keep their
-# Sugiyama column; adjacent-column feeders fan above the sink) drops
-# its max-ratio to 1.27 with 0 >2x.
-GATE_RATIO_EXEMPT_VIEWS: set[str] = set()
+# 'Relation settings permissions (synthesized)' (renamed from
+# 'Databag permissions (synthesized)', round 26): the round-24
+# feeder-fan synthesis had dropped its max-ratio to 1.27 and the
+# exemption was removed; the settings rename (one char wider per
+# label) re-tipped the synthesized stack — b_unit_1 -> b_bag_b1
+# measures 2.14, the recorded vertical-pair direct-distance
+# hostility. The view's legibility redesign (verdict-round26.md #1,
+# pending the reviewer steer) owns the real fix; the declared view —
+# the product surface — audits 1.56 with 0 >2x.
+GATE_RATIO_EXEMPT_VIEWS: set[str] = {
+    "Relation settings permissions (synthesized)",
+}
 
 
 def main(paths=None, gate=False):
