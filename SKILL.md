@@ -536,6 +536,14 @@ state "Executor" from "Model Name" {
 }
 ```
 
+Self steps (`a -> a: self "..."`) render as the state's INTERNAL
+ACTIVITIES, UML-style: a divider under the state name, one activity
+line per self step (the Secret lifecycle's `active` shows grant /
+revoke, publish new revision, notify consumers). The split box a
+reader sees IS this compartment — it carries meaning (things the
+state does while it is the current state), not two states with the
+same name.
+
 ---
 
 ## Annotations
