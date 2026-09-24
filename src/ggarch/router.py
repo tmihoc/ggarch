@@ -1455,6 +1455,162 @@ def _port_sets(ordered, layout, fan_faces, pair_biased):
     return out
 
 
+def _through_pair_far_end_symmetry(routed_edges, layout) -> None:
+    """Through-pair far-end port symmetry (Addendum 62's remaining
+    step, round 26): a through-pair's SHARED face takes the symmetric
+    ±PAIR_BIAS port set, but its far ends are singleton faces and
+    unpaired they anchor at (nearly) the same coordinate — the strokes
+    converge at the far end and the ADR-009 bow re-fires (measured:
+    Machine designations' controller<->machine-agent pair rendered as
+    two arcs instead of the ratified parallel straights with outside
+    labels). Post-pass on the ROUTED geometry (the actual faces, not a
+    pre-route dominant-face guess — the guess pins a face the edge may
+    not use and drags the route, measured on the full spine's
+    model_rec->cloud_rec): when a pair's far anchors sit within the
+    bow trigger, re-route the two members with the far anchors PINNED
+    to mirrored slots (±PAIR_BIAS about the far face's centre, stroke
+    order preserved) on their actual faces, and give the pair OUTSIDE
+    label sides — the ratified straight-pair form.
+
+    A through-pair is found by SHARED ENDPOINT: two edges with exactly
+    one common endpoint node, one leaving it and one entering, whose
+    other endpoints lie on the same side of the shared face's plane.
+    (Grouping by endpoint PAIR is the same-pair anti-parallel — a
+    through-pair by definition has different second endpoints.)"""
+    node_of = {n.id: n for n in _layout_rects(layout)}
+    by_node: dict = {}
+    for e in routed_edges:
+        if len(e.points) != 2:
+            continue
+        for nid in (e.source_id, e.target_id):
+            by_node.setdefault(nid, []).append(e)
+    for nid, edges in by_node.items():
+        node = node_of.get(nid)
+        if node is None or len(edges) != 2:
+            continue
+        e1, e2 = edges
+        # Exactly one shared endpoint; one leaves, one enters.
+        shared = {e1.source_id, e1.target_id} & \
+            {e2.source_id, e2.target_id}
+        if len(shared) != 1:
+            continue
+        if nid not in shared:
+            continue
+        w1 = "src" if e1.source_id == nid else "tgt"
+        w2 = "src" if e2.source_id == nid else "tgt"
+        if w1 == w2:
+            continue  # both leave (or both enter) — not a through-pair
+        # The shared face: the shared node's face its two edges
+        # actually used. A face mismatch (one edge arrives on the
+        # north face, the other leaves east) is not a port pair.
+        r = node.rect
+
+        def _anchor_face(e, which):
+            p = e.points[0] if which == "src" else e.points[-1]
+            return _nearest_face(r, p)
+
+        face = _anchor_face(e1, w1)
+        if face != _anchor_face(e2, w2):
+            continue
+        # Same side beyond the face's plane?
+        sides = set()
+        for e, w in ((e1, w1), (e2, w2)):
+            other_id = e.target_id if w == "src" else e.source_id
+            orect = node_of.get(other_id)
+            if orect is None:
+                sides.add(None)
+                break
+            ocx = orect.rect.x + orect.rect.w / 2.0
+            ocy = orect.rect.y + orect.rect.h / 2.0
+            if face == "right":
+                sides.add(ocx > r.x2 - 0.5)
+            elif face == "left":
+                sides.add(ocx < r.x + 0.5)
+            elif face == "top":
+                sides.add(ocy < r.y + 0.5)
+            else:
+                sides.add(ocy > r.y + r.h - 0.5)
+        if sides != {True}:
+            continue
+        # Far ends: the ends NOT on the shared face.
+        far = []
+        for e, w in ((e1, w1), (e2, w2)):
+            other_id = e.target_id if w == "src" else e.source_id
+            far_pt = e.points[-1] if w == "src" else e.points[0]
+            far.append((w, e, other_id, far_pt))
+        on_width = face in ("right", "left")
+        d = (abs(far[0][3].y - far[1][3].y) if on_width
+             else abs(far[0][3].x - far[1][3].x))
+        if d >= 1.5 * PAIR_BIAS:
+            continue  # already separated — the bow's veto owns this
+        # Re-route both members with mirrored far anchors (stroke
+        # order preserved: lower far anchor keeps the lower slot).
+        lo, hi = ((r.x, r.x + r.w) if face in ("top", "bottom")
+                  else (r.y, r.y + r.h))
+        center = (lo + hi) / 2.0
+        members = sorted(far, key=lambda t: (t[3].y if on_width
+                                             else t[3].x))
+        slots = (center - PAIR_BIAS, center + PAIR_BIAS)
+        for (which, e, other_id, far_pt), slot in zip(members, slots):
+            far_node = node_of.get(other_id)
+            if far_node is None:
+                continue
+            far_rect = far_node.rect
+            fface = _nearest_face(far_rect, far_pt)
+            flo, fhi = ((far_rect.x, far_rect.x + far_rect.w)
+                        if fface in ("top", "bottom")
+                        else (far_rect.y, far_rect.y + far_rect.h))
+            fcenter = (flo + fhi) / 2.0
+            fslot = min(max(_snap(fcenter + (slot - center)),
+                            flo + SEED_INSET), fhi - SEED_INSET)
+            # The slot is a FACE-COORDINATE (y for left/right faces, x
+            # for top/bottom); the far anchor's OTHER coordinate stays
+            # seated on its own position.
+            anchor = Point(_snap(far_pt.x), fslot)
+            src_node = node_of.get(e.source_id)
+            tgt_node = node_of.get(e.target_id)
+            if src_node is None or tgt_node is None:
+                continue
+            src_rect, tgt_rect = src_node.rect, tgt_node.rect
+            obstacles = [(_rect_box(n.rect), n.id)
+                         for n in _layout_rects(layout)
+                         if n.id not in (e.source_id, e.target_id)]
+            # `which` is the member's role ON THE SHARED node: a member
+            # leaving it (src) carries the pinned anchor on its TARGET
+            # (far) end; a member entering carries it on its SOURCE.
+            if which == "src":
+                pts = _route_edge(src_rect, tgt_rect, obstacles, (),
+                                  (), None, anchor, orthogonal=True)
+            else:
+                pts = _route_edge(src_rect, tgt_rect, obstacles, (),
+                                  (), anchor, None, orthogonal=True)
+            if len(pts) != 2:
+                continue  # a pinned far end must keep the straight
+            e.points = pts
+            e.strip = _edge_strip(pts, e,
+                                  owner=f"{e.source_id}"
+                                  f"->{e.target_id}")
+        # Outside label lanes: each label stacks AWAY from the
+        # corridor between the two strokes (the default side puts both
+        # labels in the corridor; the lower stroke then rides through
+        # the upper label's band — measured SCROSS + LCLASH).
+        for e, other in ((e1, e2), (e2, e1)):
+            (px0, py0) = e.points[0].x, e.points[0].y
+            (px1, py1) = e.points[-1].x, e.points[-1].y
+            op = other.points[0]
+            dx, dy = px1 - px0, py1 - py0
+            leg = math.hypot(dx, dy) or 1.0
+            nx, ny = dy / leg, -dx / leg
+            t = (op.x - px0) * nx + (op.y - py0) * ny
+            # AWAY from the other stroke: label_side stacks the label
+            # along +side*normal; the other stroke sits at +t, so the
+            # outside lane is -sign(t).
+            e.label_side = -1.0 if t >= 0 else 1.0
+            e.strip = _edge_strip(e.points, e,
+                                  owner=f"{e.source_id}"
+                                  f"->{e.target_id}")
+
+
 def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
     """Compute routed edges for all model edges whose endpoints are in layout."""
     # ADR-006: an ELK-laid-out view carries its edge geometry from the
@@ -1872,6 +2028,7 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
         ))
         strips_done.append(strip)
 
+    _through_pair_far_end_symmetry(routed_edges, layout)
     _assign_bows(routed_edges, layout)
     return RoutedLayout(layout=layout, edges=routed_edges)
 
