@@ -69,45 +69,45 @@ class ResolvedStyle:
 
 _JUJU_LIGHT_NODES: dict[str, NodeStyle] = {
     "default": NodeStyle(
-        fill="#FFFFFF", stroke="#AAAAAA", font_color="#333333",
+        fill="#FAFAFA", stroke="#AAAAAA", font_color="#333333",
     ),
     "person": NodeStyle(
-        fill="#F0F0F0", stroke="#777777", font_color="#444444", shape="person",
+        fill="#FAFAFA", stroke="#777777", font_color="#444444", shape="person",
     ),
     "juju-software": NodeStyle(
-        fill="#F0F0F0", stroke="#C74210", font_color="#333333",
+        fill="#FAFAFA", stroke="#C74210", font_color="#333333",
         badge="juju",
     ),
     "charm": NodeStyle(
-        fill="#F0F0F0", stroke="#E95420", font_color="#000000", stroke_width=2,
+        fill="#FAFAFA", stroke="#E95420", font_color="#000000", stroke_width=2,
         badge="charm",
     ),
     "workload": NodeStyle(
-        fill="#F5F5F5", stroke="#AAAAAA", font_color="#444444",
+        fill="#FAFAFA", stroke="#AAAAAA", font_color="#444444",
     ),
     "pebble": NodeStyle(
-        fill="#F5F5F5", stroke="#AAAAAA", font_color="#444444",
+        fill="#FAFAFA", stroke="#AAAAAA", font_color="#444444",
     ),
     "database": NodeStyle(
-        fill="#FFF8E1", stroke="#F9A825", font_color="#333333",
+        fill="#FAFAFA", stroke="#F9A825", font_color="#333333",
         shape="cylinder",
     ),
     "container": NodeStyle(
-        fill="#FFF3EE", stroke="#E0956A", font_color="#5A2800",
+        fill="#FAFAFA", stroke="#E0956A", font_color="#5A2800",
         border_radius=6,
     ),
     "infrastructure": NodeStyle(
-        fill="#E8F5E9", stroke="#66BB6A", font_color="#1B5E20",
+        fill="#FAFAFA", stroke="#66BB6A", font_color="#1B5E20",
     ),
     "external": NodeStyle(
-        fill="#F5F5F5", stroke="#AAAAAA", font_color="#444444",
+        fill="#FAFAFA", stroke="#AAAAAA", font_color="#444444",
     ),
     "unit": NodeStyle(
-        fill="#EEF2FF", stroke="#9999AA", font_color="#333333",
+        fill="#FAFAFA", stroke="#9999AA", font_color="#333333",
         border_radius=6,
     ),
     "record": NodeStyle(
-        fill="#FFFDE7", stroke="#F9A825", font_color="#333333",
+        fill="#FAFAFA", stroke="#F9A825", font_color="#333333",
         border_radius=2,
         badge="record",
     ),
@@ -138,13 +138,13 @@ _JUJU_LIGHT_EDGES: dict[str, EdgeStyle] = {
 
 _JUJU_DARK_NODES: dict[str, NodeStyle] = {
     "default": NodeStyle(
-        fill="#2A2A3E", stroke="#555555", font_color="#CDD6F4",
+        fill="#252525", stroke="#555555", font_color="#CDD6F4",
     ),
     "person": NodeStyle(
         fill="#252525", stroke="#999999", font_color="#CCCCCC", shape="person",
     ),
     "juju-software": NodeStyle(
-        fill="#2A2A3E", stroke="#E95420", font_color="#CDD6F4",
+        fill="#252525", stroke="#E95420", font_color="#CDD6F4",
         badge="juju",
     ),
     "charm": NodeStyle(
@@ -152,31 +152,31 @@ _JUJU_DARK_NODES: dict[str, NodeStyle] = {
         badge="charm",
     ),
     "workload": NodeStyle(
-        fill="#2A2A2A", stroke="#666666", font_color="#CCCCCC",
+        fill="#252525", stroke="#666666", font_color="#CCCCCC",
     ),
     "pebble": NodeStyle(
-        fill="#2A2A2A", stroke="#666666", font_color="#CCCCCC",
+        fill="#252525", stroke="#666666", font_color="#CCCCCC",
     ),
     "database": NodeStyle(
-        fill="#2A2200", stroke="#F9A825", font_color="#FFE082",
+        fill="#252525", stroke="#F9A825", font_color="#FFE082",
         shape="cylinder",
     ),
     "container": NodeStyle(
-        fill="#2D1A0E", stroke="#C07040", font_color="#FFD0A0",
+        fill="#252525", stroke="#C07040", font_color="#FFD0A0",
         border_radius=6,
     ),
     "infrastructure": NodeStyle(
-        fill="#1A2E1A", stroke="#66BB6A", font_color="#A5D6A7",
+        fill="#252525", stroke="#66BB6A", font_color="#A5D6A7",
     ),
     "external": NodeStyle(
-        fill="#2A2A2A", stroke="#666666", font_color="#CCCCCC",
+        fill="#252525", stroke="#666666", font_color="#CCCCCC",
     ),
     "unit": NodeStyle(
-        fill="#2A2A3E", stroke="#9999AA", font_color="#CDD6F4",
+        fill="#252525", stroke="#9999AA", font_color="#CDD6F4",
         border_radius=6,
     ),
     "record": NodeStyle(
-        fill="#2A2200", stroke="#F9A825", font_color="#FFE082",
+        fill="#252525", stroke="#F9A825", font_color="#FFE082",
         border_radius=2,
         badge="record",
     ),
