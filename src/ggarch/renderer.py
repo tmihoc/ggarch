@@ -1091,16 +1091,20 @@ def _render_crowfoot(
         return
     ux, uy = dx / length, dy / length
     nx, ny = -uy, ux
+    # ERD proportions (round 28 verdict A): the glyph reads from a
+    # mile away — fork prongs 16px deep spreading onto the target
+    # face, bar 16px back and 10px wide. The arrowhead is suppressed
+    # on these edges (the glyph IS the terminal symbol).
     if kind == "many":
-        bx, by = ex - ux * 8, ey - uy * 8
-        for ox_, oy_ in ((nx * 4, ny * 4), (0.0, 0.0), (-nx * 4, -ny * 4)):
+        bx, by = ex - ux * 16, ey - uy * 16
+        for ox_, oy_ in ((nx * 7, ny * 7), (0.0, 0.0), (-nx * 7, -ny * 7)):
             g.append(dw.Line(bx, by, ex + ox_, ey + oy_,
                              stroke=stroke, stroke_width=1.2,
                              stroke_linejoin="round"))
     elif kind == "one":
-        bx, by = ex - ux * 8, ey - uy * 8
-        g.append(dw.Line(bx + nx * 4, by + ny * 4,
-                         bx - nx * 4, by - ny * 4,
+        bx, by = ex - ux * 16, ey - uy * 16
+        g.append(dw.Line(bx + nx * 5, by + ny * 5,
+                         bx - nx * 5, by - ny * 5,
                          stroke=stroke, stroke_width=1.2))
 
 
@@ -1419,9 +1423,18 @@ def _render_edge(
     # under labelling by construction.
     # ADR-004: the head shape is the commitment channel, resolved per
     # edge style; direction (edge.arrow) is orthogonal to shape.
+    # Verdict A (round 28): on data edges whose label parses to a
+    # cardinality, the crow's-foot glyph REPLACES the end arrowhead —
+    # the ERD grammar's own terminal symbol (the reviewer: "we're not
+    # reinventing ERDs here... stay faithful to their grammar"). The
+    # fk-anchored start already carries direction; the START marker
+    # (edge.arrow back/both) survives.
+    crowfoot = ""
+    if edge.edge_type == "data" and edge.label:
+        crowfoot = _crowfoot_kind(edge.label)
     suffix = "" if es.arrowhead in ("filled", "none") else f"-{es.arrowhead}"
     if es.arrowhead != "none":
-        if edge.arrow in ("forward", "both"):
+        if edge.arrow in ("forward", "both") and not crowfoot:
             path_kwargs["marker_end"] = f"url(#arrow{suffix})"
         if edge.arrow in ("back", "both"):
             path_kwargs["marker_start"] = f"url(#arrow{suffix}-start)"
@@ -1429,10 +1442,8 @@ def _render_edge(
 
     if not edge.label:
         return
-    if edge.edge_type == "data":
-        kind = _crowfoot_kind(edge.label)
-        if kind:
-            _render_crowfoot(g, pts, kind, es.stroke)
+    if crowfoot:
+        _render_crowfoot(g, pts, crowfoot, es.stroke)
     draw_path_label(g, pts, edge.label, es.font_color,
                     anchor_frac=edge.label_anchor, bow=edge.bow,
                     label_side=edge.label_side)
