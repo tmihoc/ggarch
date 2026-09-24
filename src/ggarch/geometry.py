@@ -119,6 +119,12 @@ def label_geometry(points, label: str, anchor_frac: float = 0.5,
         math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1])
         for i in range(len(pts) - 1)
     ]
+    if not seg_lens:
+        # Degenerate path (fewer than two points — coincident node
+        # rects): a 1px eastward direction so the label geometry still
+        # resolves instead of raising on an empty max().
+        pts = pts + [(pts[-1][0] + 1.0, pts[-1][1])] if pts else [(0.0, 0.0), (1.0, 0.0)]
+        seg_lens = [1.0]
     li = max(range(len(seg_lens)), key=lambda i: seg_lens[i])
     x0, y0 = pts[li]
     x1, y1 = pts[li + 1]

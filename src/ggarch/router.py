@@ -572,6 +572,12 @@ def _leg_rides(pts, src_rect, tgt_rect):
     _corner_snap, which only fires on >=3-point candidates — a
     STRAIGHT collinear with an endpoint face line slipped through
     until the port sets made it the cheapest clear route."""
+    if len(pts) < 2:
+        # Degenerate candidate (fewer than two points — e.g. zero-
+        # distance forms when source and target rects coincide).
+        # Nothing here can ride a border; report ride-free so the
+        # caller's own sanity checks dispose of the candidate.
+        return False
     for p_end, p_in, rect in ((pts[0], pts[1], src_rect),
                               (pts[-1], pts[-2], tgt_rect)):
         if abs(p_end.x - p_in.x) < 0.5:      # vertical leg
