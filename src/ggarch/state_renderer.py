@@ -391,9 +391,16 @@ def render_state(
     for t, src_rect, tgt_rect in ordered:
         obstacles = [(_box_tuple(sid), sid) for sid in state_ids
                      if sid not in (t.source, t.target)]
+        # Orthogonal vocabulary (round 26 V3 residue): state boxes sit
+        # on a strict column grid; the DIAGONAL straight was
+        # length-cheapest and won, fanning its riding label into the
+        # neighbours' (measured 2 diagonal transitions + 2 label
+        # clashes in Secret lifecycle). Axis-aligned legs only —
+        # same law the topology views read by.
         pts = _route_edge(
             src_rect, tgt_rect, obstacles, strips_done,
-            [_state_rect(t.source), _state_rect(t.target)])
+            [_state_rect(t.source), _state_rect(t.target)],
+            orthogonal=True)
         pts_t = [(p.x, p.y) for p in pts]
         strips_done.append(strip_for_edge(
             pts_t, ROUTE_STROKE_W, "forward", t.label, 0.5,
