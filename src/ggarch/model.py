@@ -30,14 +30,15 @@ class Cardinality(Enum):
 
 
 # Edge types are plain strings: built-ins (api, stream, event, data,
-# control, ipc) resolve from the preset; anything else is a custom type
-# that must be styled in the model's style block
+# control, ipc, generalization) resolve from the preset; anything else
+# is a custom type that must be styled in the model's style block
 # (edge <name> { stroke: ... }). Strings, not an enum, so custom types
 # keep their name end-to-end (selection, legend, styling).
-BUILTIN_EDGE_TYPES = ("api", "stream", "event", "data", "control", "ipc")
+BUILTIN_EDGE_TYPES = ("api", "stream", "event", "data", "control", "ipc",
+                      "generalization")
 
 # ADR-004: the commitment channel — closed vocabulary, validated.
-ARROWHEAD_VALUES = ("filled", "open", "none")
+ARROWHEAD_VALUES = ("filled", "open", "hollow", "none")
 
 
 
@@ -194,7 +195,7 @@ class StyleRule:
     shape: str = ""        # rectangle (default) | person | cylinder | diamond
     stroke_width: int = 0
     stroke_dash: str = ""    # "" | "6,3" | "2,2"
-    arrowhead: str = ""      # filled | open | none — edge rules only (ADR-004)
+    arrowhead: str = ""      # filled | open | hollow | none — edge rules only (ADR-004)
 
 
 @dataclass

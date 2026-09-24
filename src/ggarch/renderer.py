@@ -515,6 +515,32 @@ def _add_arrowhead_defs(
         fill="none", stroke=arrow_color, stroke_width=1.5, close=False,
     ))
     drawing.append_def(marker_open_rev)
+    # ADR-011: the hollow triangle — the generalization (is-a) head.
+    # CLOSED outline, background-filled so the stroke passing under the
+    # head stays occluded (the standard UML reading); same neutral
+    # colour and size as the other heads — the FILL is the only
+    # difference from the filled head, the CLOSURE the only difference
+    # from the open one.
+    bg = "#1E1E2E" if dark else "#FFFFFF"
+    marker_hollow = dw.Marker(0, 0, s, s, scale=1, orient="auto",
+                              id="arrow-hollow", refX=s, refY=s / 2)
+    marker_hollow.append(dw.Lines(
+        0, 0,
+        s, s / 2,
+        0, s,
+        fill=bg, stroke=arrow_color, stroke_width=1.5, close=True,
+    ))
+    drawing.append_def(marker_hollow)
+    marker_hollow_rev = dw.Marker(0, 0, s, s, scale=1,
+                                  orient="auto-start-reverse",
+                                  id="arrow-hollow-start", refX=s, refY=s / 2)
+    marker_hollow_rev.append(dw.Lines(
+        0, 0,
+        s, s / 2,
+        0, s,
+        fill=bg, stroke=arrow_color, stroke_width=1.5, close=True,
+    ))
+    drawing.append_def(marker_hollow_rev)
 
 
 # ---------------------------------------------------------------------------
@@ -1393,7 +1419,7 @@ def _render_edge(
     # under labelling by construction.
     # ADR-004: the head shape is the commitment channel, resolved per
     # edge style; direction (edge.arrow) is orthogonal to shape.
-    suffix = "" if es.arrowhead != "open" else "-open"
+    suffix = "" if es.arrowhead in ("filled", "none") else f"-{es.arrowhead}"
     if es.arrowhead != "none":
         if edge.arrow in ("forward", "both"):
             path_kwargs["marker_end"] = f"url(#arrow{suffix})"

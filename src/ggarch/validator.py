@@ -273,19 +273,20 @@ def _validate_model(model: Model) -> None:
                 f"model {model.name!r}: edge {edge.source}->{edge.target} "
                 f"has unknown type {edge.type!r}",
                 hint="use a built-in type (api, stream, event, data, control, "
-                     "ipc) or declare edge " + edge.type + " { ... } in the "
-                     "style block",
+                     "ipc, generalization) or declare edge " + edge.type +
+                     " { ... } in the style block",
             )
 
     # ADR-004: the arrowhead channel is a closed enum (filled | open |
-    # none) — the preattentive limit is enforced by construction.
+    # hollow | none) — the preattentive limit is enforced by
+    # construction.
     for rules in (model.style.edge_rules, model.style.dark_edge_rules):
         for type_name, rule in rules.items():
             if rule.arrowhead and rule.arrowhead not in ARROWHEAD_VALUES:
                 raise ValidationError(
                     f"model {model.name!r}: edge {type_name!r} has unknown "
                     f"arrowhead {rule.arrowhead!r}",
-                    hint="arrowhead is one of: filled, open, none "
+                    hint="arrowhead is one of: filled, open, hollow, none "
                          "(ADR-004 — the commitment channel)",
                 )
 

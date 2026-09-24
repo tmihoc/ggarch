@@ -184,10 +184,13 @@ learns the three channels once and reads every diagram.
 | `stream` | `6,3` | filled | `#555555` | long-lived connection, watch |
 | `event` | `6,3` | open | `#888888` | one-way async notification |
 | `ipc` | `2,2` | filled | `#888888` | Unix socket / in-process |
+| `generalization` | solid | hollow | `#555555` | is-a (kind tries, ADR-011 §2); hollow triangle at the PARENT — the arrow points child -> parent |
 
 `stream` is the most load-bearing: dashed communicates "this is a watch, not
 a direct call" to readers who would otherwise read a solid arrow as synchronous.
 `event` carries the open head: a notification commits nothing.
+`generalization` carries the hollow triangle (the UML generalization head):
+a closed, background-filled outline — taxonomy membership, not flow.
 
 Any other type name is custom: declare it in the style block
 (`edge <name> { ... }`, see **Node types** above) or validation fails.
@@ -198,7 +201,7 @@ edge notify { stroke-dash: "6,3" arrowhead: open }   // async family
 edge memo   { arrowhead: none }                      // headless
 ```
 
-`arrowhead` is a closed enum — `filled | open | none`; anything else is
+`arrowhead` is a closed enum — `filled | open | hollow | none`; anything else is
 a validation error. The per-edge `arrow:` attribute (forward / back /
 both / none) says *which ends* state the fact and composes with the
 head shape.

@@ -41,7 +41,7 @@ class EdgeStyle:
     stroke: str = "#666666"
     stroke_width: int = 1
     stroke_dash: str = ""      # "" | "6,3" | "2,2"
-    arrowhead: str = "filled"  # filled | open | none (ADR-004 commitment)
+    arrowhead: str = "filled"  # filled | open | hollow | none (ADR-004 commitment)
     font_color: str = "#444444"
     font_size: int = 11
 
@@ -125,6 +125,11 @@ _JUJU_LIGHT_EDGES: dict[str, EdgeStyle] = {
     # declarable model type): the persistence axis. Amber, solid,
     # headless; direction belongs to the ER view's FK→PK arrows.
     "records": EdgeStyle(stroke="#F9A825", arrowhead="none"),
+    # ADR-011: the is-a edge (kind tries). Solid, neutral, hollow
+    # triangle at the parent (UML generalization): the shape says
+    # taxonomy, not flow.
+    "generalization": EdgeStyle(stroke="#555555", stroke_dash="",
+                                arrowhead="hollow"),
 }
 
 # ---------------------------------------------------------------------------
@@ -188,6 +193,9 @@ _JUJU_DARK_EDGES: dict[str, EdgeStyle] = {
     "ipc":     EdgeStyle(stroke="#888888", stroke_dash="2,2", font_color="#CDD6F4"),
     "records": EdgeStyle(stroke="#F9A825", arrowhead="none",
                          font_color="#CDD6F4"),
+    "generalization": EdgeStyle(stroke="#AAAAAA", stroke_dash="",
+                                arrowhead="hollow",
+                                font_color="#CDD6F4"),
 }
 
 # ---------------------------------------------------------------------------

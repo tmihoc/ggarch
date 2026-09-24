@@ -765,8 +765,23 @@ def _extract_legend_html(
         label  = leg.labels.get(etype, etype)
         es = edge_styles.get(etype, edge_styles.get("default"))
         stroke, dash, width = es.stroke, es.stroke_dash, es.stroke_width
-        # SVG line sample — inline, 28×12px viewBox.
+        # SVG line sample — inline, 28×12px viewBox. The head glyph
+        # mirrors the renderer's arrowhead channel (ADR-004): filled
+        # (committed), open (fire-and-forget V), hollow (generalization
+        # triangle, background-filled), none (bare line).
         ah = 4  # arrowhead half-height
+        if es.arrowhead == "open":
+            head = (f'<polyline points="24 {6-ah} 28 6 24 {6+ah}" '
+                    f'fill="none" stroke="{stroke}" stroke-width="1.5"/>')
+        elif es.arrowhead == "hollow":
+            head = (f'<polygon points="24 {6-ah} 28 6 24 {6+ah}" '
+                    f'fill="none" stroke="{stroke}" '
+                    f'stroke-width="1.5"/>')
+        elif es.arrowhead == "none":
+            head = ""
+        else:
+            head = (f'<polyline points="24 {6-ah} 28 6 24 {6+ah}" '
+                    f'fill="{stroke}" stroke="none"/>')
         arrow = (
             f'<svg xmlns="http://www.w3.org/2000/svg" width="28" height="12" '
             f'viewBox="0 0 28 12" class="ggarch-legend-line" style="overflow:visible">'
@@ -774,9 +789,8 @@ def _extract_legend_html(
             f'stroke="{stroke}" stroke-width="{width or 1.5}"'
             + (f' stroke-dasharray="{dash}"' if dash else "")
             + f'/>'
-            f'<polyline points="24 {6-ah} 28 6 24 {6+ah}" '
-            f'fill="{stroke}" stroke="none"/>'
-            f'</svg>'
+            + head
+            + f'</svg>'
         )
         items_html.append(
             f'<span class="ggarch-legend-item">{arrow} {encode(label)}</span>'

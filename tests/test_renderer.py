@@ -659,6 +659,25 @@ class TestArrowheadChannel:
         assert 'marker-end="url(#arrow-open)"' in svg
         assert 'marker-start="url(#arrow-open-start)"' in svg
 
+    def test_generalization_edges_render_hollow_heads(self):
+        """ADR-011: the is-a type carries the hollow triangle."""
+        svg = pipeline(ARROW_SRC.replace("type: event", "type: generalization")
+                                .replace("edges: type event",
+                                         "edges: type generalization"))
+        assert 'id="arrow-hollow"' in svg
+        assert 'marker-end="url(#arrow-hollow)"' in svg
+        assert 'marker-end="url(#arrow-open)"' not in svg
+
+    def test_hollow_head_composes_with_both(self):
+        """Direction composes with the hollow shape like any other."""
+        svg = pipeline(ARROW_SRC.replace(
+            '[type: event, label: "notifies"]',
+            "[type: event, arrow: both]").replace(
+            "type: event", "type: generalization").replace(
+            "edges: type event", "edges: type generalization"))
+        assert 'marker-end="url(#arrow-hollow)"' in svg
+        assert 'marker-start="url(#arrow-hollow-start)"' in svg
+
     def test_custom_type_composes_channels(self):
         """A custom type picks its channels in the style block."""
         src = ARROW_SRC.replace(
@@ -667,7 +686,7 @@ class TestArrowheadChannel:
             "    extends: juju\n"
             '    edge notify { stroke-dash: "6,3" arrowhead: none }\n'
             "  }").replace("type: event", "type: notify").replace(
-                "edges: type event", "edges: type notify")
+            "edges: type event", "edges: type notify")
         svg = pipeline(src)
         assert "marker-end" not in svg  # headless
         assert 'stroke-dasharray="6,3"' in svg
