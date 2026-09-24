@@ -470,6 +470,19 @@ db    align-centre hub
 // Fan (spread a list evenly around a central node)
 fan [x y z] right-of hub gap: 60
 
+// Tree silhouette (kind tries, ADR-011 §2): root at the apex, each
+// rank on one row, children row-packed on the rank below, every
+// parent CENTRED over its children. The declared idiom: bracket the
+// parent horizontally between its two children at EQUAL gaps -- with
+// `sizing: uniform` the parent's centre then lands exactly on the
+// children's midpoint. Apply the bracket at every rank:
+
+child_a below root gap: 60
+child_b below root gap: 60
+child_a left-of child_b gap: 100    // the row
+child_a left-of root gap: 100       // the bracket
+root left-of child_b gap: 100       // (equal gaps = exact centring)
+
 // Container children ordered left to right
 container_id direction: right
 
@@ -477,6 +490,14 @@ container_id direction: right
 a same-width b
 a min-width: 160
 ```
+
+The tree recipe's silhouette to avoid is the right-spine ladder (each
+child hanging left of a descending spine): the hierarchy then reads
+right-to-left against the reading direction and the root has no apex.
+Synthesis does NOT own the tree silhouette -- the synthesized twin of
+the relation trie is the same ladder rotated horizontal, with a leaf
+clipped off-canvas -- so a taxonomy whose shape is its argument
+declares these positions.
 
 `gap:` is a floor -- the solver expands it if edge labels need more space.
 
