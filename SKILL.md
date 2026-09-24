@@ -499,6 +499,15 @@ the relation trie is the same ladder rotated horizontal, with a leaf
 clipped off-canvas -- so a taxonomy whose shape is its argument
 declares these positions.
 
+For a FLAT star (one root, N leaves on one rank — the
+Types-of-relation trie), skip the brackets: `fan [leaf1 leaf2 ...]
+below root gap: 60 spacing: 200` chains the row AND centres it on the
+root's exact cx (the even-N fan constrains
+`(cx_left + cx_right) == 2 * cx(root)`). Do NOT declare
+`routing: orthogonal` on a taxonomy view: the is-a edge should be a
+direct diagonal — orthogonal routing bends every connector into an L,
+which wastes space and hides the tree shape.
+
 `gap:` is a floor -- the solver expands it if edge labels need more space.
 
 **Solver rules to know:**
