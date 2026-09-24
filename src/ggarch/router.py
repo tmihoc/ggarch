@@ -1106,9 +1106,11 @@ def _nearest_face(rect: Rect, p: Point) -> str:
 def _pinned_candidates(src_rect, tgt_rect, a: Point, b: Point, search,
                        orthogonal: bool = False):
     """Vocabulary candidates for a pinned anchor pair: the straight
-    line and both L orientations (the bend is free; the anchors are
-    not). U forms need same-facing faces, which a pinned pair does not
-    declare — layout or the un-pinned ladder owns those."""
+    line, both L orientations, and — for misaligned face anchors under
+    orthogonal routing — the Z (vertical out of the source face,
+    horizontal through the gap, vertical into the target face). U
+    forms need same-facing faces, which a pinned pair does not declare
+    — layout or the un-pinned ladder owns those."""
     best_clear = None
     best_soft = None
     direct = math.hypot(b.x - a.x, b.y - a.y)
@@ -1123,10 +1125,37 @@ def _pinned_candidates(src_rect, tgt_rect, a: Point, b: Point, search,
     for cand in ([a, Point(b.x, a.y), b], [a, Point(a.x, b.y), b]):
         if not _leg_rides(cand, src_rect, tgt_rect):
             forms.append((cand, 1))
+    if orthogonal and abs(b.x - a.x) >= 1e-6 and abs(b.y - a.y) >= 1e-6:
+        # Misaligned face anchors (e.g. field rows on opposing
+        # horizontal faces): the 1-bend L necessarily rides a face
+        # line, but the Z does not — its horizontal leg runs in the
+        # gap BETWEEN the faces, perpendicular entries both ends.
+        # Try several gap lanes; the search rejects the blocked ones.
+        mid = (a.y + b.y) / 2
+        span = b.y - a.y
+        lanes = [mid, a.y + span * 0.25, a.y + span * 0.75]
+        seen = []
+        for m in lanes:
+            if all(abs(m - s) > 0.5 for s in seen):
+                seen.append(m)
+                cand = [a, Point(a.x, m), Point(b.x, m), b]
+                if not _leg_rides(cand, src_rect, tgt_rect):
+                    forms.append((cand, 2))
+        # Horizontal Z for completeness (left/right face pairs the
+        # mid-y alignment did not cover).
+        midx = (a.x + b.x) / 2
+        spanx = b.x - a.x
+        seenx = []
+        for m in (midx, a.x + spanx * 0.25, a.x + spanx * 0.75):
+            if all(abs(m - s) > 0.5 for s in seenx):
+                seenx.append(m)
+                cand = [a, Point(m, a.y), Point(m, b.y), b]
+                if not _leg_rides(cand, src_rect, tgt_rect):
+                    forms.append((cand, 2))
     if not forms and orthogonal:
-        # The vocabulary cannot express this pair orthogonally without
-        # riding (same-facing or same-axis faces, misaligned rows).
-        # A diagonal beats a border ride.
+        # The vocabulary cannot express this pair orthogonally at all
+        # (no straight, L, or Z is ride-free and clear). A diagonal
+        # beats a border ride — last resort only.
         forms.append(([a, b], 0))
     for pts, bends in forms:
         clear = True
