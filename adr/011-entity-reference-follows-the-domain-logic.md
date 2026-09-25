@@ -26,6 +26,11 @@ red thread -- every title carries the entity name); folding §8
 into the intro was evaluated and rejected. See "The umbrella
 presentation".
 
+AMENDED 2026-09-25 (session 20; reviewer ratification, the
+database.md pilot): the META-ENTITY case -- an entity that is a
+mechanism, not a record -- joins the umbrella presentation; see
+"The meta-entity" below.
+
 ## Context
 
 The entity reference docs evolved organically: taxonomy /
@@ -189,6 +194,25 @@ grounded sentence, in one of three shapes:
 - **NONE** (bundle, subnet, constraint, zone, placement directive):
   no machinery at all; the record is a stored fact -- a cached cloud
   fact, a request input, a client-side artifact.
+
+**The meta-entity (database.md, session 20).** One reference page
+names the mechanism the whole presentation rests on: the database
+itself -- no records of its own, because it is where every entity's
+records live. Its records layer is the DEGENERATE shape, the NONE
+machinery sentence inverted onto the persistence mechanism: §1 (The
+database's identity) carries the inversion, and the controller
+database / model database split stands in for the data-model slot as
+the which-database-holds-what portrait. Its machinery is plainly
+OWN -- Dqlite embedded in-process in every controller, no separate
+database service, Raft-replicated across the HA nodes -- and the
+layer carries the change stream every §6 watcher draws on. Slots
+appear only when grounded: no states, types, operations, watchers,
+rules or relations sections exist for it, and none were invented
+(the do-not-force law). The component/tool do-not-force class
+(jujud, pebble, the CLI pages) stays out unless a page grows real
+entity substance -- the test is substance first, umbrella only where
+both layers have a grounded sentence (accepted recommendation,
+session 20).
 
 **The scope-phrase convention.** Body sentences carry locations --
 databases and processes, never commands: the intro says "In Juju, a
