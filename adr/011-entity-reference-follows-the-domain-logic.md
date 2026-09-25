@@ -11,6 +11,14 @@ verbal ("Working with relations", "Watching relations") and one broke
 the metalanguage rule ("Related domains"). The amended skeleton fixes
 all eight titles and makes the storage→story derivation visible.
 
+AMENDED 2026-09-25 (session 19; reviewer verdicts round 32): the
+PRESENTATION grows two umbrella layers over the invariant slots --
+"The X's records" and "The X's machinery" -- the types slot moves
+after the data model, body prose adopts the location-qualified
+scope-phrase convention, and the §1 opener is rewritten as a
+representation claim. The slot table below stays the inner skeleton;
+see "The umbrella presentation (round 32)".
+
 ## Context
 
 The entity reference docs evolved organically: taxonomy /
@@ -110,6 +118,85 @@ predictable on every page, client-agnostic, and charm-user vs
 developer-agnostic (the domain service is the same API both consume;
 the code proves it — the agent and client facades import the same
 service).
+
+### The umbrella presentation (round 32)
+
+The eight slots above stay invariant; the presentation groups them
+under two umbrella h2s, and the page's table of contents now
+narrates the slideshow grammar (ADR-010): records are the ERD
+layer, machinery is the sequence layer, and the topology result
+beats live inside the machinery layer.
+
+**The two layers.** The entity page's h2s are:
+
+- **The X's records** -- h3s in order: *the X record* (§1), *the X
+  in the data model* (§3), *X states* (§4), *Types of X* (§2, the
+  last h3). What Juju does with an arrival first: PERSIST it.
+  Declaration-of-intent is the client's job; it lives in the howto
+  layer and the architecture concept page, not here.
+- **The X's machinery** -- h3s: *X operations* (§5), *X watchers*
+  (§6). What Juju does with an arrival second: EXECUTE it.
+- **X rules and errors** (§7) and **Related entities** (§8) stay
+  top-level h2s: cross-cutting law and neighbouring-domain
+  extensions are neither records nor machinery.
+
+Umbrella titles are entity-possessive nouns ("The machine's
+records", "The machine's machinery"); the participle-epithet
+alternative ("the persisted model", "the executed charm") failed on
+the meta-entities.
+
+**Types after the portrait.** §2 argues from stored facts -- no type
+column, kinds derived, lease-not-a-column -- so it belongs after the
+persistence portrait, and after the states, which are stored facts
+too. The kinds close the records layer as what the stored facts
+imply. This is the fix for the "Types butt-in".
+
+**The machinery sentence.** The machinery umbrella opens with ONE
+grounded sentence, in one of three shapes:
+
+- **OWN** (controller, model, machine, unit, agent): the entity has
+  machinery of its own; the sentence names where it runs.
+- **DELEGATED** (application, charm, relation): no machinery of its
+  own; its units' agents execute it, and the model side is
+  bookkeeping.
+- **NONE** (bundle, subnet, constraint, zone, placement directive):
+  no machinery at all; the record is a stored fact -- a cached cloud
+  fact, a request input, a client-side artifact.
+
+**The scope-phrase convention.** Body sentences carry locations --
+databases and processes, never commands: the intro says "In Juju, a
+charm is…"; the records layer says "In the model database, a charm
+is one record per revision…"; the machinery layer says "In the
+controller, the revision updater…". The client-agnostic law is
+unchanged (the two CLI-facing exceptions stay flag-marked). Use the
+phrase where the location genuinely shifts; never a tic.
+
+**The §1 rewrite rule.** The record section stops competing with
+the intro as a definition: no "X is a record" opener. The claim
+demotes from definition to representation and becomes
+location-qualified: "In the model database, a charm is one record
+per revision…".
+
+**§4 stays in records** with the recorded phrasing: life is the
+record's condition; instance status is the executed thing's
+condition, written down.
+
+**Mechanics.** Every existing `(anchor)=` target is preserved
+verbatim; slot sections shift h2 to h3 under their umbrella, and
+child headings shift with their section; no new views; the
+catalogue's Insert-at strings re-point to the new heading chains.
+
+**The three ontologies, made real.** The layers also separate
+concept-with-record entities (relation, offer, user, space…) from
+entities with a physical counterpart (machine, unit, charm, secret,
+controller, model, credential): the counterpart's mechanism and
+result already live in the machinery layer as §5 sequences and
+topology result beats.
+
+The "not a narrative" claim above is superseded to this extent: the
+slot ORDER stays the code's grouping, but the two-layer GROUPING is
+the page's narrative -- records, then machinery, then rules, then
+relations.
 
 ## Consequences
 
