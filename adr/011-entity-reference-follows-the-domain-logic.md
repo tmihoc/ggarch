@@ -19,6 +19,13 @@ scope-phrase convention, and the §1 opener is rewritten as a
 representation claim. The slot table below stays the inner skeleton;
 see "The umbrella presentation (round 32)".
 
+AMENDED 2026-09-25 (session 19 cont.; reviewer verdicts round 33):
+types-last stands; §1 is retitled *The X's identity* (the
+records/record stutter) and §8 *Entities related to the X* (the
+red thread -- every title carries the entity name); folding §8
+into the intro was evaluated and rejected. See "The umbrella
+presentation".
+
 ## Context
 
 The entity reference docs evolved organically: taxonomy /
@@ -129,21 +136,41 @@ beats live inside the machinery layer.
 
 **The two layers.** The entity page's h2s are:
 
-- **The X's records** -- h3s in order: *the X record* (§1), *the X
-  in the data model* (§3), *X states* (§4), *Types of X* (§2, the
+- **The X's records** -- h3s in order: *the X's identity* (§1), *the
+  X in the data model* (§3), *X states* (§4), *Types of X* (§2, the
   last h3). What Juju does with an arrival first: PERSIST it.
   Declaration-of-intent is the client's job; it lives in the howto
   layer and the architecture concept page, not here.
 - **The X's machinery** -- h3s: *X operations* (§5), *X watchers*
   (§6). What Juju does with an arrival second: EXECUTE it.
-- **X rules and errors** (§7) and **Related entities** (§8) stay
-  top-level h2s: cross-cutting law and neighbouring-domain
+- **X rules and errors** (§7) and **Entities related to the X** (§8)
+  stay top-level h2s: cross-cutting law and neighbouring-domain
   extensions are neither records nor machinery.
 
 Umbrella titles are entity-possessive nouns ("The machine's
 records", "The machine's machinery"); the participle-epithet
 alternative ("the persisted model", "the executed charm") failed on
 the meta-entities.
+
+**The slot titles under the umbrellas (round 33).** §1 is titled
+*The X's identity*: the umbrella already says "records", and its
+first h3 must not stutter with it ("The charm's records / The
+charm record") -- the section answers WHICH record the entity is
+and what identifies it (the machine ID, the source-name-revision
+triple, the offer URL), which is the identity question. §3 stays
+*The X in the data model* and remains separate from §1 on
+purpose: identity is what you POINT AT; the data model is what
+SURROUNDS it -- the whole stored footprint with every foreign
+key, the ERD slice view's home. §8 is retitled *Entities related
+to the X* (the red thread: every title carries the entity name).
+Folding §8 into the intro was evaluated and rejected: its bullets
+carry substantive cross-facts (the shared net node, removal
+ownership, the zone pointer), the intro must stay a definition,
+and reference pages are random-access -- a reader arriving
+mid-page never sees the intro. The C4-context anchoring the fold
+was after is already served twice over: the intro names the
+entity's primary neighbour, and the machinery sentence names who
+executes it.
 
 **Types after the portrait.** §2 argues from stored facts -- no type
 column, kinds derived, lease-not-a-column -- so it belongs after the
