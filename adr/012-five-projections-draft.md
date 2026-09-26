@@ -73,3 +73,19 @@ discipline (user docs: surface what the audience will never find in the
 codebase); the one genuine scope-addition of the reference layer is
 cross-layer synthesis. Go's doc.go/pkg.go.dev institutionalizes one
 carrier tier; Rust similar; C has none.
+
+## Amended 2026-09-26 (session 33): the unification
+
+The four-layer source model, the five projections, and declaration/persistence/execution are three
+views of one pipeline. An intent enters Juju and becomes reality in three steps; each step has
+exactly one source layer, and each stop answers its reader-questions:
+
+| Intent step | What happens | Source layer (four-layer model) | Reader questions (projections) |
+|---|---|---|---|
+| DECLARATION | a client states what it wants | facade | what can clients do? -> answered by LINKS to the how-tos, never a reference section |
+| PERSISTENCE | the service validates; the schema stores it | service + schema | what is stored? (ERD) what may change, who may change it? (state machine) what kinds? (taxonomy) |
+| EXECUTION | workers act on the stored facts | service + runtime | what runs where? (topology) how does a change happen? (sequence) |
+
+`doc.go` is the shared vocabulary all three steps speak (the lede). Corollary -- the filing rule:
+ONE claim, ONE stage, ONE section; a repeated claim is a claim whose stage was never decided. The
+page's h2 sequence IS the pipeline (see ADR-011, session-33 amendment).
