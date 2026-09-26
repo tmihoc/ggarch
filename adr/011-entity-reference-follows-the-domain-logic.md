@@ -306,7 +306,22 @@ the pipeline as structure. The amendments:
    cross-entity facts live HERE; states = life/status with owners, degenerate case explicitly allowed
    (standing flags with no life machine, e.g. credential); types = the section DECLARES its
    projection: the stored discriminator (schema grammar) or an interpretive taxonomy ("kinds, not a
-   partition", e.g. charm).
+   partition", e.g. charm). rules-and-errors = the enforcement surface ONLY: claims not already
+   stated at their stage (a rule that restates a validator's uniqueness or an enum membership
+   duplicates identity/types and is deleted) + the error taxonomy — the part users actually meet
+   (credential.md's rules section was 3/4 stage duplicates; session-33 round).
 6. **Operations are service-side.** §5 narrates the service's mutations with the location-qualified
    scope-phrase; client operations belong to the declaration section's links. A CLI command inside a
    service story is a stage blur (credential.md defect, fixed in the round).
+7. **The naming verdict (C; session 34, amends items 1–2 and the round-26 naming law at umbrella
+   level).** The umbrella h2s go question/gloss form: *How you declare the X* / *What Juju stores* /
+   *What happens in the background* (the reviewer's glosses: declaration = things you can do;
+   persistence = what Juju stores; execution = what happens in the background). Rationale: concrete
+   phrasing beats abstract nouns — "maybe the old law was bad" — so the round-26 nominal-titles rule
+   is AMENDED at umbrella level only: slot h3s may stay nominal where they already read concretely.
+   §5 follows the same logic: "X operations" evokes the reader doing something, but the section is
+   about what happens in the background — derive the concrete form per entity (proposed per page,
+   batched). The article folds in: generic sections drop false definites (The -> bare/generic form);
+   the red thread is unchanged (the entity name in every title). Items 1–2's titles (*The X's
+   declaration* / *The X's persistence* / *The X's execution*) are superseded by these forms; the
+   staged sequence declaration -> persistence -> execution is unchanged — only the wording moved.
