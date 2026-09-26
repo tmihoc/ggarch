@@ -277,3 +277,36 @@ relations.
   multi-homed per the catalogue convention.
 - Predictability test: a reader can locate all eight sections on any
   entity page because the skeleton is invariant.
+AMENDED 2026-09-26 (session 33; reviewer verdicts, the unified presentation): the three frameworks
+compose as one pipeline -- the four layers are where truth lives (sources); the five projections
+(ADR-012) are the questions a reader asks; declaration/persistence/execution is the order an intent
+visits those sources -- and the page narrates that visit top to bottom. What was rejected in round 25
+(two workflow-shaped section ORDERS) never needed resurrecting: the adopted skeleton already realizes
+the pipeline as structure. The amendments:
+
+1. **The declaration section.** A new h2, *The X's declaration*, opens the page after the lede. Its
+   body is LINKS to the how-to surfaces: the repo-internal Juju how-tos and, where a
+   terraform-provider-juju resource/how-to exists, the TF how-to via the `tfjuju` intersphinx mapping
+   (the lxd.md See-also pattern). The client-agnostic law is unchanged: links, never CLI narration.
+   This supersedes the round-25 reading that declaration lives ONLY in the howto layer (reviewer
+   steer, session 33); the ibnote it replaces becomes the section.
+2. **The umbrella titles carry their stage.** *The X's records* -> *The X's persistence*;
+   *The X's machinery* -> *The X's execution* (the word "machinery" is retired). Rationale: the
+   two-umbrella cut is honest as a STAGE sequence, not as categories; the titles now say so, and the
+   TOC reads declaration -> persistence -> execution with no explainer needed.
+3. **§8 dissolved (supersedes round 33).** *Entities related to the X* is deleted as a section. The
+   lede gains a triangulation paragraph (the neighbours, one pass, prose); FK-shaped facts rehome in
+   the data-model slot, service facts in machinery/states; random access is served by cross-links,
+   not repetition (the watcher-dedup precedent, d4c31acf61).
+4. **The filing rule.** ONE claim, ONE stage, ONE section. A repeated claim is a claim whose stage was
+   never decided; cross-slot duplication is the defect signature (credential.md's grant fact appeared
+   in both the ERD caption and the rules bullet).
+5. **The slot contracts (C13 ratified).** identity = what a record of X is, its natural key, where it
+   lives -- NO forward references; data model = the stored tables + the FK slice -- cross-database and
+   cross-entity facts live HERE; states = life/status with owners, degenerate case explicitly allowed
+   (standing flags with no life machine, e.g. credential); types = the section DECLARES its
+   projection: the stored discriminator (schema grammar) or an interpretive taxonomy ("kinds, not a
+   partition", e.g. charm).
+6. **Operations are service-side.** §5 narrates the service's mutations with the location-qualified
+   scope-phrase; client operations belong to the declaration section's links. A CLI command inside a
+   service story is a stage blur (credential.md defect, fixed in the round).
