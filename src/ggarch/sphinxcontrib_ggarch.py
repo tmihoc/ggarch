@@ -56,6 +56,7 @@ from typing import Any
 
 from docutils import nodes
 from docutils.parsers.rst import directives
+from docutils.statemachine import StringList
 from sphinx.util import logging
 from sphinx.util.docutils import SphinxDirective
 from sphinx.util.osutil import ensuredir
@@ -133,6 +134,25 @@ class GgarchDirective(SphinxDirective):
         node["css_class"]      = self.options.get("class", "")
         node["no_legend"]      = "no-legend" in self.options
         self.set_source_info(node)
+
+        # A caption may carry MyST markup ({ref}`...` etc.). The raw string
+        # stays on the node for the text/llms visitors; when markup is
+        # present, a parsed copy is attached as a child node so the HTML
+        # writer can emit resolved references inside the figcaption.
+        caption = node["caption"]
+        if caption and "{" in caption:
+            try:
+                container = nodes.container(classes=["ggarch-caption-content"])
+                self.state.nested_parse(
+                    StringList(caption.splitlines(),
+                               source=self.state.document["source"]),
+                    0, container,
+                )
+                node += container
+                node["caption_markup"] = True
+            except Exception:  # fall back to the plain-text caption
+                logger.warning(f"ggarch: could not parse caption markup: {caption!r}",
+                               location=node)
         return [node]
 
 
@@ -947,11 +967,22 @@ def html_visit_ggarch(self: object, node: ggarch) -> None:
         if legend_html:
             self.body.append(legend_html)
 
+    if node.get("caption_markup"):
+        # Leave the figure open: the parsed caption container is a child
+        # node, rendered next by the translator, and the depart visitor
+        # closes both the figcaption and the figure.
+        self.body.append('<figcaption>\n')
+        return
+
     if caption:
         self.body.append(f'<figcaption>{self.encode(caption)}</figcaption>\n')
 
     self.body.append('</figure>\n')
     raise nodes.SkipNode
+
+
+def html_depart_ggarch(self: object, node: ggarch) -> None:
+    self.body.append('</figcaption>\n</figure>\n')
 
 
 # ---------------------------------------------------------------------------
@@ -990,7 +1021,7 @@ def text_visit_ggarch(self: object, node: ggarch) -> None:
 def setup(app: object) -> dict[str, Any]:
     app.add_node(
         ggarch,
-        html=(html_visit_ggarch, None),
+        html=(html_visit_ggarch, html_depart_ggarch),
         markdown=(markdown_visit_ggarch, None),
         text=(text_visit_ggarch, None),
         man=(text_visit_ggarch, None),
