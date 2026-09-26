@@ -325,3 +325,42 @@ the pipeline as structure. The amendments:
    the red thread is unchanged (the entity name in every title). Items 1–2's titles (*The X's
    declaration* / *The X's persistence* / *The X's execution*) are superseded by these forms; the
    staged sequence declaration -> persistence -> execution is unchanged — only the wording moved.
+8. **The chain spine (session 34, post-close design session; supersedes items 1–2's section model and
+   item 7's umbrella forms).** The page's h2 spine is the chain itself — *Credentials in the
+   declaration layer* / *Credentials in the persistence layer* / *Credentials in the execution
+   layer* — plus *X rules and errors* outside the chain. Packed rulings:
+   - **Titles.** Plural class + "layer": "Credentials in the X layer" (plural = the class-topic;
+     "in" = the structural reading; the chronology comes from the chapter order and the bridge
+     sentence, not the title). "Layer" means the stage strata — the dependency stack genuinely
+     holds (an intent flows down: declaration feeds the writes, the writes produce the records,
+     the agents read the records). User-facing, the four-layer SOURCE model is "the sources";
+     "layer" is never used for it. The red thread is STRICT at every level (the reviewer: dropping
+     the entity name is bad for AI and SEO; "Machines in the execution layer" / "Models in the
+     persistence layer" is the cross-page preattentive theme that teaches the chain).
+   - **The writes re-file (supersedes item 6).** The service's inserts/upserts/removes/invalidates
+     are the RECORDING ACT — they live in the persistence layer. The execution layer is
+     world-facing only: checks, watches, machinery ("a credential has no machinery of its own"
+     becomes the opening payoff, not an apology).
+   - **The record merge.** Identity dissolves into the persistence layer's opening prose — the
+     record (natural key, attributes, uniqueness) -> the chain figure -> the copies; three zooms,
+     no sub-heading of its own. Data model = grammar (the reviewer's standing reading; see
+     ADR-012). States and types are h3s INSIDE the persistence layer. The identity contract's "no
+     forward references" survives as prose style, not as structure.
+   - **The states seam.** One prose clause in the states h3 (stage 3 discovers — a failed check;
+     stage 2 records — invalid is written). No tags; the layer titles carry the stages.
+   - **The declaration layer is the do-surface.** The verbs, add to remove (one sentence) + the
+     client-vs-controller footnote + the ibnote links (lxd.md pattern). Not a creation story
+     ("Where a credential comes from" was rejected: it names one verb).
+   - **The bridge sentence.** The execution layer opens with the prompt-returns teaching,
+     entity-adapted: "by the time the command returns, the record exists; nothing has yet proved
+     the credential works" (machine: "the machines don't exist yet"). The prompt returning is the
+     declaration/persistence handoff — the common misconception is that it is the end of the
+     chain. The canonical statement (with the bootstrap caveat — machine before db, the one place
+     the order inverts) lands on the architecture page (P0-1).
+   - **Title-law closure.** Topics are nominal/structural; "How you X" titles read as how-to
+     (round-26's own rationale) and are retired at every level, along with gerunds; "What you can
+     do" reads complete. The naming saga resolves: the round-26 nominal law was right for the
+     layer that still has titles; the churn lived in the buckets, which are now three named
+     strata carrying the entity in each title.
+   - **Watchers keep an h3** under the execution layer (the juju-dev chip's home; the code's own
+     Service/WatchableService split).

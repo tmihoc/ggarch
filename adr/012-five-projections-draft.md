@@ -89,3 +89,40 @@ exactly one source layer, and each stop answers its reader-questions:
 `doc.go` is the shared vocabulary all three steps speak (the lede). Corollary -- the filing rule:
 ONE claim, ONE stage, ONE section; a repeated claim is a claim whose stage was never decided. The
 page's h2 sequence IS the pipeline (see ADR-011, session-33 amendment).
+
+## Amended 2026-09-26 (session 34, post-close design session): the data model is the grammar; the boundary is the recording line
+
+Three rulings, driven by the reviewer's walk through the credential TOC:
+
+1. **The data model IS the grammar.** The ERD row's gloss ("what IS stored") slides into the
+   instance reading, and the instance reading is unavailable in a reference document — a page
+   never enumerates rows, so every claim about an entity type's storage is a constraint claim.
+   The schema layer answers ONE question — *what is the data model* — read at three zooms (the
+   record itself: key, attributes, uniqueness; the relational chain: FKs, cardinalities; the
+   physical distribution: cross-db copies) and two notations (prose, ERD figure). The
+   grammar/ERD rows are one projection at two scopes, not two projections. Identity and the
+   data-model slot were split by a chunking decision (record vs footprint), not by projection.
+2. **The persistence/execution boundary is the model/instance boundary — and the recording line.**
+   The persistence chapter is all model; the execution chapter is all instances (the runtime
+   realizing and mutating). Two projections deliberately bisect this line — the line the
+   prompt-return misconception mis-draws (users think "juju deploy" was executed when the
+   terminal prompt returned; that is only the declaration/persistence handoff):
+   - the **state machine**: stored half in persistence (the flags), authority half in execution
+     (who may change), guard in rules;
+   - **sequence**: synchronous half (declare -> record: the writes) in the persistence layer's
+     prose, asynchronous half (checks, watches, machinery) in the execution layer.
+   The bisection is the feature, not a defect of the table: the entity pages teach where the
+   misconception fails, per entity.
+3. **Diagram placement (the invariant, now sharper).** Caption kind = the question the figure
+   answers (unchanged). A figure's chapter = the chapter whose layer grounds its question; ERD
+   and state-machine figures sit in the persistence layer, sequence and topology figures in the
+   execution layer. Entity-page figures stay single-projection. The only multi-layer figures are
+   full chain walks — they are the conclusion, not entity facts, and their home is the
+   architecture page (P0-1), which the entity pages converge to. Corollary: machine.md's
+   designation (topology) figure moves to the execution layer chapter in its round.
+
+Also: user-facing, the four-layer source model is named **"the sources"** (doc.go, service,
+facade, schema); "layer" in titles means the declaration/persistence/execution strata only
+(ADR-011 item 8). Each chapter of the chain spine visits its sources monotonically: facade ->
+schema (+ the service's write paths) -> service (world-facing) + runtime; rules-and-errors is
+the cross-cutting synthesis (service validators + facade authz + the error taxonomy).

@@ -39,3 +39,39 @@ one — it is resource material (it authenticates; it does not connect a princip
   projections of one association record, each in its own client's surface vocabulary.
 - The entity pages stop carrying grant facts ad hoc; the credential page's data-model slot holds
   the FK fact and links out for the model.
+## Amended 2026-09-26 (session 34, post-close design session): the entityhood test
+
+The generalization this ADR proposed is now a test, and it settles the founder's old doubt
+("originally I defined an entity as anything that has a lifecycle story... now not sure anymore"):
+
+**An entity is something the user can declare intent about through a client, that Juju stores a
+record of, and whose realization Juju executes.**
+
+The lifecycle is the CONSEQUENCE (the record's states — the shadow the chain casts), not the
+criterion. The counterexample that proves the sharpening: the agent has a lifecycle story
+(provisioned, started, dies with its machine) and is not an entity — nobody declares an agent.
+
+**The reference index silently mixes page types; the chain spine sorts them** (each page's
+failure mode is its type declaration — the crack is always an empty declaration layer or an
+empty persistence layer, and the empty chapter is the truth about the thing):
+
+| Type | Failure | Pages |
+|---|---|---|
+| Entity | passes all three | cloud, credential, user, model, application, unit, relation, offer, secret, action, machine, storage, space, ssh-key, controller, charm |
+| Executor (stage-3 subject) | no declaration layer | agent, jujud, containeragent, worker, watcher, pebble |
+| Instrument (stage-1 tool) | the means of intent, not its object | client, juju-cli, juju-web-cli, dashboard, jujuc, hook-command |
+| Substrate | the chain runs on it | database (the juju client never speaks to it as an object of intent; manage-the-databases is ops, juju db-repl a peephole) |
+| Observation | recordings OF the chain | log, telemetry, status |
+| Chain-walk process | the full walk across entities | removing-things, upgrading-things, scaling, high-availability |
+
+**In-entity facet honesty** (entities whose persistence layer is empty or by-reference — the
+spine says so rather than pretending): bundle = a composite intent, stored only as the
+applications it expands to (nothing is recorded as a bundle); constraint and placement-directive
+are recorded on other entities' records (columns on application/machine records); zone
+(discovered, not declarable) and script (charm content, not separately declared) are to be
+grounded in their own rounds.
+
+**Disposition:** the chain spine applies to the entity pages only; the non-entity types keep
+their current form until their own spines are cracked (reviewer: "we'll keep investigating till
+we've cracked their logic too"). access.md takes the full entity spine (grants are declarable,
+stored, executed) and is queued after the sweep.
