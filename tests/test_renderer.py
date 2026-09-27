@@ -719,44 +719,178 @@ class TestArrowheadChannel:
 
 
 # ---------------------------------------------------------------------------
-# Crow's-foot glyphs on data edges (verdict B, round 24)
+# ERD edge grammar — the architect's-idiom verdict (session 45;
+# supersedes the round-24 crow's-foot): data edges render BARE — no
+# arrowheads, no verb labels — with 1/m end labels at BOTH box faces
+# and dashed = nullable (derived from the fk field's null: marker).
 # ---------------------------------------------------------------------------
 
-class TestCrowfoot:
-    def test_crowfoot_parses_cardinality_vocabulary(self):
-        from ggarch.renderer import _crowfoot_kind
-        # many: the ..N vocabulary
-        assert _crowfoot_kind("hosts 0..N") == "many"
-        assert _crowfoot_kind("owns 0..N") == "many"
-        assert _crowfoot_kind("groups 1..N") == "many"
-        # one: the (one)/1:1/1..1/0..1 vocabulary
-        assert _crowfoot_kind("uses (one)") == "one"
-        assert _crowfoot_kind("runs on (one unit)") == "one"
-        assert _crowfoot_kind("marks the action (1:1)") == "one"
-        assert _crowfoot_kind("attaches 1..1") == "one"
-        assert _crowfoot_kind("belongs to 0..1") == "one"
-        # no vocabulary, no glyph
-        assert _crowfoot_kind("calls Pebble API") == ""
-        assert _crowfoot_kind("") == ""
+ERD_SRC = """\
+model "M" {
+  nodes {
+    parent [type: record, label: "parent", ground: "model:parent"] {
+      fields {
+        uuid   [label: "uuid", type: "uuid", pk: true]
+      }
+    }
+    child  [type: record, label: "child", ground: "model:child"] {
+      fields {
+        uuid       [label: "uuid", type: "uuid", pk: true]
+        parent_uuid [label: "parent_uuid", type: "uuid", fk: true,
+                     null: true]
+      }
+    }
+    join   [type: record, label: "join", ground: "model:join"] {
+      fields {
+        child_uuid  [label: "child_uuid", type: "uuid", pk: true,
+                     fk: true]
+        other_uuid  [label: "other_uuid", type: "uuid", pk: true,
+                     fk: true]
+      }
+    }
+    other  [type: record, label: "other", ground: "model:other"]
+    one2one [type: record, label: "one2one", ground: "model:one2one"] {
+      fields {
+        parent_uuid [label: "parent_uuid", type: "uuid", pk: true,
+                     fk: true]
+      }
+    }
+    legacy [type: record, label: "legacy", ground: "model:legacy"]
+  }
+  edges {
+    child.parent_uuid   -> parent.uuid  [type: data, label: "joins (0..1)"]
+    join.child_uuid     -> child.uuid   [type: data, label: "sits in (one)"]
+    join.other_uuid     -> other        [type: data, label: "maps to (one)"]
+    one2one.parent_uuid -> parent.uuid  [type: data, label: "is the (one)"]
+    legacy -> parent        [type: data, label: "hosts 0..N"]
+  }
+  style { extends: juju }
+}
+diagram "D" from "M" {
+  select {
+    routing: orthogonal
+    nodes: parent child join other one2one legacy
+    edges: type data
+  }
+  positions {
+    parent   right-of child   gap: 90
+    parent   align-middle child
+    join     below child      gap: 60
+    other    right-of join    gap: 60
+    one2one  below parent     gap: 60
+    legacy   left-of join     gap: 60
+  }
+}
+"""
 
-    def test_fork_draws_three_prongs(self):
-        from ggarch.renderer import _render_crowfoot
-        import drawsvg as dw
-        g = dw.Group()
-        _render_crowfoot(g, [(0, 0), (100, 0)], "many", "#F9A825")
-        # fork: three prong lines
-        assert len(g.children) == 3
 
-    def test_bar_draws_one_stroke(self):
-        from ggarch.renderer import _render_crowfoot
-        import drawsvg as dw
-        g = dw.Group()
-        _render_crowfoot(g, [(0, 0), (100, 0)], "one", "#F9A825")
-        assert len(g.children) == 1
+class TestErdEdgeGrammar:
+    def test_data_edge_draws_no_arrowhead_and_no_verb(self):
+        svg = pipeline(ERD_SRC)
+        # No arrowhead on any data path (the whole SVG is data edges).
+        assert "marker-end" not in svg
+        assert "marker-start" not in svg
+        # The verb stays in the grammar but never renders.
+        assert "joins (0..1)" not in svg
+        assert ">joins<" not in svg
 
-    def test_short_shaft_draws_nothing(self):
-        from ggarch.renderer import _render_crowfoot
-        import drawsvg as dw
-        g = dw.Group()
-        _render_crowfoot(g, [(0, 0), (5, 0)], "many", "#F9A825")
-        assert len(g.children) == 0
+    def test_both_end_labels_render_at_the_faces(self):
+        svg = pipeline(ERD_SRC)
+        # The fk (child) end of the nullable non-unique fk reads m; the
+        # referenced (parent) end reads 1. Both drawn as plain texts.
+        assert re.search(r'<text[^>]*>m</text>', svg)
+        assert re.search(r'<text[^>]*>1</text>', svg)
+
+    def test_nullable_fk_draws_dashed(self):
+        svg = pipeline(ERD_SRC)
+        # child.parent_uuid is null: true → the edge dashes (honest
+        # absence); the other fk edges stay solid.
+        assert 'stroke-dasharray="6,3"' in svg
+
+    def test_unique_fk_child_end_reads_1(self):
+        """A single-column PK that is also the fk reads 1 at the child
+        end (one child row per referenced row — the 1:1 case)."""
+        from ggarch.router import route
+        from ggarch.solver import solve
+        f = parse(ERD_SRC)
+        validate(f)
+        d = f.diagrams[0]
+        m = f.get_model(d.model_name)
+        rl = route(solve(d, m), m, d.select)
+        e = next(x for x in rl.edges
+                 if x.source_id == "one2one")
+        assert e.source_unique is True
+        src_label, tgt_label = _erd_labels_for_test(e)
+        assert (src_label, tgt_label) == ("1", "1")
+
+    def test_non_unique_fk_child_end_reads_m(self):
+        """A non-unique fk column reads m at the child end (many child
+        rows per referenced row)."""
+        from ggarch.router import route
+        from ggarch.solver import solve
+        f = parse(ERD_SRC)
+        validate(f)
+        d = f.diagrams[0]
+        m = f.get_model(d.model_name)
+        rl = route(solve(d, m), m, d.select)
+        e = next(x for x in rl.edges if x.source_id == "child")
+        assert e.source_unique is False
+        src_label, tgt_label = _erd_labels_for_test(e)
+        assert (src_label, tgt_label) == ("m", "1")
+
+    def test_composite_pk_fk_member_reads_m(self):
+        """A composite-PK fk member is NOT individually unique — its
+        child end reads m (the availability_zone_subnet class)."""
+        from ggarch.router import route
+        from ggarch.solver import solve
+        f = parse(ERD_SRC)
+        validate(f)
+        d = f.diagrams[0]
+        m = f.get_model(d.model_name)
+        rl = route(solve(d, m), m, d.select)
+        e = next(x for x in rl.edges if x.source_id == "join"
+                 and x.target_id == "child")
+        assert e.source_unique is False
+        src_label, tgt_label = _erd_labels_for_test(e)
+        assert (src_label, tgt_label) == ("m", "1")
+
+    def test_legacy_node_qualified_edge_gets_no_labels(self):
+        """NO DDL witness, NO label: legacy node-qualified spine edges
+        carry no multiplicity truth the engine may invent."""
+        from ggarch.router import route
+        from ggarch.solver import solve
+        f = parse(ERD_SRC)
+        validate(f)
+        d = f.diagrams[0]
+        m = f.get_model(d.model_name)
+        rl = route(solve(d, m), m, d.select)
+        e = next(x for x in rl.edges if x.source_id == "legacy")
+        src_label, tgt_label = _erd_labels_for_test(e)
+        assert (src_label, tgt_label) == ("", "")
+
+    def test_end_labels_sit_outside_the_box_faces(self):
+        """The 1/m glyphs render just outside the box face the stroke
+        touches — never inside the box, never on the line mid-span."""
+        svg = pipeline(ERD_SRC)
+        card_texts = re.findall(
+            r'<text x="([\d.]+)" y="([\d.]+)"[^>]*>([1m])</text>', svg)
+        assert card_texts, "no end labels rendered"
+        # At least one label hugs a box's outside: compare against the
+        # drawn record rects.
+        rects = [(float(m.group(1)), float(m.group(2)),
+                  float(m.group(3)), float(m.group(4)))
+                 for m in re.finditer(
+                     r'<rect x="([\d.]+)" y="([\d.]+)" '
+                     r'width="([\d.]+)" height="([\d.]+)" '
+                     r'fill="#FAFAFA"', svg)]
+        assert rects
+        for x, y, _w, _h in [(float(cx), float(cy), 0, 0)
+                             for cx, cy, _ in card_texts]:
+            inside = any(rx < x < rx + rw and ry < y < ry + rh
+                         for rx, ry, rw, rh in rects)
+            assert not inside, f"end label at ({x},{y}) sits INSIDE a box"
+
+
+def _erd_labels_for_test(edge):
+    from ggarch.renderer import _data_edge_end_labels
+    return _data_edge_end_labels(edge)

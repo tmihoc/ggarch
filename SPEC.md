@@ -503,9 +503,12 @@ wording") resolves the choice: the arrow runs **child → parent
 label reads child-first along it ("belongs to (one)"); counts are
 carried by the field badges (an `fk:` badge is exactly-one) and, where
 the view argues a count, by truth-maker-backed labels. The planned
-crow's-foot glyphs were superseded: they state both halves inline but
-drop direction and cannot locate the FK when the association is 1:1
-(ADR-004 "Data model views" reasoning in SKILL.md).
+crow's-foot glyphs were themselves superseded (session-45 ratification,
+the architect's-idiom verdict): data edges render BARE — no arrowhead
+at either end, no verb label drawn — with computed `1`/`m` end labels
+at BOTH box faces and dashed stroke = the fk is nullable. Direction
+lives in the DDL, the `fk:` badge and one walkthrough-prose sentence
+per association (ADR-004 "Data model views" reasoning in SKILL.md).
 
 **The bridge must cover operations, not just entities.** Inspecting
 juju.ggarch's edges against the schema found a middle class:
@@ -2201,8 +2204,11 @@ Rendering: nodes with fields and `type: record` render as tables (header row
 + field rows). Nodes with fields and `type: class` render as UML compartment
 boxes (name compartment + fields compartment + methods compartment). The
 router anchors field-qualified edges at the field row's right/left face
-rather than the node centroid. Crow's-foot arrowhead styles (zero-or-one,
-one, zero-or-more, one-or-more) added to the style layer as edge arrow types.
+rather than the node centroid. The planned crow's-foot arrowhead styles
+were superseded before shipping (session-45 architect's-idiom verdict):
+data edges render bare with computed `1`/`m` end labels at both faces and
+dashed = nullable (the fk field's `null:` marker); no arrowhead styles
+were added for them.
 
 ### Phase 10 -- metadata and legend
 *(Derived from ADR-001 Gap 3: structured metadata)*

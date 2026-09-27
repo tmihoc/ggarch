@@ -180,7 +180,7 @@ learns the three channels once and reads every diagram.
 |---|---|---|---|---|
 | `api` | solid | filled | `#555555` | RPC or REST call |
 | `control` | solid | filled | `#555555` | process lifecycle / drives (visually = `api`, ratified) |
-| `data` | solid | filled | amber | pointer / persistence (see **Data model views**) |
+| `data` | solid (dashed = nullable fk) | none | amber | pointer / persistence — bare line, `1`/`m` at both ends (see **Data model views**) |
 | `stream` | `6,3` | filled | `#555555` | long-lived connection, watch |
 | `event` | `6,3` | open | `#888888` | one-way async notification |
 | `ipc` | `2,2` | filled | `#888888` | Unix socket / in-process |
@@ -220,7 +220,11 @@ between-copies wiring. See **Instances** below.
 
 An edge label has two flows to respect: the arrow's (geometry) and the
 sentence's (semantics). Both follow one taste: **flip the least thing
-that restores flow; never let two channels argue.**
+that restores flow; never let two channels argue.** The law governs
+labels that RENDER. On ERD data views the renderer draws no verb
+(the bare-line grammar, **Data model views**): the association's
+label string still follows this law in the grammar/JSON, and its verb
+moves to the walkthrough prose — one sentence per association.
 
 1. **Alignment.** The label's subject is the arrow's source; its
    object is the target. `unit -> application: "belongs to"` reads
@@ -281,33 +285,43 @@ stores exactly one directed fact per association: **which column holds
 the pointer** (child table's FK column → parent table's PK). A Data
 model view is a portrait of that fact -- nothing more, nothing less.
 
-Crow's-foot glyphs (round 24, verdict B): `data` edges whose label
-carries the cardinality vocabulary grow a multiplicity glyph at the
-TARGET end — a fork for many (`0..N`, `1..N`), a bar for one
-(`(one)`, `1:1`, `1..1`, `0..1`). The verb stays in the label (ADR-002);
-the glyph is draw-only (no anchor moves, the audit sees the same
-geometry).
+The ERD edge grammar (the architect's-idiom verdict, session 45 — it
+supersedes the round-24 crow's-foot glyphs) follows the hand-drawn
+convention the schema's own architect uses: a **bare line** — no
+arrowhead at either end, no verb label drawn — with **`1`/`m`
+cardinality at BOTH ends**, hand-placed just outside the box face the
+stroke touches. **Dashed stroke = the fk is nullable** (an honest
+absence — "the row may be absent"), derived from the field's `null:`
+marker, never hand-declared.
 
-- Arrows run FK → PK: the only direction the storage layer states.
-  Labels align to that arrow, child-first ("belongs to").
+- Direction lives in its honest homes: the DDL, the `fk:` field badge
+  (the child half's count witness), and ONE walkthrough-prose sentence
+  per association ("the subnet row holds the space pointer"). The
+  edge's `label` string stays in the grammar (JSON export, search,
+  validator ground) but the ERD renderer does not draw it.
+- **Cardinality is computed, not declared.** The fk (child) end reads
+  the fk field's multiplicity: `1` when the column is uniquely indexed
+  (a single-column PK or a UNIQUE key), `m` otherwise — a
+  composite-PK member is NOT individually unique. The referenced
+  (parent) end reads `1` (the referenced key is a PK/UNIQUE key).
+  Legacy node-qualified edges with no field witness draw no labels.
 - **Field badges are the count witnesses.** `fk:` (non-null) asserts
-  "exactly one" on the child half; `?` widens it to 0..1. The parent
-  half (0..N) is derivable and is never drawn. Edge-label counts
-  appear only when the view argues a count (a junction chain, say) --
-  bare verbs are the default and are compliant.
+  "exactly one" on the child half; `?` widens it to 0..1 (and dashes
+  the stroke). The parent half's 0..N is derivable and is never drawn.
 - **Every FK column is drawn exactly once.** One column has one FK
-  target; two arrows from one column assert a schema-impossible
+  target; two lines from one column assert a schema-impossible
   reference. The validator enforces this (see Troubleshooting:
   "originates N data edges"). An M:N is drawn as its junction: both
-  FK columns, each with its own arrow.
+  FK columns, each with its own line.
 - Full truth is the model's job (grounded to the DDL), never one
   view's. A view asserts the half its angle argues; the shared model
   holds the association itself.
 
-Crow's-foot notation states both halves inline but drops direction
-and cannot locate the FK when the association is 1:1. Drawing the
-pointer wins for a grounded tool: it is the only half with a
-truth-maker.
+Bare-line notation loses nothing: both cardinality halves are stated
+inline (the crow's-foot's one advantage), the fk badge still locates
+the pointer, and the walkthrough sentence carries the verb. The
+verb-wording law keeps verbs ONLY on runtime/sequence views, where
+direction is flow.
 
 ---
 
@@ -323,8 +337,10 @@ column, one pointer per distinct target), and `ground:` pointers into
 the DDL. The transitive FK-parent closure of the requested tables is
 auto-included (pruning a referenced parent would hide the pointer).
 The fragment validates by construction — FK-completeness holds at
-birth — so your curation (trim tables, name the relationships with
-aligned verbs, build the views) happens with the validator watching.
+birth — so your curation (trim tables; the ERD labels' verbs stay in
+the grammar — walkthrough prose owns them — while runtime views keep
+their aligned verbs; build the views) happens with the validator
+watching.
 
 ### 1. Identify the nodes
 
@@ -968,7 +984,7 @@ node declared in the model. Check for typos; ids are case-sensitive.
 within a model.
 
 **"fk field ... originates N data edges; exactly 1 expected"** -- a
-record's `fk:` column has no arrow (N=0: the pointer is hidden) or
+record's `fk:` column has no line (N=0: the pointer is hidden) or
 several (N>1: one column cannot have two FK targets). Every FK column
 is drawn exactly once; see **Data model views** above.
 

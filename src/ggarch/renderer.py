@@ -289,6 +289,7 @@ def render(
     edge_styles = resolve_edge_style(model.style, dark=dark)
     layout = routed.layout
     bounds = layout.bounds
+    _clear_end_label_spots()
     salience = _emphasize_state(view, layout)
     if salience:
         salience = dict(salience, mode=salience_mode)
@@ -439,7 +440,8 @@ def render(
                   salience=salience)
     for edge in routed.edges:
         _render_edge(edges_g, edge, edge_styles, ox, oy, salience=salience,
-                     hidden=set(getattr(view.select, "hidden_nodes", []) or []))
+                     hidden=set(getattr(view.select, "hidden_nodes", []) or []),
+                     layout=layout)
 
     for i, ann in enumerate(view.annotations):
         if skip_legend and isinstance(ann, AnnotationLegend):
@@ -1046,68 +1048,6 @@ def _render_label(
         ))
 
 
-# ---------------------------------------------------------------------------
-# Cardinality badge
-# ---------------------------------------------------------------------------
-
-_KIND_BADGE_SIZE = 14
-
-
-def _crowfoot_kind(label: str) -> str:
-    """Verdict B (round 24): crow's-foot glyphs on data edges, parsed
-    from the existing cardinality label vocabulary — the multiplicity
-    becomes preattentive at the edge's far end instead of living only
-    in the label. Verbs stay as edge labels (ADR-002)."""
-    if not label:
-        return ""
-    if "0..N" in label or "1..N" in label:
-        return "many"
-    if "0..1" in label or "1..1" in label or "1:1" in label:
-        return "one"
-    if "(one" in label:
-        return "one"
-    return ""
-
-
-def _render_crowfoot(
-    g: dw.Group,
-    pts: list[tuple[float, float]],
-    kind: str,
-    stroke: str,
-) -> None:
-    """Draw the crow's-foot glyph at the TARGET end of the path: a
-    fork (three prongs spreading onto the target face) for many, a
-    single perpendicular bar for one. Draw-only idiom: no anchor
-    moves, no measurement changes, the audit sees the same geometry.
-    The arrowhead keeps the direction channel (ADR-004); the glyph
-    carries the multiplicity."""
-    if len(pts) < 2:
-        return
-    ex, ey = pts[-1]
-    px, py = pts[-2]
-    dx, dy = ex - px, ey - py
-    length = (dx * dx + dy * dy) ** 0.5
-    if length < 14:
-        return
-    ux, uy = dx / length, dy / length
-    nx, ny = -uy, ux
-    # ERD proportions (round 28 verdict A): the glyph reads from a
-    # mile away — fork prongs 16px deep spreading onto the target
-    # face, bar 16px back and 10px wide. The arrowhead is suppressed
-    # on these edges (the glyph IS the terminal symbol).
-    if kind == "many":
-        bx, by = ex - ux * 16, ey - uy * 16
-        for ox_, oy_ in ((nx * 7, ny * 7), (0.0, 0.0), (-nx * 7, -ny * 7)):
-            g.append(dw.Line(bx, by, ex + ox_, ey + oy_,
-                             stroke=stroke, stroke_width=1.2,
-                             stroke_linejoin="round"))
-    elif kind == "one":
-        bx, by = ex - ux * 16, ey - uy * 16
-        g.append(dw.Line(bx + nx * 5, by + ny * 5,
-                         bx - nx * 5, by - ny * 5,
-                         stroke=stroke, stroke_width=1.2))
-
-
 def _render_kind_badge(
     g: dw.Group,
     x: float,
@@ -1371,6 +1311,141 @@ def _edge_path_d(pts, bow: float = 0.0) -> str:
     return f"M {x0:.1f} {y0:.1f} Q {cx:.1f} {cy:.1f} {x1:.1f} {y1:.1f}"
 
 
+# ---------------------------------------------------------------------------
+# ERD edge grammar (data edges): derivation + both-end cardinality
+# ---------------------------------------------------------------------------
+
+_CARD_FONT_SIZE = 10
+_KIND_BADGE_SIZE = 14
+
+# The end-label dedupe table (per render; keyed by node/face/text).
+_END_LABEL_SPOTS: dict = {}
+
+
+def _clear_end_label_spots() -> None:
+    """Reset the dedupe table — called once per render()."""
+    _END_LABEL_SPOTS.clear()
+
+
+def _data_edge_nullable(edge: RoutedEdge) -> bool:
+    """Dashed = the fk is nullable (an honest absence). Derived from
+    the fk field's null: marker — never hand-declared per view."""
+    return bool(edge.source_field) and edge.source_nullable
+
+
+def _data_edge_end_labels(edge: RoutedEdge) -> tuple[str, str]:
+    """Derive the (source-end, target-end) cardinality strings.
+
+    The fk (child) end reads the fk field's multiplicity: `1` when the
+    column is uniquely indexed (a single-column PK or a UNIQUE key —
+    a composite-PK member is NOT individually unique), `m` otherwise.
+    The referenced (parent) end reads the referenced key's truth: `1`
+    when it is a PK/UNIQUE key — always, in our schema. NO witness,
+    NO label: legacy node-qualified edges carry no DDL multiplicity
+    truth (their label's "0..N" is the parent→children prose reading),
+    so nothing is fabricated for them.
+    """
+    src = tgt = ""
+    if edge.source_field:
+        src = "1" if edge.source_unique else "m"
+    if edge.target_field:
+        tgt = "1" if edge.target_unique else "m"
+    elif src:
+        # Node-qualified parent (a collapsed chip or key-level box):
+        # the referenced key is unique by construction.
+        tgt = "1"
+    return src, tgt
+
+
+def _face_point(node: SolvedNode, p) -> str:
+    """Which face of the node the endpoint p touches: n/s/e/w."""
+    px, py = p[0], p[1]
+    r = node.rect
+    dx = min(abs(px - r.x), abs(px - (r.x + r.w)))
+    dy = min(abs(py - r.y), abs(py - (r.y + r.h)))
+    if dy <= dx:
+        return "n" if abs(py - r.y) <= abs(py - (r.y + r.h)) else "s"
+    return "w" if abs(px - r.x) <= abs(px - (r.x + r.w)) else "e"
+
+
+def _render_data_end_labels(
+    g: dw.Group,
+    edge: RoutedEdge,
+    layout: SolvedLayout | None,
+    ox: float,
+    oy: float,
+    stroke: str,
+) -> None:
+    """Draw `1` / `m` at BOTH endpoints, just outside the box face the
+    stroke touches (the excalidraw hand-placed convention — never on
+    the line mid-span, never inside the box). Same-text labels landing
+    within 16px at the same face draw ONCE (two join-table edges read
+    the same truth at the shared parent face; a doubled `1` reads as
+    noise)."""
+    src_s, tgt_s = _data_edge_end_labels(edge)
+    if not src_s and not tgt_s:
+        return
+    pts = [(p.x, p.y) for p in edge.points]   # LAYOUT space — rects too
+    if len(pts) < 2:
+        return
+    for text, pid in ((src_s, edge.source_id), (tgt_s, edge.target_id)):
+        if not text:
+            continue
+        p = pts[0] if pid == edge.source_id else pts[-1]
+        node = layout.find(pid) if layout else None
+        if node is None:
+            continue
+        r = node.rect
+        px, py = p
+        # The stroke leaves the face; place the label just outside the
+        # face, offset along the face so it never overlaps the line
+        # entry. Face distance ~6px outside; 8px along the face.
+        # The along-face offset goes AWAY from the endpoint when the
+        # entry sits near the face's far edge (a west-face entry at the
+        # top edge of a short chip would put an inside offset back
+        # INTO the box; excalidraw hand-places the label clear of the
+        # box, off the attachment's own face).
+        anchor = "middle"
+        face = _face_point(node, p)
+        # The 8px along-face offset goes toward the box's label edge
+        # (its top-left corner): two edges attaching at the same face
+        # then stack predictably instead of colliding with each other
+        # or with their own strokes. A near-corner entry (<14px from
+        # the face's along-edge) would put the offset back INSIDE the
+        # neighbouring box — flip it to the far side of the entry.
+        if face == "n":
+            tx, ty = px + 8, r.y - 6
+        elif face == "s":
+            tx, ty = px + 8, r.y + r.h + 12
+        elif face == "w":
+            if r.x - px >= 14:
+                tx, ty = px - 12, py - 8
+            else:
+                ty = r.y - 6
+                tx = px + 8
+        else:  # e
+            if px - (r.x + r.w) >= 14:
+                tx, ty = px + 12, py - 8
+            else:
+                ty = r.y - 6
+                tx = px + 8
+        key = (id(node), face, text)
+        spot = (round(tx / 16), round(ty / 16))
+        prior = _END_LABEL_SPOTS.get(key)
+        if prior is not None and abs(prior[0] - tx) < 16 \
+                and abs(prior[1] - ty) < 16:
+            continue
+        _END_LABEL_SPOTS[key] = (tx, ty)
+        g.append(dw.Text(
+            text, _CARD_FONT_SIZE, tx + ox, ty + oy,
+            font_family=LABEL_FONT,
+            font_style="italic",
+            fill=stroke,
+            text_anchor=anchor,
+            dominant_baseline="central",
+        ))
+
+
 def _render_edge(
     g: dw.Group,
     edge: RoutedEdge,
@@ -1379,6 +1454,7 @@ def _render_edge(
     oy: float,
     salience: dict | None = None,
     hidden: set | None = None,
+    layout: SolvedLayout | None = None,
 ) -> None:
     # The reveal's 0-opacity (2026-09-22): an edge whose endpoint is
     # hidden prints invisibly — the full diagram routes and renders;
@@ -1387,7 +1463,7 @@ def _render_edge(
         quiet = dw.Group(opacity="0")
         g.append(quiet)
         _render_edge(quiet, edge, edge_styles, ox, oy,
-                     salience=salience, hidden=None)
+                     salience=salience, hidden=None, layout=layout)
         return
     pts = [(p.x + ox, p.y + oy) for p in edge.points]
     es = edge_styles.get(edge.edge_type, edge_styles.get("default", EdgeStyle()))
@@ -1423,18 +1499,31 @@ def _render_edge(
     # under labelling by construction.
     # ADR-004: the head shape is the commitment channel, resolved per
     # edge style; direction (edge.arrow) is orthogonal to shape.
-    # Verdict A (round 28): on data edges whose label parses to a
-    # cardinality, the crow's-foot glyph REPLACES the end arrowhead —
-    # the ERD grammar's own terminal symbol (the reviewer: "we're not
-    # reinventing ERDs here... stay faithful to their grammar"). The
-    # fk-anchored start already carries direction; the START marker
-    # (edge.arrow back/both) survives.
-    crowfoot = ""
-    if edge.edge_type == "data" and edge.label:
-        crowfoot = _crowfoot_kind(edge.label)
+    # The ERD edge grammar (session 45, the architect's-idiom verdict
+    # that supersedes the round-24 crow's-foot): a data edge renders
+    # BARE — no arrowhead at either end (direction lives in the DDL,
+    # the fk: field badge and the walkthrough prose), no verb label
+    # drawn (the label string stays in the grammar for JSON export,
+    # search and the validator; its content moves to the walkthrough
+    # prose), and cardinality carried by 1/m end labels at BOTH box
+    # faces (the excalidraw-cmv hand-placed convention). Dashed stroke
+    # = the fk is nullable (an honest absence), derived from the
+    # field's null: marker.
+    if edge.edge_type == "data":
+        if edge.arrow in ("forward", "both"):
+            path_kwargs.pop("marker_end", None)
+        if edge.arrow in ("back", "both"):
+            path_kwargs.pop("marker_start", None)
+        nullable = _data_edge_nullable(edge)
+        if nullable and not (edge.style == "dashed" or es.stroke_dash):
+            path_kwargs["stroke_dasharray"] = "6,3"
+        g.append(dw.Path(d=_edge_path_d(pts, edge.bow), **path_kwargs))
+        _render_data_end_labels(g, edge, layout, ox, oy, es.stroke)
+        return
+
     suffix = "" if es.arrowhead in ("filled", "none") else f"-{es.arrowhead}"
     if es.arrowhead != "none":
-        if edge.arrow in ("forward", "both") and not crowfoot:
+        if edge.arrow in ("forward", "both"):
             path_kwargs["marker_end"] = f"url(#arrow{suffix})"
         if edge.arrow in ("back", "both"):
             path_kwargs["marker_start"] = f"url(#arrow{suffix}-start)"
@@ -1442,8 +1531,6 @@ def _render_edge(
 
     if not edge.label:
         return
-    if crowfoot:
-        _render_crowfoot(g, pts, crowfoot, es.stroke)
     draw_path_label(g, pts, edge.label, es.font_color,
                     anchor_frac=edge.label_anchor, bow=edge.bow,
                     label_side=edge.label_side)

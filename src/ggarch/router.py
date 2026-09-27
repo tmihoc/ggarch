@@ -177,6 +177,44 @@ class Point:
         return math.hypot(self.x - other.x, self.y - other.y)
 
 
+def _field_witnesses(layout, edge) -> dict:
+    """Resolve the ERD field witnesses for a data edge: the declared
+    field ids ("" when the endpoint is node-qualified) and the
+    referenced NodeField's nullable / uniqueness markers. Resolved
+    against the SOLVED layout (instance-stamped nodes carry the
+    archetype's fields), so instance-expanded edges witness too."""
+    out = {"source_field": edge.source_field, "target_field": edge.target_field,
+           "source_nullable": False, "target_nullable": False,
+           "source_unique": False, "target_unique": False}
+    if not edge.source_field and not edge.target_field:
+        return out
+    def _node_fields(node_id: str):
+        n = layout.find(node_id) if layout else None
+        return n.fields if n is not None else []
+    def _field(node_id: str, field_id: str):
+        if not field_id:
+            return None
+        for f in _node_fields(node_id):
+            if f.id == field_id:
+                return f
+        return None
+    sf = _field(edge.source, edge.source_field)
+    tf = _field(edge.target, edge.target_field)
+    if sf is not None:
+        out["source_nullable"] = sf.nullable
+        # A composite-PK member is NOT individually unique: only a
+        # single-column PK or an explicit UNIQUE key reads `1`.
+        out["source_unique"] = bool(sf.uk) or bool(
+            sf.pk and sum(1 for f in _node_fields(edge.source)
+                          if f.pk) == 1)
+    if tf is not None:
+        out["target_nullable"] = tf.nullable
+        out["target_unique"] = bool(tf.uk) or bool(
+            tf.pk and sum(1 for f in _node_fields(edge.target)
+                          if f.pk) == 1)
+    return out
+
+
 @dataclass
 class RoutedEdge:
     """A routed edge ready for the renderer."""
@@ -219,6 +257,19 @@ class RoutedEdge:
     # of the world normal the label stacks along (0 = the default
     # reading-direction side).
     label_side: float = 0.0
+    # ERD edge grammar (session 45): field-end witnesses for the data
+    # edges' derived notation — both-end cardinality + dashed nullable.
+    # The DECLARED endpoint's field id (source_field/target_field on
+    # the model edge; instance rewiring keeps the declared field row
+    # when it remaps the node). The four booleans read the referenced
+    # NodeField: nullable → dashed stroke; pk/uk → the end reads `1`
+    # (a unique column), else `m` (many child rows per referenced row).
+    source_field: str = ""
+    target_field: str = ""
+    source_nullable: bool = False
+    target_nullable: bool = False
+    source_unique: bool = False
+    target_unique: bool = False
 
     @property
     def start(self) -> Point:
@@ -1677,7 +1728,8 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                 edge_type=e.type, style=e.style if e.style else _default_style(e.type),
                 arrow=e.arrow, url=e.url, points=pts,
                 turns=_count_turns([(p.x, p.y) for p in pts]), residuals=[],
-                direct=direct, ratio=plen / max(direct, 1.0), strip=strip))
+                direct=direct, ratio=plen / max(direct, 1.0), strip=strip,
+                **_field_witnesses(layout, e)))
         _assign_bows(routed_edges, layout)
         return RoutedLayout(layout=layout, edges=routed_edges)
 
@@ -2068,6 +2120,7 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
             direct=direct,
             ratio=plen / max(direct, 1.0),
             strip=strip,
+            **_field_witnesses(layout, edge),
         ))
         strips_done.append(strip)
 
