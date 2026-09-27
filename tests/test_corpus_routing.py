@@ -35,7 +35,9 @@ requires_corpus = pytest.mark.skipif(
     not os.path.exists(os.path.join(CORPUS, "juju.ggarch")),
     reason="juju docs corpus not present")
 
-CORPUS_FILES = ("juju.ggarch", "principles.ggarch")
+# principles.ggarch was folded into juju.ggarch (juju commit cd6cfd3d42);
+# the single-file corpus serves every corpus-backed test.
+CORPUS_FILES = ("juju.ggarch",)
 
 
 def _load(fname):

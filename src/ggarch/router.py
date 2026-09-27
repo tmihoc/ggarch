@@ -950,9 +950,35 @@ def _pinned_field_anchors(edge, src_node, tgt_node):
     tgt_pt = (_field_anchor(tgt_node, edge.target_field, tgt_face)
               if edge.target_field else _face_point(tgt_rect, tgt_face))
     if dx >= dy and (edge.source_field or edge.target_field):
+        # The straight-at-the-fields'-mid-y rule holds only when the
+        # averaged y lies on BOTH faces. A declared positions {below/
+        # above} relocation can make the two face spans disjoint: the
+        # average then falls outside one box, and the pinned anchor
+        # floats off the box entirely (the floating-edge defect: the
+        # route left from empty air above the relocated box, stub +
+        # crow's feet + label at the stub). When a span excludes the
+        # mid, clamp the mid to that span's nearest edge — both anchors
+        # stay on their boxes and the router draws the shortest honest
+        # L between them; re-pinning both field rows instead measured
+        # 2.7x the corner distance (route around nothing, through real
+        # column rows) and tripped the >2x traceability gate.
         mid_y = (src_pt.y + tgt_pt.y) / 2
-        src_pt = Point(src_pt.x, mid_y)
-        tgt_pt = Point(tgt_pt.x, mid_y)
+        # The flatten holds only when the averaged y lies on BOTH
+        # faces. A declared positions {below/above} relocation can
+        # make the two face spans disjoint: the average then falls
+        # outside one box, and the pinned anchor floats off the box
+        # entirely (the floating-edge defect: the route left from
+        # empty air above the relocated box, stub + crow's feet +
+        # label at the stub). When a span excludes the mid, drop the
+        # flatten — each end keeps its OWN field-row anchor and the
+        # router draws the honest orthogonal L through the real ports.
+        # (Clamping the mid to the spans instead rendered diagonal
+        # strokes — vocabulary violation.)
+        src_ok = src_rect.y <= mid_y <= src_rect.y2
+        tgt_ok = tgt_rect.y <= mid_y <= tgt_rect.y2
+        if src_ok and tgt_ok:
+            src_pt = Point(src_pt.x, mid_y)
+            tgt_pt = Point(tgt_pt.x, mid_y)
     return src_pt, tgt_pt
 
 
@@ -2012,6 +2038,17 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
         plen = sum(pts[i].distance_to(pts[i + 1])
                    for i in range(len(pts) - 1))
         direct = _border_distance(src_rect, tgt_rect)
+        # Field-pinned endpoints: the traceability floor is the
+        # shortest orthogonal path between the pinned anchors —
+        # corner-to-corner border distance is unachievable under the
+        # pin contract (the pin puts the anchor at the referenced
+        # column's row, which can sit the full box height away from
+        # the corner). Measured without the floor: the honest L route
+        # for a positions-relocated satellite read 2.7x while the pin
+        # floor said 1.0x.
+        if edge.source_field or edge.target_field:
+            sp, tp = _pinned_field_anchors(edge, src_node, tgt_node)
+            direct = max(direct, abs(tp.x - sp.x) + abs(tp.y - sp.y))
         # Nested endpoints: border distance is 0 and the traceability
         # ratio is meaningless (a 16px internal edge gated as a 16x
         # monster) — record the path length instead.
