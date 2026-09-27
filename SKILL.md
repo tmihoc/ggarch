@@ -289,8 +289,13 @@ The ERD edge grammar (the architect's-idiom verdict, session 45 — it
 supersedes the round-24 crow's-foot glyphs) follows the hand-drawn
 convention the schema's own architect uses: a **bare line** — no
 arrowhead at either end, no verb label drawn — with **`1`/`m`
-cardinality at BOTH ends**, hand-placed just outside the box face the
-stroke touches. **Dashed stroke = the fk is nullable** (an honest
+cardinality at BOTH ends**, ON the line at each end (the glyph sits on
+the stroke a few px inside from the endpoint, haloed so the stroke does
+not strike through the digit — round-2 amendment, session 47; the
+earlier "just outside the box face" placement is superseded). Field-
+qualified endpoints terminate ON their declared field rows; collapsed
+chips attach anywhere on the node. **Dashed stroke = the fk is nullable**
+(an honest
 absence — "the row may be absent"), derived from the field's `null:`
 marker, never hand-declared.
 

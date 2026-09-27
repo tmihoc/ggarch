@@ -506,7 +506,10 @@ the view argues a count, by truth-maker-backed labels. The planned
 crow's-foot glyphs were themselves superseded (session-45 ratification,
 the architect's-idiom verdict): data edges render BARE — no arrowhead
 at either end, no verb label drawn — with computed `1`/`m` end labels
-at BOTH box faces and dashed stroke = the fk is nullable. Direction
+ON the line at each end (round-2 amendment: the earlier both-box-faces
+placement is superseded) and dashed stroke = the fk is nullable.
+Field-qualified endpoints terminate ON their declared field rows.
+Direction
 lives in the DDL, the `fk:` badge and one walkthrough-prose sentence
 per association (ADR-004 "Data model views" reasoning in SKILL.md).
 
@@ -2206,9 +2209,10 @@ boxes (name compartment + fields compartment + methods compartment). The
 router anchors field-qualified edges at the field row's right/left face
 rather than the node centroid. The planned crow's-foot arrowhead styles
 were superseded before shipping (session-45 architect's-idiom verdict):
-data edges render bare with computed `1`/`m` end labels at both faces and
-dashed = nullable (the fk field's `null:` marker); no arrowhead styles
-were added for them.
+data edges render bare with computed `1`/`m` end labels ON the line at
+each end and dashed = nullable (the fk field's `null:` marker);
+field-qualified endpoints terminate on their declared field rows; no
+arrowhead styles were added for them.
 
 ### Phase 10 -- metadata and legend
 *(Derived from ADR-001 Gap 3: structured metadata)*

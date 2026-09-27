@@ -244,15 +244,16 @@ class TestFieldRouting:
         routed = route(layout, m, d.select)
         assert len(routed.edges) == 1
         e = routed.edges[0]
-        # Both points snap to midpoint y for horizontal field-qualified edges.
-        post_node = layout.find("post")
-        user_node = layout.find("user")
-        user_id_y = post_node.rect.y + FIELD_HEADER_H + 1 * FIELD_ROW_H + FIELD_ROW_H / 2
-        id_y      = user_node.rect.y + FIELD_HEADER_H + 0 * FIELD_ROW_H + FIELD_ROW_H / 2
-        mid_y     = (user_id_y + id_y) / 2
-        # Both endpoints should be at the midpoint y.
-        assert abs(e.points[0].y - mid_y) < 1
-        assert abs(e.points[-1].y - mid_y) < 1
+        # Each endpoint anchors at its OWN field row (round-2 item 3):
+        # the line connects the rows that are connected logically —
+        # never the old mid-y flatten (which moved both endpoints off
+        # their rows).
+        user_id_y = layout.find("post").rect.y \
+            + FIELD_HEADER_H + 1 * FIELD_ROW_H + FIELD_ROW_H / 2
+        id_y = layout.find("user").rect.y \
+            + FIELD_HEADER_H + 0 * FIELD_ROW_H + FIELD_ROW_H / 2
+        assert abs(e.points[0].y - user_id_y) < 1
+        assert abs(e.points[-1].y - id_y) < 1
 
 
 class TestFieldRendering:

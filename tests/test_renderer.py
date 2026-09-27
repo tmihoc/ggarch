@@ -868,15 +868,23 @@ class TestErdEdgeGrammar:
         src_label, tgt_label = _erd_labels_for_test(e)
         assert (src_label, tgt_label) == ("", "")
 
-    def test_end_labels_sit_outside_the_box_faces(self):
-        """The 1/m glyphs render just outside the box face the stroke
-        touches — never inside the box, never on the line mid-span."""
+    def test_end_labels_sit_on_the_line(self):
+        """The 1/m glyphs sit ON the stroke at each end (round-2 item
+        3, amending the session-44 outside-the-box-face placement):
+        each glyph centre lies within 2px of an edge stroke, haloed so
+        the stroke does not strike through the digit — and never
+        inside a box."""
         svg = pipeline(ERD_SRC)
+        assert 'paint-order="stroke"' in svg
         card_texts = re.findall(
             r'<text x="([\d.]+)" y="([\d.]+)"[^>]*>([1m])</text>', svg)
         assert card_texts, "no end labels rendered"
-        # At least one label hugs a box's outside: compare against the
-        # drawn record rects.
+        segs = []
+        for m in re.finditer(r'<path[^>]*d="([^"]+)"', svg):
+            coords = re.findall(r'[ML] ([-\d.]+) ([-\d.]+)', m.group(1))
+            pts = [(float(a), float(b)) for a, b in coords]
+            segs += list(zip(pts, pts[1:]))
+        assert segs, "no edge strokes rendered"
         rects = [(float(m.group(1)), float(m.group(2)),
                   float(m.group(3)), float(m.group(4)))
                  for m in re.finditer(
@@ -884,11 +892,24 @@ class TestErdEdgeGrammar:
                      r'width="([\d.]+)" height="([\d.]+)" '
                      r'fill="#FAFAFA"', svg)]
         assert rects
-        for x, y, _w, _h in [(float(cx), float(cy), 0, 0)
-                             for cx, cy, _ in card_texts]:
+        for cx, cy, t in card_texts:
+            x, y = float(cx), float(cy)
+            dist = min(_point_seg_dist(x, y, s) for s in segs)
+            assert dist <= 2.0, \
+                f"end label {t!r} at ({x},{y}) is {dist:.1f}px off the stroke"
             inside = any(rx < x < rx + rw and ry < y < ry + rh
                          for rx, ry, rw, rh in rects)
             assert not inside, f"end label at ({x},{y}) sits INSIDE a box"
+
+
+def _point_seg_dist(px, py, seg):
+    (x1, y1), (x2, y2) = seg
+    dx, dy = x2 - x1, y2 - y1
+    ll = dx * dx + dy * dy
+    if ll == 0:
+        return ((px - x1) ** 2 + (py - y1) ** 2) ** 0.5
+    t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / ll))
+    return ((px - (x1 + t * dx)) ** 2 + (py - (y1 + t * dy)) ** 2) ** 0.5
 
 
 def _erd_labels_for_test(edge):

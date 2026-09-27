@@ -983,8 +983,16 @@ def _field_anchor(
 
 
 def _pinned_field_anchors(edge, src_node, tgt_node):
-    """Field-qualified endpoints stay pinned: the facing faces at the
-    fields' mid-y (author speech outranks heuristics)."""
+    """Field-qualified endpoints stay pinned ON their declared field
+    rows (round-2 item 3: the line must visually connect the rows that
+    are connected logically). Each end keeps its OWN field-row anchor
+    and the router draws the honest orthogonal L between them — the
+    old straight-at-the-fields'-mid-y rule AVERAGED the two rows and
+    moved both endpoints off the rows they declare. Collapsed nodes
+    (node-qualified endpoints) attach anywhere on the node. Horizontal
+    faces attach at the row's mid-y; n/s faces keep the spread x
+    (field rows are full-width — the face point still encodes the
+    field identity)."""
     src_rect, tgt_rect = src_node.rect, tgt_node.rect
     dx = abs(tgt_rect.cx - src_rect.cx)
     dy = abs(tgt_rect.cy - src_rect.cy)
@@ -1000,36 +1008,6 @@ def _pinned_field_anchors(edge, src_node, tgt_node):
               if edge.source_field else _face_point(src_rect, src_face))
     tgt_pt = (_field_anchor(tgt_node, edge.target_field, tgt_face)
               if edge.target_field else _face_point(tgt_rect, tgt_face))
-    if dx >= dy and (edge.source_field or edge.target_field):
-        # The straight-at-the-fields'-mid-y rule holds only when the
-        # averaged y lies on BOTH faces. A declared positions {below/
-        # above} relocation can make the two face spans disjoint: the
-        # average then falls outside one box, and the pinned anchor
-        # floats off the box entirely (the floating-edge defect: the
-        # route left from empty air above the relocated box, stub +
-        # crow's feet + label at the stub). When a span excludes the
-        # mid, clamp the mid to that span's nearest edge — both anchors
-        # stay on their boxes and the router draws the shortest honest
-        # L between them; re-pinning both field rows instead measured
-        # 2.7x the corner distance (route around nothing, through real
-        # column rows) and tripped the >2x traceability gate.
-        mid_y = (src_pt.y + tgt_pt.y) / 2
-        # The flatten holds only when the averaged y lies on BOTH
-        # faces. A declared positions {below/above} relocation can
-        # make the two face spans disjoint: the average then falls
-        # outside one box, and the pinned anchor floats off the box
-        # entirely (the floating-edge defect: the route left from
-        # empty air above the relocated box, stub + crow's feet +
-        # label at the stub). When a span excludes the mid, drop the
-        # flatten — each end keeps its OWN field-row anchor and the
-        # router draws the honest orthogonal L through the real ports.
-        # (Clamping the mid to the spans instead rendered diagonal
-        # strokes — vocabulary violation.)
-        src_ok = src_rect.y <= mid_y <= src_rect.y2
-        tgt_ok = tgt_rect.y <= mid_y <= tgt_rect.y2
-        if src_ok and tgt_ok:
-            src_pt = Point(src_pt.x, mid_y)
-            tgt_pt = Point(tgt_pt.x, mid_y)
     return src_pt, tgt_pt
 
 
@@ -1198,7 +1176,13 @@ def _pinned_candidates(src_rect, tgt_rect, a: Point, b: Point, search,
     best_soft = None
     direct = math.hypot(b.x - a.x, b.y - a.y)
     forms = []
-    if not orthogonal or abs(b.x - a.x) < 1e-6 or abs(b.y - a.y) < 1e-6:
+    # The straight form is admissible only for axis-aligned anchors.
+    # A diagonal between misaligned field rows is a vocabulary
+    # violation (the audit's diagonal metric gates it); the old mid-y
+    # flatten masked this by force-aligning the pair. Misaligned pairs
+    # route as honest Ls — or the Z under orthogonal routing.
+    aligned = abs(b.x - a.x) < 1e-6 or abs(b.y - a.y) < 1e-6
+    if aligned:
         forms.append(([a, b], 0))
     # Perpendicularity (2026-09-21, hard law — no border grazing): an L
     # whose first or last leg is collinear with a face line rides the
@@ -1208,12 +1192,13 @@ def _pinned_candidates(src_rect, tgt_rect, a: Point, b: Point, search,
     for cand in ([a, Point(b.x, a.y), b], [a, Point(a.x, b.y), b]):
         if not _leg_rides(cand, src_rect, tgt_rect):
             forms.append((cand, 1))
-    if orthogonal and abs(b.x - a.x) >= 1e-6 and abs(b.y - a.y) >= 1e-6:
+    if not aligned:
         # Misaligned face anchors (e.g. field rows on opposing
-        # horizontal faces): the 1-bend L necessarily rides a face
-        # line, but the Z does not — its horizontal leg runs in the
+        # horizontal faces): the 1-bend Ls both ride a face line, so
+        # the Z is the honest form — its horizontal leg runs in the
         # gap BETWEEN the faces, perpendicular entries both ends.
-        # Try several gap lanes; the search rejects the blocked ones.
+        # Both orientations, several gap lanes; the search rejects
+        # the blocked ones.
         mid = (a.y + b.y) / 2
         span = b.y - a.y
         lanes = [mid, a.y + span * 0.25, a.y + span * 0.75]
@@ -1235,7 +1220,7 @@ def _pinned_candidates(src_rect, tgt_rect, a: Point, b: Point, search,
                 cand = [a, Point(m, a.y), Point(m, b.y), b]
                 if not _leg_rides(cand, src_rect, tgt_rect):
                     forms.append((cand, 2))
-    if not forms and orthogonal:
+    if not forms:
         # The vocabulary cannot express this pair orthogonally at all
         # (no straight, L, or Z is ride-free and clear). A diagonal
         # beats a border ride — last resort only.

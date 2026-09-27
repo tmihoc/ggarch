@@ -421,6 +421,8 @@ def render(
             vh = svg_y2 + MARGIN
 
     bg = "#1E1E2E" if dark else "#FFFFFF"
+    global _canvas_bg
+    _canvas_bg = bg
     drawing = dw.Drawing(vw, vh, origin=(0, 0))
     # The children's-book scale (view select `zoom: N`): a pure root
     # transform via pixel_scale — every unit (fonts, boxes, strokes)
@@ -1318,7 +1320,16 @@ def _edge_path_d(pts, bow: float = 0.0) -> str:
 _CARD_FONT_SIZE = 10
 _KIND_BADGE_SIZE = 14
 
-# The end-label dedupe table (per render; keyed by node/face/text).
+# The on-line glyph sits this far inside from the endpoint (round-2
+# item 3: cardinality ON the line at each end).
+_END_LABEL_INSET = 11.0
+
+# The end-label halo colour — the canvas background, set once per
+# render() (dark = #1E1E2E). The stroke passing under the glyph stays
+# occluded; the fill carries the digit.
+_canvas_bg = "#FFFFFF"
+
+# The end-label dedupe table (per render; keyed by spot/text).
 _END_LABEL_SPOTS: dict = {}
 
 
@@ -1368,6 +1379,51 @@ def _face_point(node: SolvedNode, p) -> str:
     return "w" if abs(px - r.x) <= abs(px - (r.x + r.w)) else "e"
 
 
+def _on_line_spot(pts, head: bool, layout: SolvedLayout | None) \
+        -> tuple[float, float]:
+    """The on-line glyph centre for one end of the stroke: `_END_LABEL_INSET`
+    px inward from the endpoint, walked further along the polyline
+    (1px steps, capped) until the point is clear of every node rect's
+    interior + 2px — the walk covers the exempt-corridor pass-through
+    (a route grazing a neighbour's interior). Falls back to the plain
+    inset point when the whole stroke is boxed (degenerate)."""
+    seq = pts if head else list(reversed(pts))
+    # Cumulative walk from the endpoint.
+    walked = 0.0
+    fallback = None
+    for i in range(len(seq) - 1):
+        (x0, y0), (x1, y1) = seq[i], seq[i + 1]
+        seg = math.hypot(x1 - x0, y1 - y0)
+        if seg < 1e-6:
+            continue
+        ux, uy = (x1 - x0) / seg, (y1 - y0) / seg
+        step = max(0.0, _END_LABEL_INSET - walked)
+        while step <= seg:
+            px, py = x0 + ux * step, y0 + uy * step
+            if fallback is None:
+                fallback = (px, py)
+            if _clear_of_boxes(px, py, layout):
+                return px, py
+            step += 1.0
+        walked += seg
+    return fallback if fallback is not None else (seq[0][0], seq[0][1])
+
+
+def _clear_of_boxes(px: float, py: float,
+                    layout: SolvedLayout | None) -> bool:
+    """True when (px, py) is outside every node rect's interior + pad;
+    no layout (direct-helper callers) counts as clear."""
+    if layout is None:
+        return True
+    pad = 2.0
+    for node in layout.nodes:
+        r = node.rect
+        if r.x - pad < px < r.x + r.w + pad and \
+                r.y - pad < py < r.y + r.h + pad:
+            return False
+    return True
+
+
 def _render_data_end_labels(
     g: dw.Group,
     edge: RoutedEdge,
@@ -1376,73 +1432,49 @@ def _render_data_end_labels(
     oy: float,
     stroke: str,
 ) -> None:
-    """Draw `1` / `m` at BOTH endpoints, just outside the box face the
-    stroke touches (the excalidraw hand-placed convention — never on
-    the line mid-span, never inside the box). Same-text labels landing
-    within 16px at the same face draw ONCE (two join-table edges read
-    the same truth at the shared parent face; a doubled `1` reads as
-    noise)."""
+    """Draw `1` / `m` ON the line at each end (round-2 item 3, amending
+    the session-44 just-outside-the-box-face placement): the glyph is
+    centred on the stroke a few px inside from the endpoint, over a
+    canvas-background halo so the stroke does not strike through the
+    digit (the path itself stays one unbroken stroke, ADR-002). Same-
+    text glyphs landing within 16px of an already-drawn one draw ONCE
+    (two edges converging on one endpoint read the same truth; a
+    doubled `1` reads as noise)."""
     src_s, tgt_s = _data_edge_end_labels(edge)
     if not src_s and not tgt_s:
         return
     pts = [(p.x, p.y) for p in edge.points]   # LAYOUT space — rects too
     if len(pts) < 2:
         return
-    for text, pid in ((src_s, edge.source_id), (tgt_s, edge.target_id)):
+    for text, head in ((src_s, True), (tgt_s, False)):
         if not text:
             continue
-        p = pts[0] if pid == edge.source_id else pts[-1]
-        node = layout.find(pid) if layout else None
-        if node is None:
-            continue
-        r = node.rect
-        px, py = p
-        # The stroke leaves the face; place the label just outside the
-        # face, offset along the face so it never overlaps the line
-        # entry. Face distance ~6px outside; 8px along the face.
-        # The along-face offset goes AWAY from the endpoint when the
-        # entry sits near the face's far edge (a west-face entry at the
-        # top edge of a short chip would put an inside offset back
-        # INTO the box; excalidraw hand-places the label clear of the
-        # box, off the attachment's own face).
-        anchor = "middle"
-        face = _face_point(node, p)
-        # The 8px along-face offset goes toward the box's label edge
-        # (its top-left corner): two edges attaching at the same face
-        # then stack predictably instead of colliding with each other
-        # or with their own strokes. A near-corner entry (<14px from
-        # the face's along-edge) would put the offset back INSIDE the
-        # neighbouring box — flip it to the far side of the entry.
-        if face == "n":
-            tx, ty = px + 8, r.y - 6
-        elif face == "s":
-            tx, ty = px + 8, r.y + r.h + 12
-        elif face == "w":
-            if r.x - px >= 14:
-                tx, ty = px - 12, py - 8
-            else:
-                ty = r.y - 6
-                tx = px + 8
-        else:  # e
-            if px - (r.x + r.w) >= 14:
-                tx, ty = px + 12, py - 8
-            else:
-                ty = r.y - 6
-                tx = px + 8
-        key = (id(node), face, text)
-        spot = (round(tx / 16), round(ty / 16))
-        prior = _END_LABEL_SPOTS.get(key)
+        p0, p1 = (pts[0], pts[1]) if head else (pts[-1], pts[-2])
+        if math.hypot(p1[0] - p0[0], p1[1] - p0[1]) < 1e-6:
+            continue  # degenerate zero-length stroke
+        # ON the line: centred on the stroke, a few px inside from the
+        # endpoint (the halo occludes the stroke locally, the fill
+        # carries the digit). The inset point is walked inward along
+        # the polyline until it is clear of every box interior: a
+        # route may graze a neighbour's interior through an
+        # exempt corridor, and a glyph inside a box reads as noise.
+        tx, ty = _on_line_spot(pts, head, layout)
+        spot = (round(tx / 16), round(ty / 16), text)
+        prior = _END_LABEL_SPOTS.get(spot)
         if prior is not None and abs(prior[0] - tx) < 16 \
                 and abs(prior[1] - ty) < 16:
             continue
-        _END_LABEL_SPOTS[key] = (tx, ty)
+        _END_LABEL_SPOTS[spot] = (tx, ty)
         g.append(dw.Text(
             text, _CARD_FONT_SIZE, tx + ox, ty + oy,
             font_family=LABEL_FONT,
             font_style="italic",
             fill=stroke,
-            text_anchor=anchor,
+            text_anchor="middle",
             dominant_baseline="central",
+            stroke=_canvas_bg,
+            stroke_width=3,
+            paint_order="stroke",
         ))
 
 

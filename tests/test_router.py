@@ -153,8 +153,11 @@ class TestFaces:
         assert abs(e.start.y - src_node.rect.cy) < 0.1
 
     def test_field_qualified_anchor_stays_pinned(self):
-        """Field-qualified endpoints keep their pinned facing-face anchors
-        at the fields' mid-y (author speech outranks heuristics)."""
+        """Field-qualified endpoints stay pinned ON their declared
+        field rows (round-2 item 3): each end anchors at its own row's
+        mid-y and the route is honest orthogonal legs — never the old
+        mid-y flatten (which moved both endpoints off their rows) and
+        never a diagonal."""
         src = """\
 model "M" {
   nodes {
@@ -181,9 +184,21 @@ diagram "D" from "M" {
         rl, _, _ = solve_and_route(src)
         assert len(rl.edges) == 1
         e = rl.edges[0]
-        # Pinned: start on r1's right face at f1's row, flat at mid-y.
-        assert abs(e.start.x - rl.layout.find("r1").rect.x2) < 0.1
-        assert abs(e.start.y - e.end.y) < 0.1
+        from ggarch.layout import FIELD_HEADER_H, FIELD_ROW_H
+        r1 = rl.layout.find("r1").rect
+        r2 = rl.layout.find("r2").rect
+        # Start on r1's right face at f1's row (row 0).
+        assert abs(e.start.x - r1.x2) < 0.1
+        assert abs(e.start.y - (r1.y + FIELD_HEADER_H + FIELD_ROW_H / 2)) \
+            < 0.1
+        # End on r2's left face at g2's row (row 1).
+        assert abs(e.end.x - r2.x) < 0.1
+        assert abs(e.end.y - (r2.y + FIELD_HEADER_H + FIELD_ROW_H
+                              + FIELD_ROW_H / 2)) < 0.1
+        # Honest orthogonal legs: no diagonal between the rows.
+        pts = [(p.x, p.y) for p in e.points]
+        for (x1, y1), (x2, y2) in zip(pts, pts[1:]):
+            assert abs(x1 - x2) < 0.1 or abs(y1 - y2) < 0.1
 
 
 class TestPairsAndStrips:
