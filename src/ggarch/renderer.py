@@ -716,12 +716,26 @@ def _render_node_content(
         # is a drawing-layer idiom: no anchor moves, no measurement
         # changes, the audit sees the same geometry.
         for depth in (10, 5):
-            g.append(dw.Rectangle(
-                x + depth, y - depth, w, h,
-                fill=style.fill if style.fill != "none" else "none",
-                stroke=style.stroke,
+            if style.fill != "none":
+                g.append(dw.Rectangle(
+                    x + depth, y - depth, w, h,
+                    fill=style.fill,
+                    stroke=style.stroke,
+                    stroke_width=style.stroke_width,
+                    rx=style.border_radius, ry=style.border_radius,
+                ))
+                continue
+            # Unfilled boxes: a full back rectangle would show through
+            # the front one, so draw only the margins that peek out
+            # above and to the right of it.
+            g.append(dw.Lines(
+                x + depth, y,
+                x + depth, y - depth,
+                x + w + depth, y - depth,
+                x + w + depth, y + h - depth,
+                x + w, y + h - depth,
+                close=False, fill="none", stroke=style.stroke,
                 stroke_width=style.stroke_width,
-                rx=style.border_radius, ry=style.border_radius,
             ))
     if node.fields and node.type in ("record", "class"):
         _render_structured_node(g, node, style, x, y, w, h, dark)

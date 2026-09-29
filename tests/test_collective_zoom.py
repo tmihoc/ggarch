@@ -100,20 +100,20 @@ def test_collective_draws_the_stack_mark():
         '}'))
     svg, solved = _render(f, "v")
     b = solved.find("b")
-    # the mark layers live in SVG space (canvas origin shifted); the
-    # chain is identified by b's own box size: exactly three rects
-    # share b's (width, height) — two mark layers + the box — and
-    # they step by (-5, +5), the box drawn LAST (the marks behind).
-    rects = re.findall(
-        r'<rect x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="([\d.]+)"', svg)
-    chain = [(float(x), float(y))
-             for x, y, w, h in rects
-             if round(float(w), 1) == round(b.rect.w, 1)
-             and round(float(h), 1) == round(b.rect.h, 1)]
-    assert len(chain) == 3, chain
-    steps = [(round(chain[i + 1][0] - chain[i][0], 1),
-              round(chain[i + 1][1] - chain[i][1], 1)) for i in (0, 1)]
-    assert steps == [(-5.0, 5.0), (-5.0, 5.0)], steps
+    # Unfilled boxes draw each mark layer as the margin that peeks out
+    # above and to the right of the box: a five-point polyline whose
+    # second point is the layer's top-left corner. Exactly two layers
+    # exist, and they step by (-5, +5) toward the box, which is drawn
+    # last (the marks behind).
+    layers = re.findall(
+        r'<path d="M([-\d.]+),([-\d.]+) L([-\d.]+),([-\d.]+) '
+        r'L[-\d.]+,[-\d.]+ L[-\d.]+,[-\d.]+ L[-\d.]+,[-\d.]+"',
+        svg)
+    corners = [(float(m[2]), float(m[3])) for m in layers]
+    assert len(corners) == 2, corners
+    step = (round(corners[1][0] - corners[0][0], 1),
+            round(corners[1][1] - corners[0][1], 1))
+    assert step == (-5.0, 5.0), step
 
 
 def test_collective_base_kind_must_exist():
