@@ -824,7 +824,7 @@ def _render_structured_node(
     from ggarch.layout import FIELD_HEADER_H, FIELD_ROW_H
 
     stroke       = style.stroke
-    fill         = style.fill if style.fill != "none" else ("#2A2200" if dark else "#FFFDE7")
+    fill         = style.fill
     header_fill  = style.stroke  # header uses the stroke colour as background
     font_color   = style.font_color
     row_alt_fill = "#00000010" if not dark else "#FFFFFF08"
@@ -1093,7 +1093,7 @@ def _render_kind_badge(
                               stroke_width=1.5, rx=3, ry=3))
     elif kind == "record":
         g.append(dw.Rectangle(bx, by, s, s,
-                              fill="#F9A825", stroke="none", rx=2, ry=2))
+                              fill="#E95420", stroke="none", rx=2, ry=2))
         g.append(dw.Line(bx + 2.5, by + s / 2, bx + s - 2, by + s / 2,
                          stroke="#FFFFFF", stroke_width=1.5))
 
@@ -1202,8 +1202,8 @@ def _render_records_chip(
 ) -> None:
     """Render a small amber records pill at the bottom-left of a node
     (ADR-005: the text is derived — see _derived_records_chip)."""
-    # Amber ties the chip to the record type grammar (amber tables).
-    fill = "#D89B3A" if dark else "#C4820F"
+    # Orange ties the chip to the Juju-owned records it points at.
+    fill = "#E95420"
     ph, pw = 10, min(len(text) * 4.8 + 8, w * 0.85)
     px = x + 3
     py = y + h - ph - 3

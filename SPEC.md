@@ -169,7 +169,7 @@ from the Juju architecture doc suggests the following hard cases:
   controller node, not separate nodes. Expressing "data lives here, not there"
   requires either record-style nodes (PK/FK table rows) or a way to annotate
   a sub-region of a node. ✓ Verified: record nodes nest inside containers,
-  take data edges, and keep the amber record styling + `rec:` chip in
+  take data edges, and keep the orange record styling + `rec:` chip in
   topology views (verified against a machine-agent/machine-record rendering).
   Field-qualified edge endpoints (`node.field_id`) are supported by the
   grammar and validator; no current Juju view needs them in a topology.
@@ -608,7 +608,7 @@ for example, the uniter reading charm declarations when dispatching.
 
 **Implemented (0.21.0): `records:` as a node attribute.**
 (ADR-005 later built provenance on it: the derived chips — a node's
-amber `rec:` chip derives from its subtree's records and is
+orange `rec:` chip derives from its subtree's records and is
 upward-closed — and the `records: shown` view bridges. The facet
 derivation below is the next leg.) `records:
 "unit_rec"` on a runtime node links it to the record that backs it --
@@ -1640,12 +1640,12 @@ Node attributes:
   id while the concrete node is declared. See capability 10.
 - `records: "unit_rec"` -- id of the record node that backs this runtime
   node (its persistence face). Validated: the target must be a declared
-  `record`-type node. Rendered as an amber chip carrying the record's
+  `record`-type node. Rendered as an orange chip carrying the record's
   DDL ground (check-grounding-verified; the record's label when
   ungrounded) at the node's bottom-left -- derived, never the ggarch
   id (ADR-005). Upward-closed: containers inherit the chip from their
   subtree. A view can draw the runtime→record bridge with
-  `records: shown` (amber, headless). Implemented in 0.21.0; chips
+  `records: shown` (orange, headless). Implemented in 0.21.0; chips
   derived per ADR-005; see "Runtime/persistence duality".
 
 Nodes are pure model declarations -- no position, no edges. Containment is a

@@ -1,4 +1,5 @@
 """Tests for example .ggarch files — one test class per file."""
+import re
 from pathlib import Path
 import pytest
 from ggarch import parse, validate, solve, route, render
@@ -142,7 +143,7 @@ class TestSequenceParOptExample:
         s = f.sequences[0]
         m = f.get_model(s.model_name)
         svg = render_sequence(s, m)
-        assert "#CCCCEE" in svg  # activation bar fill (light mode)
+        assert re.search(r'<rect [^>]*width="10"[^>]*fill="none"', svg)  # activation bar
 
     def test_par_green_tint(self):
         f = _load(self.F)

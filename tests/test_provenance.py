@@ -87,7 +87,7 @@ class TestRecordsBridge:
         svg = _svg(self.BRIDGE_SRC)
         assert 'marker-end' not in svg.split("ggarch-annotations")[0] \
             or "url(#arrow" not in svg  # headless
-        assert "#F9A825" in svg  # amber bridge stroke
+        assert "#E95420" in svg  # Juju-orange bridge stroke
 
     def test_bridge_auto_includes_record_node(self):
         """The record node lays out even though the select names only

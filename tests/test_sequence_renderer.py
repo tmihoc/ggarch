@@ -341,8 +341,8 @@ class TestActivationBars:
     def test_activation_bar_rendered_on_call_return(self):
         svg = pipeline(ACTIVATION_SRC)
         assert "<svg" in svg
-        # Activation bar is a filled rectangle; distinct fill from block regions
-        assert "#CCCCEE" in svg  # light mode bar fill
+        # The activation bar is an unfilled 10px-wide rectangle.
+        assert re.search(r'<rect [^>]*width="10"[^>]*fill="none"', svg)
 
     def test_no_activation_bar_without_return(self):
         # A call with no matching return should not draw a bar (stack not closed)
@@ -362,12 +362,12 @@ model "M" {
 sequence "S" from "M" { select { behaviour: "async" } }
 """
         svg = pipeline(src)
-        # No activation bar fill colour should appear
-        assert "#CCCCEE" not in svg
+        # No activation bar should appear
+        assert not re.search(r'<rect [^>]*width="10"[^>]*fill="none"', svg)
 
     def test_activation_bar_dark_mode(self):
         svg = pipeline(ACTIVATION_SRC, dark=True)
-        assert "#334466" in svg  # dark mode bar fill
+        assert re.search(r'<rect [^>]*width="10"[^>]*fill="none"', svg)
 
 
 class TestJujuSequence:

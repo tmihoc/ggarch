@@ -395,7 +395,7 @@ def _close_activation(ctx: _RenderCtx, lifeline_id: str, close_y: float) -> None
             bar_h = close_y - open_y
             if bar_h < 4:
                 bar_h = 4
-            bar_fill  = "#CCCCEE" if not ctx.dark else "#334466"
+            bar_fill  = "none"
             bar_stroke = ctx.block_stroke
             ctx.bars_group.append(dw.Rectangle(
                 bar_x, bar_y, ACTIVATION_W, bar_h,

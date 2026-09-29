@@ -35,7 +35,7 @@ model "Name" {
   nodes {
     id [type: TYPE, label: "Human label"]
     id [type: TYPE, label: "Label", lifecycle: LIFECYCLE]
-    parent [type: container, label: "Pod"] {
+    parent [type: node, label: "Pod"] {
       child [type: juju-software, label: "Agent"]   // nested = contained
     }
   }
@@ -93,24 +93,36 @@ sequence "View name" from "Model Name" {
 
 ---
 
+## Visual grammar
+
+Colour has one meaning, **ownership**. Nothing is filled, so a diagram
+reads the same on a light and a dark page.
+
+| Channel | Says | Values |
+|---|---|---|
+| Border colour | Who owns it | Orange = Juju machinery; grey (one grey per mode) = outside Juju |
+| Border dash | Lifecycle | solid = persistent, dashed = init, dotted = ephemeral |
+| Shape | Kind | person icon, cylinder (database), plain box |
+| Edge dash and head | Interaction | see **Edge types** |
+
+Add a node type only when it needs a new shape. Ownership decides the
+colour of every type.
+
 ## Node types
 
-| Type | Rendered as | Meaning |
+| Type | Owner | Meaning |
 |---|---|---|
-| `juju-software` | Grey rect + Juju badge (orange "J") | Juju process or agent |
-| `container` | Warm orange tint, rounded | Juju-owned pod or machine |
-| `charm` | Grey rect, orange border + empty badge | Charm code (external software wrapped in Juju packaging) |
-| `workload` | Gray rect | Application workload |
-| `pebble` | Light blue rect | Pebble supervisor |
-| `external` | Gray rect, solid border | Outside Juju's ownership |
-| `person` | Gray rect + head icon | Human actor |
-| `database` | Amber cylinder | Database or storage |
-| `record` | Amber table (+ record badge on plain records) | Database record / ER row |
-| `class` | Amber compartment | Class or component |
-
-Node kinds carry a ~14px corner badge (the person's head icon is the
-precedent); fills go light/grey across the board and the badge — not
-the fill — says what the node is (round 24, verdict A).
+| `juju-software` | Juju | Juju process or agent |
+| `charm` | Juju | Charm code |
+| `node` | Juju | A machine or a pod. Machines nest (a LXD container on a VM is a machine inside a machine), so nodes nest. `container` is the older spelling |
+| `pebble` | Juju | Pebble supervisor |
+| `unit` | Juju | A unit |
+| `database` | Juju | Database or storage (cylinder) |
+| `record` | Juju | Database record or ER row (record badge on plain records) |
+| `person` | outside | Human actor (person icon) |
+| `external` | outside | Cloud or other external system |
+| `workload` | outside | Application workload |
+| `class` | outside | Class or component |
 
 Any string not in this list falls back to the default style. Custom node and
 edge types are defined in the `style` block:
@@ -157,11 +169,11 @@ id [type: juju-software, label: "Unit agent\n(jujud)"]
 ### Nesting
 
 Indent child nodes inside a parent's `{}` block. The parent must have a
-container-like type (e.g. `container`). Any node can technically have
-children, but `container` is the idiomatic choice for pods and machines.
+node-like type (e.g. `node`). Any node can technically have
+children, but `node` is the idiomatic choice for pods and machines.
 
 ```
-unit_pod [type: container, label: "Unit pod"] {
+unit_pod [type: node, label: "Unit pod"] {
   unit_agent [type: juju-software, label: "Unit agent"]
   charm      [type: charm,         label: "Charm"]
 }
@@ -180,7 +192,7 @@ learns the three channels once and reads every diagram.
 |---|---|---|---|---|
 | `api` | solid | filled | `#555555` | RPC or REST call |
 | `control` | solid | filled | `#555555` | process lifecycle / drives (visually = `api`, ratified) |
-| `data` | solid (dashed = nullable fk) | none | amber | pointer / persistence — bare line, `1`/`m` at both ends (see **Data model views**) |
+| `data` | solid (dashed = nullable fk) | none | orange | pointer / persistence — bare line, `1`/`m` at both ends (see **Data model views**) |
 | `stream` | `6,3` | filled | `#555555` | long-lived connection, watch |
 | `event` | `6,3` | open | `#888888` | one-way async notification |
 | `ipc` | `2,2` | filled | `#888888` | Unix socket / in-process |
@@ -434,7 +446,7 @@ select {
   even where nodes carry `records:` (for views whose label crowding the
   chips worsen — the chip design is under review, 2026-09-20).
 - `records: shown` — render the runtime→record **bridges** (ADR-005):
-  one synthetic edge per recorded node, amber, solid, headless (the
+  one synthetic edge per recorded node, orange, solid, headless (the
   persistence axis states no call and no pointer; the pointer is the
   data-model view's FK→PK argument). Record nodes auto-include.
   `records:` itself stays a model attribute; the bridge is its
@@ -675,7 +687,7 @@ independently -- things the caption already covers can be left out.
 A concrete node can declare that it realises an abstract node:
 
 ```
-controller_pod [type: container, label: "Controller pod",
+controller_pod [type: node, label: "Controller pod",
                 abstracts: "controller"]
 ```
 
@@ -699,7 +711,7 @@ inside it, and internal edges redraw per copy.
 
 ```
 // Model -- declared once
-unit_pod [type: container, label: "Unit pod", cardinality: one-per-unit] {
+unit_pod [type: node, label: "Unit pod", cardinality: one-per-unit] {
   unit_agent [type: juju-software, label: "Unit agent"]
   charm      [type: charm,         label: "Charm"]
 }
@@ -937,7 +949,7 @@ topology views:
 ```
 // Model
 controller     [type: juju-software, label: "Controller"]
-controller_pod [type: container, label: "Controller pod",
+controller_pod [type: node, label: "Controller pod",
                 abstracts: "controller"]
 
 // High-level view
@@ -954,7 +966,7 @@ Declare one type node. In a view, stamp it as N labelled copies (see
 
 ```
 // Model
-unit_pod [type: container, label: "Unit pod", cardinality: one-per-unit]
+unit_pod [type: node, label: "Unit pod", cardinality: one-per-unit]
 
 // View
 select {
