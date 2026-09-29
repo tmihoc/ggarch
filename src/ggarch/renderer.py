@@ -927,7 +927,7 @@ def _render_person(
     of node height. Same bounding-box and stroke-weight convention as all
     other shapes.
     """
-    fill   = style.fill if style.fill != "none" else "#F0F0F0"
+    fill   = style.fill
     stroke = style.stroke
     sw     = style.stroke_width
     r      = style.border_radius
@@ -1100,9 +1100,10 @@ def _render_cardinality_badge(
     badge_w = len(short) * 6 + 8
     badge_h = 14
     g.append(dw.Rectangle(x - badge_w, y, badge_w, badge_h,
-                          fill="#444", stroke="none", rx=3, ry=3))
+                          fill="none", stroke="#888", stroke_width=1,
+                          rx=3, ry=3))
     g.append(dw.Text(short, 9, x - badge_w / 2, y + badge_h / 2,
-                     font_family=LABEL_FONT, fill="#EEE",
+                     font_family=LABEL_FONT, fill="#888",
                      text_anchor="middle", dominant_baseline="central"))
 
 

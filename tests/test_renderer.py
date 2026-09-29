@@ -70,7 +70,7 @@ class TestNodeRendering:
         assert "Controller" in svg
         assert "Charm" in svg
 
-    def test_juju_software_badge_stays_orange(self):
+    def test_juju_software_border_is_orange(self):
         svg = pipeline(SIMPLE)
         assert "#E95420" in svg
 
@@ -890,7 +890,7 @@ class TestErdEdgeGrammar:
                  for m in re.finditer(
                      r'<rect x="([\d.]+)" y="([\d.]+)" '
                      r'width="([\d.]+)" height="([\d.]+)" '
-                     r'fill="#FAFAFA"', svg)]
+                     r'fill="none"', svg)]
         assert rects
         for cx, cy, t in card_texts:
             x, y = float(cx), float(cy)
