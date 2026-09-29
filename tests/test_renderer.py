@@ -916,3 +916,32 @@ def _point_seg_dist(px, py, seg):
 def _erd_labels_for_test(edge):
     from ggarch.renderer import _data_edge_end_labels
     return _data_edge_end_labels(edge)
+
+
+class TestDeployedBadge:
+    SRC = """\
+model "M" {
+  nodes {
+    a [type: node, label: "Deployed", deployed: true]
+    b [type: node, label: "Plain"]
+  }
+  edges { a -> b [type: api] }
+  style { extends: juju }
+}
+diagram "D" from "M" { select { nodes: a b  edges: type api } }
+"""
+
+    def test_deployed_node_gets_a_cloud_badge_in_its_border_colour(self):
+        svg = pipeline(self.SRC)
+        assert svg.count('data-deployed="true"') == 1
+        assert re.search(
+            r'<path d="M [^"]+" fill="none" stroke="#E95420"'
+            r'[^>]*data-deployed="true"', svg)
+
+    def test_instances_inherit_the_deployed_badge(self):
+        src = self.SRC.replace(
+            "select { nodes: a b  edges: type api }",
+            "select { nodes: a b  edges: type api\n"
+            "  instances: a [ { id: a0, label: \"A0\" }, "
+            "{ id: a1, label: \"A1\" } ] }")
+        assert pipeline(src).count('data-deployed="true"') == 2

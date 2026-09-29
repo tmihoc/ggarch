@@ -153,6 +153,8 @@ id [type: TYPE, label: "Label", lifecycle: ephemeral]  // dotted border
 id [type: TYPE, label: "Label", lifecycle: persistent] // solid border (default)
 id [type: TYPE, label: "Label", cardinality: one-per-unit]
 id [type: TYPE, label: "Label", scope: "cloud1/model1"]  // scope chip
+id [type: TYPE, label: "Label", deployed: true]   // runs on a node from a cloud:
+                                                     // small cloud badge, top-right
 id [type: TYPE, label: "Label", abstracts: "abstract_id"]
 id [type: TYPE, label: "Label", records: "unit_rec"]  // record backing this node
                                                       // (chip derives: DDL ground or

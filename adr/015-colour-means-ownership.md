@@ -5,7 +5,7 @@ reviewer's directives during the PR 4 work ("keep all juju thingies for now repr
 simply through an orange border", "no entity should have any fill", "I want a color switch
 to mean something", "let's make all ggarch nodes the same shape -- a rounded rectangle --
 then use badges for ggarch node kind"). Worked ground: ggarch 0.1.0 commits b75f31b,
-f4bcba6, 04899ca, ba07b99, 0ab77b2, 6bfab23.
+f4bcba6, 04899ca, ba07b99, 0ab77b2, 6bfab23 and the `deployed` badge.
 
 ## Context
 
@@ -50,12 +50,11 @@ preferred a bare minimum until one exists.
   colour; none is used by the architecture diagrams. Revisit when an ERD view runs on a page
   whose background is not white or #1E1E2E.
 
-## Open: notation for a deployed entity
+## Decided: notation for a deployed entity
 
-The architecture explanation wants "an application deployed on a node from a cloud" to
-read differently from a bare one. The first attempt (a double border, i.e. an inner box) is
-weak: the inner box is empty in the collapsed views. Prototyped and compared: a double inset
-border (heavy, clashes with the collective stack) and a small cloud badge in the top-right
-corner. Recommendation: a boolean `deployed: true` node attribute that draws the cloud badge
-in the node's border colour (top-left already carries kind; top-right is free). Not built;
-awaiting the reviewer.
+"An application deployed on a node from a cloud" reads differently from a bare one through a
+`deployed: true` node attribute that draws a small cloud outline in the top-right corner, in
+the node's border colour (top-left carries kind, top-right carries where it runs). Orange for
+Juju-managed, grey for the same thing before Juju; instances and collectives inherit it. Chosen
+over a double border, which needed an inner box that stayed empty in collapsed views and
+crowded the collective stack (prototyped and compared, 2026-09-29; the reviewer: "yes").

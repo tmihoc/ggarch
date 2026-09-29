@@ -748,6 +748,8 @@ def _render_node_content(
     else:
         _render_box(g, x, y, w, h, style, node.label, node.lifecycle,
                     is_container=has_children)
+    if str(node.properties.get("deployed", "")).lower() == "true":
+        _render_deployed_badge(g, x + w, y, style.stroke)
     if node.children:
         _render_nodes(g, node.children, node_styles, ox, oy, view, dark,
                       model, salience=salience)
@@ -1113,6 +1115,31 @@ def _render_kind_badge(
                               fill="#E95420", stroke="none", rx=2, ry=2))
         g.append(dw.Line(bx + 2.5, by + s / 2, bx + s - 2, by + s / 2,
                          stroke="#FFFFFF", stroke_width=1.5))
+
+
+def _render_deployed_badge(
+    g: dw.Group,
+    right: float,
+    top: float,
+    color: str,
+) -> None:
+    """Deployed entity: a small cloud outline in the top-right corner.
+
+    The top-left corner carries the node's kind; the top-right carries
+    where it runs: on a node obtained from a cloud. The outline takes the
+    node's border colour, so the ownership channel stays intact (orange
+    for Juju-managed, grey for the same thing before Juju). A drawing-
+    layer idiom like the kind badge: no anchor moves, no measurement
+    changes.
+    """
+    x0, y0 = right - 22, top + 5
+    g.append(dw.Path(
+        d=(f"M {x0 + 4:.1f} {y0 + 11:.1f} "
+           f"a 3.4 3.4 0 0 1 -0.2 -6.8 "
+           f"a 4.6 4.6 0 0 1 8.6 -1.2 "
+           f"a 3.6 3.6 0 0 1 1.4 8 Z"),
+        fill="none", stroke=color, stroke_width=1.2,
+        stroke_linejoin="round", data_deployed="true"))
 
 
 def _render_cardinality_badge(
