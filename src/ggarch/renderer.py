@@ -432,7 +432,7 @@ def render(
     zoom = getattr(view.select, "zoom", 1.0) or 1.0
     if zoom != 1.0:
         drawing.set_pixel_scale(zoom)
-    drawing.append(dw.Rectangle(0, 0, vw, vh, fill=bg))
+    # No canvas background: the page shows through in both modes.
     _add_arrowhead_defs(drawing, dark, preset)
 
     nodes_g = dw.Group(id="ggarch-nodes")
@@ -704,7 +704,7 @@ def _render_node_content(
 ) -> None:
     """Render the visual content of a node (shape, children, badge) into g."""
     collective = str(node.properties.get("collective", "") or "")
-    if collective and not node.children:
+    if collective:
         # The plurality mark (SPEC "collective nodes", built for the
         # tutorial reveal, 2026-09-22): the node abstracts over the
         # instances of its base kind, so the renderer draws the

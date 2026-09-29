@@ -179,7 +179,6 @@ def render_sequence(
 
     bg = "#1E1E2E" if dark else "#FFFFFF"
     drawing = dw.Drawing(diagram_w, diagram_h, origin=(0, 0))
-    drawing.append(dw.Rectangle(0, 0, diagram_w, diagram_h, fill=bg))
 
     # Arrowhead marker.
     _add_sequence_arrowhead(drawing, dark)
@@ -209,6 +208,7 @@ def render_sequence(
         bars_group=bars_group,
         activation_stack=[],
         bg="#1E1E2E" if dark else "#FFFFFF",
+        holes=[],
     )
     steps_group = dw.Group()
     y_final = _render_steps(steps_group, behaviour.steps, y_start, ctx)
@@ -217,13 +217,25 @@ def render_sequence(
     # Vertical dashed lifelines — behind the arrows, ending at the
     # footer tops.
     line_color = "#666666" if dark else "#CCCCCC"
+    mask = None
+    if ctx.holes:
+        # An explicit user-space region: a vertical line has a zero-width
+        # bounding box, which would otherwise hide it entirely.
+        mask = dw.Mask(maskUnits="userSpaceOnUse", x=0, y=0,
+                       width=diagram_w, height=diagram_h)
+        mask.append(dw.Rectangle(0, 0, diagram_w, diagram_h, fill="white"))
+        for hx, hy, hw, hh in ctx.holes:
+            mask.append(dw.Rectangle(hx, hy, hw, hh, fill="black"))
     for pid in participants:
-        content.append(dw.Line(
+        line = dw.Line(
             col_cx[pid], MARGIN_TOP + header_h, col_cx[pid], lifeline_bot_y,
             stroke=line_color,
             stroke_width=1,
             stroke_dasharray="6,4",
-        ))
+        )
+        if mask is not None:
+            line.args["mask"] = mask
+        content.append(line)
 
     content.append(bars_group)  # bars paint behind the arrow lines
     content.append(steps_group)
@@ -323,7 +335,8 @@ class _RenderCtx:
     block_stroke: str
     bars_group: dw.Group         # group for activation bars (drawn behind arrows)
     activation_stack: list       # [(lifeline_id, open_y), ...]
-    bg: str                      # canvas background (masks self-call labels)
+    bg: str                      # canvas colour (no longer painted)
+    holes: list                  # (x, y, w, h) cut out of the lifelines
 
 
 # ---------------------------------------------------------------------------
@@ -396,7 +409,8 @@ def _close_activation(ctx: _RenderCtx, lifeline_id: str, close_y: float) -> None
             if bar_h < 4:
                 bar_h = 4
             bar_fill  = "none"
-            bar_stroke = ctx.block_stroke
+            bar_stroke = "#888888"
+            ctx.holes.append((bar_x, bar_y, ACTIVATION_W, bar_h))
             ctx.bars_group.append(dw.Rectangle(
                 bar_x, bar_y, ACTIVATION_W, bar_h,
                 fill=bar_fill, stroke=bar_stroke, stroke_width=1,
@@ -501,14 +515,11 @@ def _render_self_step(
         # Label to the right of the loop, vertically centred on it (the
         # UML convention for self-messages). A centred label straddles
         # the lifeline and its activation bar; a long label can still
-        # reach a neighbouring lifeline, so an opaque background masks
-        # any strike.
+        # reach a neighbouring lifeline, so the lifelines get a hole
+        # under the label (the canvas stays transparent).
         label_w = len(step.label) * 6
         bg_x = x1b + 4
-        g.append(dw.Rectangle(
-            bg_x, y - 8, label_w + 6, 16,
-            fill=ctx.bg, stroke="none",
-        ))
+        ctx.holes.append((bg_x, y - 8, label_w + 6, 16))
         g.append(dw.Text(
             step.label, 11, bg_x + 3, y,
             font_family=LABEL_FONT,

@@ -62,8 +62,10 @@ class TestSequenceStructure:
     def test_dark_mode(self):
         light = pipeline(SIMPLE_SEQ, dark=False)
         dark  = pipeline(SIMPLE_SEQ, dark=True)
-        assert "#1E1E2E" in dark
-        assert "#FFFFFF" in light
+        # The canvas is transparent in both modes; the text colour differs.
+        assert "#CDD6F4" in dark
+        assert "#333333" in light
+        assert "#1E1E2E" not in dark and "#FFFFFF" not in light
         assert light != dark
 
     def test_render_both(self):
@@ -403,7 +405,7 @@ class TestJujuSequence:
         model = f.get_model(seq.model_name)
         light, dark = render_sequence_both(seq, model)
         assert light != dark
-        assert "#1E1E2E" in dark
+        assert "#CDD6F4" in dark
 
 
 SELF_SEQ = """\

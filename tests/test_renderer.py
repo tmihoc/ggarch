@@ -74,11 +74,11 @@ class TestNodeRendering:
         svg = pipeline(SIMPLE)
         assert "#E95420" in svg
 
-    def test_dark_mode_different_background(self):
+    def test_dark_mode_differs_in_text_colour(self):
         light = pipeline(SIMPLE, dark=False)
         dark  = pipeline(SIMPLE, dark=True)
-        assert "#1E1E2E" in dark
-        assert "#FFFFFF" in light
+        assert "#CDD6F4" in dark
+        assert "#333333" in light
 
     def test_render_both_returns_two_strings(self):
         f = parse(SIMPLE)
