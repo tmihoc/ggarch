@@ -100,20 +100,21 @@ def test_collective_draws_the_stack_mark():
         '}'))
     svg, solved = _render(f, "v")
     b = solved.find("b")
-    # Unfilled boxes draw each mark layer as the margin that peeks out
-    # above and to the right of the box: a five-point polyline whose
-    # second point is the layer's top-left corner. Exactly two layers
-    # exist, and they step by (-5, +5) toward the box, which is drawn
-    # last (the marks behind).
+    # Unfilled boxes draw each mark layer as a full outline with the
+    # front box masked out of it, so only the margins that peek out show.
+    # Exactly two masked layers exist, they share the box size and step
+    # by (-5, +5) toward the box, which is drawn last (marks behind).
     layers = re.findall(
-        r'<path d="M([-\d.]+),([-\d.]+) L([-\d.]+),([-\d.]+) '
-        r'L[-\d.]+,[-\d.]+ L[-\d.]+,[-\d.]+ L[-\d.]+,[-\d.]+"',
-        svg)
-    corners = [(float(m[2]), float(m[3])) for m in layers]
-    assert len(corners) == 2, corners
-    step = (round(corners[1][0] - corners[0][0], 1),
-            round(corners[1][1] - corners[0][1], 1))
+        r'<rect x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" '
+        r'height="([\d.]+)"[^>]*mask="url\(#[^)]+\)"', svg)
+    assert len(layers) == 2, layers
+    assert all(round(float(w), 1) == round(b.rect.w, 1)
+               and round(float(h), 1) == round(b.rect.h, 1)
+               for _, _, w, h in layers), layers
+    step = (round(float(layers[1][0]) - float(layers[0][0]), 1),
+            round(float(layers[1][1]) - float(layers[0][1]), 1))
     assert step == (-5.0, 5.0), step
+    assert svg.count("<mask") == 2
 
 
 def test_collective_base_kind_must_exist():

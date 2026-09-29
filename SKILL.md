@@ -102,24 +102,24 @@ reads the same on a light and a dark page.
 |---|---|---|
 | Border colour | Who owns it | Orange = Juju machinery; grey (one grey per mode) = outside Juju |
 | Border dash | Lifecycle | solid = persistent, dashed = init, dotted = ephemeral |
-| Shape | Kind | person icon, cylinder (database), plain box |
+| Corner badge | Kind | Juju mark (Juju software), person icon, cylinder (database), table (record); no badge for plain boxes |
 | Edge dash and head | Interaction | see **Edge types** |
 
-Add a node type only when it needs a new shape. Ownership decides the
-colour of every type.
+Every node is a rounded rectangle. Add a node type only when it needs a
+new badge; ownership decides the colour of every type.
 
 ## Node types
 
 | Type | Owner | Meaning |
 |---|---|---|
-| `juju-software` | Juju | Juju process or agent |
+| `juju-software` | Juju | Juju process or agent (Juju mark badge) |
 | `charm` | Juju | Charm code |
 | `node` | Juju | A machine or a pod. Machines nest (a LXD container on a VM is a machine inside a machine), so nodes nest. `container` is the older spelling |
 | `pebble` | Juju | Pebble supervisor |
 | `unit` | Juju | A unit |
-| `database` | Juju | Database or storage (cylinder) |
+| `database` | Juju | Database or storage (cylinder badge) |
 | `record` | Juju | Database record or ER row (record badge on plain records) |
-| `person` | outside | Human actor (person icon) |
+| `person` | outside | Human actor (person badge) |
 | `external` | outside | Cloud or other external system |
 | `workload` | outside | Application workload |
 | `class` | outside | Class or component |

@@ -717,10 +717,11 @@ class TestTypeFaithfulParticipantHeaders:
         # One head circle per participant box: header + footer.
         assert svg.count("<circle") == 2
 
-    def test_database_participant_carries_cylinder_caps(self):
+    def test_database_participant_carries_cylinder_badge(self):
         svg = pipeline(DB_SEQ_SRC)
-        # Two caps per participant box: header + footer.
-        assert svg.count("<ellipse") == 4
+        # One cylinder badge per participant box: header + footer.
+        assert "<ellipse" not in svg
+        assert svg.count('stroke-width="1.2"') == 2
 
     def test_init_lifecycle_dash_matches_topology(self):
         svg = pipeline(INIT_SEQ_SRC)

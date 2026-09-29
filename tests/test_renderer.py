@@ -126,7 +126,7 @@ diagram "D" from "M" {
         # Init lifecycle should produce a dashed stroke.
         assert "stroke-dasharray" in svg or "dasharray" in svg
 
-    def test_cylinder_shape_for_database(self):
+    def test_database_is_a_rounded_box_with_a_cylinder_badge(self):
         src = """\
 model "M" {
   nodes {
@@ -139,8 +139,9 @@ diagram "D" from "M" {
 }
 """
         svg = pipeline(src)
-        # Cylinder uses ellipse elements.
-        assert "<ellipse" in svg
+        # Every node is a rounded rectangle; the kind is a badge path.
+        assert "<ellipse" not in svg
+        assert 'stroke-width="1.2"' in svg
 
     def test_person_shape(self):
         src = """\

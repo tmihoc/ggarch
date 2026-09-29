@@ -10,8 +10,9 @@ The 'juju' preset gives colour exactly one meaning, ownership:
 - Grey border (one grey per mode): everything outside Juju (people,
   clouds and other external systems, workloads).
 No node has a fill, so shapes read the same on light and dark pages.
-Kind is carried by shape (person icon, cylinder) and lifecycle by the
-border dash, never by colour.
+Every node is a rounded rectangle. Kind is carried by a corner badge
+(the person icon, the Juju mark, the database cylinder, the record
+table) and lifecycle by the border dash, never by colour.
 """
 from __future__ import annotations
 
@@ -83,13 +84,13 @@ def _nodes(grey: str, text: str) -> dict[str, NodeStyle]:
         "workload": NodeStyle(**outside),
         # Juju machinery. "container" is the older spelling of "node"
         # (a machine or a pod; machines can nest).
-        "juju-software": NodeStyle(**juju),
+        "juju-software": NodeStyle(**juju, badge="juju"),
         "charm": NodeStyle(**juju),
         "pebble": NodeStyle(**juju),
         "unit": NodeStyle(**juju, border_radius=6),
         "node": NodeStyle(**juju, border_radius=6),
         "container": NodeStyle(**juju, border_radius=6),
-        "database": NodeStyle(**juju, shape="cylinder"),
+        "database": NodeStyle(**juju, badge="database"),
         "record": NodeStyle(**juju, border_radius=2, badge="record"),
     }
 

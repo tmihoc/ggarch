@@ -726,17 +726,19 @@ def _render_node_content(
                 ))
                 continue
             # Unfilled boxes: a full back rectangle would show through
-            # the front one, so draw only the margins that peek out
-            # above and to the right of it.
-            g.append(dw.Lines(
-                x + depth, y,
-                x + depth, y - depth,
-                x + w + depth, y - depth,
-                x + w + depth, y + h - depth,
-                x + w, y + h - depth,
-                close=False, fill="none", stroke=style.stroke,
-                stroke_width=style.stroke_width,
-            ))
+            # the front one, so mask the front box out of each layer.
+            # The back layers share the front box's corner radius.
+            pad = style.stroke_width / 2
+            mask = dw.Mask()
+            mask.append(dw.Rectangle(x - 40, y - 40, w + 80, h + 80,
+                                     fill="white"))
+            mask.append(dw.Rectangle(
+                x - pad, y - pad, w + 2 * pad, h + 2 * pad, fill="black",
+                rx=style.border_radius, ry=style.border_radius))
+            g.append(dw.Rectangle(
+                x + depth, y - depth, w, h, fill="none",
+                stroke=style.stroke, stroke_width=style.stroke_width,
+                rx=style.border_radius, ry=style.border_radius, mask=mask))
     if node.fields and node.type in ("record", "class"):
         _render_structured_node(g, node, style, x, y, w, h, dark)
     elif style.shape == "person":
@@ -1081,12 +1083,27 @@ def _render_kind_badge(
     s = _KIND_BADGE_SIZE
     bx, by = x + 5, y + 4
     if kind == "juju":
-        g.append(dw.Rectangle(bx, by, s, s,
-                              fill="#E95420", stroke="none", rx=3, ry=3))
-        g.append(dw.Text("J", 10, bx + s / 2, by + s / 2,
-                         font_family=LABEL_FONT, fill="#FFFFFF",
-                         text_anchor="middle", dominant_baseline="central",
-                         font_weight="bold"))
+        mx, my, mw, mh = _JUJU_MARK_BOX
+        k = s / max(mw, mh)
+        tf = (f"translate({bx + (s - mw * k) / 2 - mx * k:.2f} "
+              f"{by + (s - mh * k) / 2 - my * k:.2f}) scale({k:.5f})")
+        for d in _JUJU_MARK_PATHS:
+            g.append(dw.Path(d=d, fill="#E95420", stroke="none",
+                             transform=tf))
+    elif kind == "database":
+        # Cylinder: elliptical top, straight sides, curved bottom.
+        rx, ry = s * 0.42, s * 0.16
+        cx = bx + s / 2
+        top, bot = by + ry + 0.5, by + s - ry - 0.5
+        g.append(dw.Path(
+            d=(f"M {cx - rx:.2f} {top:.2f} "
+               f"A {rx:.2f} {ry:.2f} 0 0 1 {cx + rx:.2f} {top:.2f} "
+               f"A {rx:.2f} {ry:.2f} 0 0 1 {cx - rx:.2f} {top:.2f} "
+               f"L {cx - rx:.2f} {bot:.2f} "
+               f"A {rx:.2f} {ry:.2f} 0 0 0 {cx + rx:.2f} {bot:.2f} "
+               f"L {cx + rx:.2f} {top:.2f}"),
+            fill="none", stroke="#E95420", stroke_width=1.2,
+            stroke_linejoin="round"))
     elif kind == "charm":
         g.append(dw.Rectangle(bx, by, s, s,
                               fill="none", stroke="#E95420",
@@ -1333,6 +1350,21 @@ def _edge_path_d(pts, bow: float = 0.0) -> str:
 # ---------------------------------------------------------------------------
 
 _CARD_FONT_SIZE = 10
+# The Juju mark (the glyph from the Juju logo, without the orange
+# square): the logo's own subpaths in its 254.56 x 399.19 space. Each
+# subpath starts with a relative moveto, so they stay separate paths.
+_JUJU_MARK_PATHS = (
+    "m148.45,180.19c-16.07,0-29.15,13.02-29.15,29.02v53.29c2.57-1.02,5.37-1.6,8.3-1.6s5.73.58,8.3,1.6v-53.29c0-6.89,5.63-12.49,12.55-12.49s12.55,5.6,12.55,12.49v12.14h16.6v-12.14c0-16-13.08-29.02-29.15-29.02Z",
+    "m141.13,283.22c0,7.44-6.06,13.47-13.53,13.47s-13.53-6.03-13.53-13.47,6.06-13.47,13.53-13.47,13.53,6.03,13.53,13.47Z",
+    "m65.05,250.68c-16.07,0-29.15,13.02-29.15,29.02v51.54c2.57-1.02,5.37-1.6,8.3-1.6s5.73.58,8.3,1.6v-51.54c0-6.89,5.63-12.49,12.55-12.49s12.55,5.6,12.55,12.49v12.14h16.6v-12.14c0-16-13.08-29.02-29.15-29.02Z",
+    "m57.65,351.96c0,7.39-6.02,13.39-13.45,13.39s-13.45-5.99-13.45-13.39,6.02-13.39,13.45-13.39,13.45,5.99,13.45,13.39Z",
+    "m211.01,236.86c-1.15,0-2.32-.09-3.46-.26-1.68-.26-3.3-.71-4.84-1.33v30.43c0,6.82-5.63,12.36-12.55,12.36s-12.55-5.55-12.55-12.36v-34.41h-16.6v34.41c0,15.83,13.08,28.72,29.15,28.72s29.15-12.88,29.15-28.72v-30.43c-2.61,1.04-5.42,1.59-8.3,1.59Z",
+    "m224.48,212.4c1.41,9.18-6.41,16.96-15.63,15.56-5.74-.87-10.44-5.55-11.32-11.26-1.42-9.18,6.41-16.97,15.63-15.56,5.74.88,10.44,5.55,11.32,11.27Z",
+    "m127.6,305.54c-2.93,0-5.73-.58-8.3-1.6v31.89c0,6.89-5.63,12.49-12.55,12.49s-12.55-5.6-12.55-12.49v-34.78h-16.6v34.78c0,16,13.08,29.02,29.15,29.02s29.15-13.02,29.15-29.02v-31.89c-2.57,1.02-5.37,1.6-8.3,1.6Z",
+)
+# The glyph's bounding box inside the logo's square (x, y, w, h).
+_JUJU_MARK_BOX = (30.0, 180.0, 196.0, 186.0)
+
 _KIND_BADGE_SIZE = 14
 
 # The on-line glyph sits this far inside from the endpoint (round-2
