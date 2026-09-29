@@ -535,6 +535,28 @@ figure.ggarch-figure figcaption {
 .ggarch-close-btn:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
 [data-theme="dark"] .ggarch-close-btn,
 .dark .ggarch-close-btn { background: rgba(40,40,40,0.92); border-color: rgba(255,255,255,0.2); color: #eee; }
+/* Pages that follow the operating system's colour scheme ("auto") carry no
+   explicit dark marker, so the dark rules above never match there. The
+   diagrams have a transparent canvas, which makes the modal's own
+   background matter: mirror every dark rule for that case. */
+@media (prefers-color-scheme: dark) {
+body:not([data-theme="light"]) figure.ggarch-figure figcaption { color: #aaa; }
+body:not([data-theme="light"]) .ggarch-legend { color: #aaa; }
+body:not([data-theme="light"]) .ggarch-legend-swatch { opacity: 0.85; }
+body:not([data-theme="light"]) .ggarch-slide-nav { color: #aaa; }
+body:not([data-theme="light"]) .ggarch-expand-btn {
+    background: rgba(40, 40, 40, 0.92);
+    border-color: rgba(255,255,255,0.2);
+    color: #ddd;
+}
+body:not([data-theme="light"]) .ggarch-modal-inner { background: #1e1e2e; }
+body:not([data-theme="light"]) .ggarch-modal-caption { color: #aaa; }
+body:not([data-theme="light"]) .ggarch-close-btn {
+    background: rgba(40,40,40,0.92);
+    border-color: rgba(255,255,255,0.2);
+    color: #eee;
+}
+}
 """
 
 _GGARCH_JS = """\

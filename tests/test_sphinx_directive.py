@@ -134,3 +134,15 @@ class TestCaptionMarkup:
             assert "{ref}" not in cap
         finally:
             app.cleanup()
+
+
+def test_modal_has_dark_rules_for_pages_that_follow_the_os_theme():
+    """Diagrams have a transparent canvas, so the expand modal's own
+    background decides how a diagram reads. Pages in "auto" mode carry no
+    explicit dark marker, so every dark rule needs a media-query twin."""
+    pytest.importorskip("sphinx")
+    from ggarch.sphinxcontrib_ggarch import _GGARCH_CSS
+
+    auto = _GGARCH_CSS[_GGARCH_CSS.index("@media (prefers-color-scheme: dark)"):]
+    assert 'body:not([data-theme="light"]) .ggarch-modal-inner' in auto
+    assert "#1e1e2e" in auto
