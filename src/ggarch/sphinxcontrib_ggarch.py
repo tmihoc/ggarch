@@ -153,7 +153,30 @@ class GgarchDirective(SphinxDirective):
             except Exception:  # fall back to the plain-text caption
                 logger.warning(f"ggarch: could not parse caption markup: {caption!r}",
                                location=node)
+        # Slide captions carry the narration of a slideshow. The HTML, text and
+        # markdown visitors skip a node's children, but Sphinx's search
+        # indexer walks the doctree, so the captions become searchable text.
+        slide_caps = _split_pipe(node["slide_captions"])
+        slide_names = _split_pipe(node["slides"])
+        if slide_caps:
+            items = nodes.enumerated_list(classes=["ggarch-slide-captions-content"])
+            for name, cap in zip(slide_names, slide_caps):
+                if cap:
+                    items += nodes.list_item("", nodes.paragraph("", f"{name}: {cap}"))
+            node += items
         return [node]
+
+
+def _split_pipe(value: str) -> list[str]:
+    """Split a pipe-separated directive option ("A | B | C") into items."""
+    return [part.strip() for part in value.split("|")] if value else []
+
+
+def _slide_caption_pairs(node: "ggarch") -> list[tuple[str, str]]:
+    """(slide name, caption) pairs of a slideshow node, empty captions dropped."""
+    names = _split_pipe(node.get("slides", ""))
+    caps = _split_pipe(node.get("slide_captions", ""))
+    return [(n, c) for n, c in zip(names, caps) if c]
 
 
 # ---------------------------------------------------------------------------
@@ -429,6 +452,19 @@ figure.ggarch-figure figcaption {
     color: inherit;
 }
 .ggarch-slide { display: none; }
+/* All slide captions, as text for screen readers, search and copy. The
+   visible caption still follows the active slide. */
+.ggarch-slide-captions {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
 .ggarch-slide.active { display: block; }
 .ggarch-slide-nav {
     display: flex;
@@ -888,7 +924,9 @@ def html_visit_ggarch(self: object, node: ggarch) -> None:
         self.body.append(f'<figure class="{figure_class}">\n')
         if caption:
             self.body.append(f'<p class="ggarch-slides-caption">{self.encode(caption)}</p>\n')
-        self.body.append('<div class="ggarch-slides">\n')
+        self.body.append(
+            f'<div class="ggarch-slides" role="group" aria-label="{self.encode(alt)}">\n'
+        )
 
         any_ok = False
         for i, name in enumerate(names):
@@ -912,25 +950,36 @@ def html_visit_ggarch(self: object, node: ggarch) -> None:
                 continue
 
             cap = captions[i]
+            # Each slide gets its own alt text; the figure-level :alt: labels the group.
+            slide_alt = f"{name} (slide {i + 1} of {len(names)})"
             self.body.append(f'<div class="ggarch-slide" data-caption="{self.encode(cap)}">\n')
             if light is not None:
                 uri = _register_image(self, light[1])
                 self.body.append(
                     f'<div class="only-light">'
-                    f'<img class="ggarch-img" src="{uri}" alt="{self.encode(alt)}" style="max-width:100%; height:auto;" />'
+                    f'<img class="ggarch-img" src="{uri}" alt="{self.encode(slide_alt)}" style="max-width:100%; height:auto;" />'
                     f'</div>\n'
                 )
             if dark is not None:
                 uri = _register_image(self, dark[1])
                 self.body.append(
                     f'<div class="only-dark">'
-                    f'<img class="ggarch-img" src="{uri}" alt="{self.encode(alt)}" style="max-width:100%; height:auto;" />'
+                    f'<img class="ggarch-img" src="{uri}" alt="{self.encode(slide_alt)}" style="max-width:100%; height:auto;" />'
                     f'</div>\n'
                 )
             self.body.append('</div>\n')  # .ggarch-slide
             any_ok = True
 
         self.body.append('</div>\n')  # .ggarch-slides
+
+        pairs = [(n, c) for n, c in zip(names, captions) if c]
+        if pairs:
+            self.body.append('<ol class="ggarch-slide-captions">\n')
+            for n, c in pairs:
+                self.body.append(
+                    f'<li><strong>{self.encode(n)}:</strong> {self.encode(c)}</li>\n'
+                )
+            self.body.append('</ol>\n')
 
         # figcaption shows the first slide-caption and is updated by JS on nav.
         # :caption: is already rendered as a static label above; don't repeat it.
@@ -1023,6 +1072,8 @@ def markdown_visit_ggarch(self: object, node: ggarch) -> None:
     self.add("```", prefix_eol=1, suffix_eol=2)
     if caption:
         self.add(f"*{caption}*", prefix_eol=1, suffix_eol=2)
+    for i, (name, cap) in enumerate(_slide_caption_pairs(node), start=1):
+        self.add(f"{i}. **{name}:** {cap}", prefix_eol=1, suffix_eol=1)
     raise nodes.SkipNode
 
 
@@ -1033,6 +1084,8 @@ def text_visit_ggarch(self: object, node: ggarch) -> None:
     if caption:
         text += f": {caption}"
     self.add_text(f"[{text}]")
+    for i, (name, cap) in enumerate(_slide_caption_pairs(node), start=1):
+        self.add_text(f"\n{i}. {name}: {cap}")
     raise nodes.SkipNode
 
 
