@@ -1095,6 +1095,25 @@ def text_visit_ggarch(self: object, node: ggarch) -> None:
     raise nodes.SkipNode
 
 
+def latex_visit_ggarch(self: object, node: ggarch) -> None:
+    """Write the figure as plain paragraphs in LaTeX (PDF) output.
+
+    The diagram is an interactive SVG figure, so the PDF carries its text
+    instead: the alt text and caption, then one line per slide caption.
+    """
+    alt     = node.get("alt", "")
+    caption = node.get("caption", "")
+    text    = alt or "Architecture diagram"
+    if caption:
+        text += f": {caption}"
+    lines = [f"[{text}]"]
+    for i, (name, cap) in enumerate(_slide_caption_pairs(node), start=1):
+        lines.append(f"{i}. {name}: {cap}")
+    for line in lines:
+        self.body.append("\n\\sphinxAtStartPar\n" + self.encode(line) + "\n")
+    raise nodes.SkipNode
+
+
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
@@ -1106,6 +1125,7 @@ def setup(app: object) -> dict[str, Any]:
         markdown=(markdown_visit_ggarch, None),
         text=(text_visit_ggarch, None),
         man=(text_visit_ggarch, None),
+        latex=(latex_visit_ggarch, None),
     )
     app.add_directive("ggarch", GgarchDirective)
     return {

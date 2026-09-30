@@ -219,6 +219,23 @@ class TestSlideshowCaptionsAreText:
         assert "1. Topology: Zebra caption for the first slide." in text
         assert "2. Lifecycle: Quokka caption for the second slide." in text
 
+    def test_latex_build_succeeds_and_carries_the_captions(self, tmp_path):
+        """Read the Docs builds a PDF through the latex builder.
+
+        Before: the ggarch node had no latex visitor, so the build stopped
+        with "departing unknown node type: ggarch" and failed the whole
+        Read the Docs build.
+        """
+        app = _build(tmp_path, "latex")
+        try:
+            (tex,) = app.outdir.glob("*.tex")
+            text = " ".join(tex.read_text().split())
+        finally:
+            app.cleanup()
+        assert "two views" in text
+        assert "1. Topology: Zebra caption for the first slide." in text
+        assert "2. Lifecycle: Quokka caption for the second slide." in text
+
     def test_markdown_visitor_numbers_the_captions(self):
         from docutils import nodes
         from ggarch.sphinxcontrib_ggarch import ggarch, markdown_visit_ggarch
