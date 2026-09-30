@@ -239,3 +239,23 @@ class TestSlideshowCaptionsAreText:
             pass
         assert "1. **One:** First." in added
         assert "2. **Three:** Third." in added  # the empty caption is dropped
+
+
+    def test_search_index_finds_a_single_figure_caption(self, tmp_path):
+        index = (
+            "Test\n====\n\n"
+            ".. ggarch::\n"
+            "   :file: model.ggarch\n"
+            "   :view: Topology\n"
+            "   :caption: A wombat caption that carries narration.\n"
+            "   :alt: one view\n"
+        )
+        app = _build(tmp_path, "html", index=index)
+        try:
+            searchindex = (app.outdir / "searchindex.js").read_text()
+            html = (app.outdir / "index.html").read_text()
+        finally:
+            app.cleanup()
+        assert "wombat" in searchindex
+        # The visible caption is still rendered once, in the figcaption.
+        assert html.count("A wombat caption that carries narration.") == 1

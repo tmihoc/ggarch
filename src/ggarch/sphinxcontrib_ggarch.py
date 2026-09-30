@@ -153,6 +153,12 @@ class GgarchDirective(SphinxDirective):
             except Exception:  # fall back to the plain-text caption
                 logger.warning(f"ggarch: could not parse caption markup: {caption!r}",
                                location=node)
+        elif caption:
+            # A plain caption still needs to exist as doctree text so the
+            # search indexer sees it (the HTML visitor skips these children).
+            node += nodes.container(
+                "", nodes.paragraph("", caption), classes=["ggarch-caption-text"]
+            )
         # Slide captions carry the narration of a slideshow. The HTML, text and
         # markdown visitors skip a node's children, but Sphinx's search
         # indexer walks the doctree, so the captions become searchable text.
