@@ -58,3 +58,12 @@ the node's border colour (top-left carries kind, top-right carries where it runs
 Juju-managed, grey for the same thing before Juju; instances and collectives inherit it. Chosen
 over a double border, which needed an inner box that stayed empty in collapsed views and
 crowded the collective stack (prototyped and compared, 2026-09-29; the reviewer: "yes").
+
+## Amendment (2026-09-30, session 74): a visible grey, and the entity kind
+
+- The single grey had become too shy on the docs pages: #AAAAAA (2.3:1 on white) and #666666 (2.9:1 on #1E1E2E), drawn one pixel wide. The
+  preset now uses #8A8A8A in light mode (3.4:1) and #A3A3AD in dark mode (6:1), and dark mode draws every node border at 1.5 so that orange and
+  grey keep equal weight. The geometry audit is unchanged (it does not depend on colour or stroke width).
+- New node kind `entity`: an orange border drawn dotted, no badge, for the logical entities Juju keeps (a model, an application), so that they read
+  differently from software (solid orange, with the Juju mark) and from people and workloads (grey). The dash still means lifecycle for other
+  kinds; for `entity` the dotted border means "an abstraction, not a process".

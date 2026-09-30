@@ -7,6 +7,8 @@ and override individual rules.
 The 'juju' preset gives colour exactly one meaning, ownership:
 - Orange border: Juju machinery (Juju software, charms, nodes, units,
   Pebble, records, databases).
+- Dotted orange border: a logical entity of Juju (a model, an application),
+  an abstraction the controller keeps rather than a piece of software.
 - Grey border (one grey per mode): everything outside Juju (people,
   clouds and other external systems, workloads).
 No node has a fill, so shapes read the same on light and dark pages.
@@ -67,15 +69,16 @@ class ResolvedStyle:
 # ---------------------------------------------------------------------------
 
 _ORANGE = "#E95420"          # Juju-owned: the border colour
-_GREY_LIGHT = "#AAAAAA"      # external: the one grey, light mode
-_GREY_DARK = "#666666"       # external: the one grey, dark mode
+_GREY_LIGHT = "#8A8A8A"      # external: the one grey, light mode (3.4:1 on white)
+_GREY_DARK = "#A3A3AD"       # external: the one grey, dark mode (6:1 on #1E1E2E)
+_DARK_WIDTH = 1.5            # dark mode draws every node border slightly heavier
 _TEXT_LIGHT = "#333333"
 _TEXT_DARK = "#CDD6F4"
 
 
-def _nodes(grey: str, text: str) -> dict[str, NodeStyle]:
-    juju = dict(fill="none", stroke=_ORANGE, font_color=text)
-    outside = dict(fill="none", stroke=grey, font_color=text)
+def _nodes(grey: str, text: str, width: float = 1) -> dict[str, NodeStyle]:
+    juju = dict(fill="none", stroke=_ORANGE, font_color=text, stroke_width=width)
+    outside = dict(fill="none", stroke=grey, font_color=text, stroke_width=width)
     return {
         "default": NodeStyle(**outside),
         # Outside Juju.
@@ -88,6 +91,10 @@ def _nodes(grey: str, text: str) -> dict[str, NodeStyle]:
         "charm": NodeStyle(**juju),
         "pebble": NodeStyle(**juju),
         "unit": NodeStyle(**juju, border_radius=6),
+        # A logical entity of Juju (a model, an application): an abstraction
+        # the controller keeps, drawn with a dotted border so it reads
+        # differently from the software around it.
+        "entity": NodeStyle(**juju, border_radius=6, stroke_dash="2,2"),
         "node": NodeStyle(**juju, border_radius=6),
         "container": NodeStyle(**juju, border_radius=6),
         "database": NodeStyle(**juju, badge="database"),
@@ -117,7 +124,7 @@ def _edges(stroke: str, mute: str, text: str) -> dict[str, EdgeStyle]:
 
 
 _JUJU_LIGHT_NODES = _nodes(_GREY_LIGHT, _TEXT_LIGHT)
-_JUJU_DARK_NODES = _nodes(_GREY_DARK, _TEXT_DARK)
+_JUJU_DARK_NODES = _nodes(_GREY_DARK, _TEXT_DARK, _DARK_WIDTH)
 _JUJU_LIGHT_EDGES = _edges("#555555", "#888888", "#444444")
 _JUJU_DARK_EDGES = _edges("#AAAAAA", "#888888", _TEXT_DARK)
 
