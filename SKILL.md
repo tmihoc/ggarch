@@ -117,11 +117,8 @@ new badge; ownership decides the colour of every type.
 | `node` | Juju | A machine or a pod. Machines nest (a LXD container on a VM is a machine inside a machine), so nodes nest. `container` is the older spelling |
 | `pebble` | Juju | Pebble supervisor |
 | `unit` | Juju | A unit |
-<<<<<<< HEAD
 | `context-record` | Juju | A record that another page describes, drawn for context in a data model figure: the record badge plus a second outlined-arrow badge |
-=======
 | `charmed-entity` | Juju | A logical entity that charms operate, such as a deployed application: dotted border like `entity`, plus the Juju mark badge |
->>>>>>> badge-entity
 | `database` | Juju | Database or storage (cylinder badge) |
 | `record` | Juju | Database record or ER row (record badge on plain records) |
 | `person` | outside | Human actor (person badge) |
