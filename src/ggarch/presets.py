@@ -99,6 +99,11 @@ def _nodes(grey: str, text: str, width: float = 1) -> dict[str, NodeStyle]:
         "container": NodeStyle(**juju, border_radius=6),
         "database": NodeStyle(**juju, badge="database"),
         "record": NodeStyle(**juju, border_radius=2, badge="record"),
+        # A record that another page describes, drawn for context in a data
+        # model figure: the record's solid border and a corner badge with an
+        # outward arrow ("described elsewhere"). The dotted border stays the
+        # entity's.
+        "context-record": NodeStyle(**juju, border_radius=2, badge="elsewhere"),
     }
 
 

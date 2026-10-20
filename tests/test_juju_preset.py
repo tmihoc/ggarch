@@ -36,3 +36,12 @@ class TestEntityKind:
             assert style.stroke == nodes["juju-software"].stroke  # Juju orange
             assert style.stroke_dash == "2,2"
             assert style.badge == ""  # a plain box, no kind badge
+
+
+class TestContextRecordKind:
+    def test_context_record_is_a_record_border_with_the_elsewhere_badge(self):
+        for nodes in (_light(), _dark()):
+            style = nodes["context-record"]
+            assert style.stroke_dash == ""          # solid: dotted stays the entity's
+            assert style.badge == "elsewhere"
+            assert style.stroke == nodes["record"].stroke
