@@ -217,3 +217,33 @@ class TestLayeredLayout:
         # bespoke hardcoded 8 is gone.
         rxs = set(_re.findall(r'<rect[^>]*rx="(\d+)', svg))
         assert rxs == {"4"}, rxs
+
+
+class TestDownRightPorts:
+    """Exits that go down and to the right start at the middle of the
+    source's bottom face and arrive spread along the target's left face."""
+
+    def _ports(self):
+        from ggarch.layout import Rect
+        from ggarch.state_renderer import _Transition, _down_right_ports
+        rects = {
+            "a": Rect(0, 0, 100, 40), "b": Rect(200, 0, 100, 40),
+            "c": Rect(400, 0, 100, 40), "x": Rect(600, 150, 100, 40),
+        }
+        ts = [_Transition(s, "x", "abort") for s in ("a", "b", "c")]
+        src, tgt = _down_right_ports(ts, rects)
+        return rects, ts, src, tgt
+
+    def test_exits_start_at_the_middle_of_the_bottom_face(self):
+        rects, ts, src, _ = self._ports()
+        assert ts[0].source == "a"
+        for t in ts[:2]:
+            r = rects[t.source]
+            assert (src[id(t)].x, src[id(t)].y) == (r.cx, r.y2)
+
+    def test_arrivals_spread_with_the_nearest_source_on_top(self):
+        _, ts, _, tgt = self._ports()
+        ys = [tgt[id(t)].y for t in ts]  # a (farthest), b, c (nearest)
+        assert ys == sorted(ys, reverse=True)
+        assert len(set(ys)) == 3
+        assert all(150 < y < 190 for y in ys)

@@ -51,6 +51,7 @@ from ggarch.router import (
     BOW_MAX_DIST,
     BOW_OFFSET,
     ROUTE_STROKE_W,
+    Point,
     _route_edge,
     _route_order,
     _towards,
@@ -302,6 +303,40 @@ def _shift_state_labels(
             break
 
 
+def _down_right_ports(
+    transitions: list[_Transition],
+    rects: dict[str, Rect],
+) -> tuple[dict[int, Point], dict[int, Point]]:
+    """Ports for transitions that leave a state downward and arrive at a
+    state to the lower right, keyed by ``id(transition)``.
+
+    Each starts at the middle of the source's bottom face and ends on the
+    target's left face. The arrivals at one target spread evenly along its
+    left face, the nearest source on top, so that the lanes nest without
+    crossing. The cheapest-path search alone picks the corner nearest the
+    target, which makes exits look random and lets lanes share a segment.
+    """
+    port_src: dict[int, Point] = {}
+    port_tgt: dict[int, Point] = {}
+    by_target: dict[str, list[_Transition]] = {}
+    for t in transitions:
+        if t.source == t.target:
+            continue
+        if t.source not in rects or t.target not in rects:
+            continue
+        sr, tr = rects[t.source], rects[t.target]
+        if tr.y > sr.y2 and tr.x > sr.x2:
+            by_target.setdefault(t.target, []).append(t)
+    for tgt_id, group in by_target.items():
+        tr = rects[tgt_id]
+        group.sort(key=lambda t: -rects[t.source].cx)
+        for k, t in enumerate(group):
+            sr = rects[t.source]
+            port_src[id(t)] = Point(sr.cx, sr.y2)
+            port_tgt[id(t)] = Point(tr.x, tr.y + tr.h * (k + 1) / (len(group) + 1))
+    return port_src, port_tgt
+
+
 def render_state(
     view: StateView,
     model: Model,
@@ -380,6 +415,9 @@ def render_state(
         r = _state_rect(sid)
         return (r.x, r.y, r.x2, r.y2)
 
+    port_src, port_tgt = _down_right_ports(
+        transitions, {sid: _state_rect(sid) for sid in state_pos})
+
     routed: list[_RoutedTransition] = []
     strips_done = []
     ordered = _route_order([
@@ -400,6 +438,8 @@ def render_state(
         pts = _route_edge(
             src_rect, tgt_rect, obstacles, strips_done,
             [_state_rect(t.source), _state_rect(t.target)],
+            src_anchor=port_src.get(id(t)),
+            tgt_anchor=port_tgt.get(id(t)),
             orthogonal=True)
         pts_t = [(p.x, p.y) for p in pts]
         strips_done.append(strip_for_edge(
