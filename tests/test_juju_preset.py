@@ -45,3 +45,12 @@ class TestContextRecordKind:
             assert style.stroke_dash == ""          # solid: dotted stays the entity's
             assert style.badge == "elsewhere"
             assert style.stroke == nodes["record"].stroke
+
+
+class TestCharmedEntityKind:
+    def test_charmed_entity_is_an_entity_with_the_juju_mark(self):
+        for nodes in (_light(), _dark()):
+            style = nodes["charmed-entity"]
+            assert style.stroke == nodes["entity"].stroke
+            assert style.stroke_dash == nodes["entity"].stroke_dash
+            assert style.badge == "juju"

@@ -95,6 +95,11 @@ def _nodes(grey: str, text: str, width: float = 1) -> dict[str, NodeStyle]:
         # the controller keeps, drawn with a dotted border so it reads
         # differently from the software around it.
         "entity": NodeStyle(**juju, border_radius=6, stroke_dash="2,2"),
+        # A logical entity that charms operate (an application the user
+        # deployed): the entity's dotted border plus the Juju mark, a low-key
+        # sign that a unit agent and a charm run behind the box.
+        "charmed-entity": NodeStyle(**juju, border_radius=6, stroke_dash="2,2",
+                                    badge="juju"),
         "node": NodeStyle(**juju, border_radius=6),
         "container": NodeStyle(**juju, border_radius=6),
         "database": NodeStyle(**juju, badge="database"),
