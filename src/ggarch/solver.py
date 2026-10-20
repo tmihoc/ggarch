@@ -117,6 +117,9 @@ def solve(diagram: DiagramView, model: Model) -> SolvedLayout:
     # controller<->cloud cycle that stalled the sink-anchored Kahn and
     # dragged the clouds into the app column, even though route() later
     # dropped them — the ELK path already curated for the same reason).
+    if getattr(diagram.select, "hide_fields", False):
+        from ggarch.model import mask_fields
+        model = mask_fields(model)
     except_pairs = {(s, t, ty) for s, t, ty in
                     getattr(diagram.select, "except_pairs", []) or []}
     if except_pairs:

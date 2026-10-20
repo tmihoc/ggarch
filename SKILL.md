@@ -414,6 +414,13 @@ opt "optional fragment" {
 
 Labels are optional on `return` and on steps inside blocks.
 
+**Collapsed record chips with cardinalities.** A view with `fields: hidden`
+draws every record as a collapsed chip (its name only). The edges keep the
+`1`/`m` cardinalities, which ggarch reads from the declared fields before it
+hides them, so the model keeps the full scaffolded records and the view
+chooses the level of detail. Lines attach to the chip's face, so chips
+aligned in a row get straight, aligned edges.
+
 ### 5. Write diagram views
 
 A `diagram` view selects nodes and edges, positions them, and optionally

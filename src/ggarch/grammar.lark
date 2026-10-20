@@ -109,6 +109,7 @@ select_item: "nodes" ":" id_list                         -> select_nodes
            | "sizing" ":" ID                             -> select_sizing
            | "zoom" ":" SIGNED_NUMBER                    -> select_zoom
            | "records" ":" ID                            -> select_records
+           | FIELDS_KW ":" ID                            -> select_fields
            | "labels" ":" ID                            -> select_labels
            | "hidden" ":" id_list                        -> select_hidden
 

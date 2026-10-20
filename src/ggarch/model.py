@@ -127,6 +127,10 @@ class Edge:
     target_field: str = ""
     properties: dict[str, str] = field(default_factory=dict)  # arbitrary key-value metadata
     url: str = ""                             # if set, edge label is clickable in SVG
+    # Set by a view with "fields: hidden": the cardinality witnesses of a
+    # field-qualified edge, kept after the fields are masked, as
+    # (source_unique, target_unique, source_nullable, target_nullable).
+    card: tuple | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +373,9 @@ class SelectClause:
                                 # label in the view (the reviewer's
                                 # "lighter" teaching diagrams: the model
                                 # keeps the labels; the view mutes them)
+    hide_fields: bool = False   # "fields: hidden" — draw records as collapsed
+                                # chips; edges keep their 1/m cardinalities
+                                # (witnessed from the fields before masking)
     hide_records: bool = False  # "records: hidden" — suppress the derived
                                 # chips even on nodes carrying records:
                                 # (the chips' label/crowding design is
@@ -512,3 +519,44 @@ class GgarchFile:
             if m.name == name:
                 return m
         return None
+
+
+def mask_fields(model: "Model") -> "Model":
+    """A copy of the model whose record nodes carry no fields, with every
+    field-qualified edge keeping its cardinality witnesses in `Edge.card`.
+    Used by views that declare "fields: hidden": the record draws as a
+    collapsed chip, and the relation still reads 1 and m at both ends."""
+    import dataclasses
+
+    def find(nodes, nid):
+        for n in nodes:
+            if n.id == nid:
+                return n
+            hit = find(n.children, nid)
+            if hit is not None:
+                return hit
+        return None
+
+    def witness(node, field_id):
+        if node is None or not field_id:
+            return None
+        f = next((x for x in node.fields if x.id == field_id), None)
+        if f is None:
+            return None
+        unique = bool(f.uk) or bool(f.pk and sum(1 for x in node.fields if x.pk) == 1)
+        return unique, bool(f.nullable)
+
+    def strip(nodes):
+        return [dataclasses.replace(n, fields=[], children=strip(n.children))
+                for n in nodes]
+
+    edges = []
+    for e in model.edges:
+        if e.source_field or e.target_field:
+            sw = witness(find(model.nodes, e.source), e.source_field)
+            tw = witness(find(model.nodes, e.target), e.target_field)
+            card = (sw[0] if sw else False, tw[0] if tw else True,
+                    sw[1] if sw else False, tw[1] if tw else False)
+            e = dataclasses.replace(e, card=card, source_field="", target_field="")
+        edges.append(e)
+    return dataclasses.replace(model, nodes=strip(model.nodes), edges=edges)

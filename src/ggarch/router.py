@@ -186,6 +186,12 @@ def _field_witnesses(layout, edge) -> dict:
     out = {"source_field": edge.source_field, "target_field": edge.target_field,
            "source_nullable": False, "target_nullable": False,
            "source_unique": False, "target_unique": False}
+    card = getattr(edge, "card", None)
+    if card:   # "fields: hidden" view: witnesses were taken before masking
+        out.update(source_field="~", target_field="~",
+                   source_unique=card[0], target_unique=card[1],
+                   source_nullable=card[2], target_nullable=card[3])
+        return out
     if not edge.source_field and not edge.target_field:
         return out
     def _node_fields(node_id: str):
@@ -1681,6 +1687,9 @@ def _through_pair_far_end_symmetry(routed_edges, layout) -> None:
 
 def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
     """Compute routed edges for all model edges whose endpoints are in layout."""
+    if getattr(select, "hide_fields", False):
+        from ggarch.model import mask_fields
+        model = mask_fields(model)
     # ADR-006: an ELK-laid-out view carries its edge geometry from the
     # backend — wrap it (strips for the label contract, audit metrics
     # computed the same way as built-in routes) and skip the router.

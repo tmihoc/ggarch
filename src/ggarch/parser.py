@@ -486,6 +486,12 @@ class _GgarchTransformer(Transformer):
                     raise ParseError(
                         f"unknown labels mode {value!r}; "
                         "expected hidden")
+            elif key == "fields":
+                if value == "hidden":
+                    s.hide_fields = True
+                else:
+                    raise ParseError(
+                        f"unknown fields mode {value!r}; expected hidden")
             elif key == "records":
                 if value == "shown":
                     s.show_records = True
@@ -524,6 +530,7 @@ class _GgarchTransformer(Transformer):
     def select_zoom(self, num_token) -> tuple: return ("zoom", float(num_token))
 
     def select_records(self, mode_token) -> tuple: return ("records", _str(mode_token))
+    def select_fields(self, _kw, mode_token) -> tuple: return ("fields", _str(mode_token))
 
     def select_labels(self, mode_token) -> tuple: return ("labels", _str(mode_token))
 
