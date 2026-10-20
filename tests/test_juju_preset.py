@@ -36,3 +36,12 @@ class TestEntityKind:
             assert style.stroke == nodes["juju-software"].stroke  # Juju orange
             assert style.stroke_dash == "2,2"
             assert style.badge == ""  # a plain box, no kind badge
+
+
+class TestCharmedEntityKind:
+    def test_charmed_entity_is_an_entity_with_the_juju_mark(self):
+        for nodes in (_light(), _dark()):
+            style = nodes["charmed-entity"]
+            assert style.stroke == nodes["entity"].stroke
+            assert style.stroke_dash == nodes["entity"].stroke_dash
+            assert style.badge == "juju"
