@@ -1116,14 +1116,20 @@ def _render_kind_badge(
         g.append(dw.Line(bx + 2.5, by + s / 2, bx + s - 2, by + s / 2,
                          stroke="#FFFFFF", stroke_width=1.5))
     elif kind == "elsewhere":
-        # Outline square with an arrow leaving its top-right corner: the
-        # record is described on another page.
-        g.append(dw.Rectangle(bx, by, s, s, fill="none", stroke="#E95420",
+        # Additive tags: the record's table mark, then a second badge, an
+        # outline square with an arrow leaving its top-right corner, which
+        # says the record is described on another page.
+        g.append(dw.Rectangle(bx, by, s, s,
+                              fill="#E95420", stroke="none", rx=2, ry=2))
+        g.append(dw.Line(bx + 2.5, by + s / 2, bx + s - 2, by + s / 2,
+                         stroke="#FFFFFF", stroke_width=1.5))
+        ox = bx + s + 4
+        g.append(dw.Rectangle(ox, by, s, s, fill="none", stroke="#E95420",
                               stroke_width=1.2, rx=2, ry=2))
-        g.append(dw.Line(bx + 3.5, by + s - 3.5, bx + s - 3, by + 3,
+        g.append(dw.Line(ox + 3.5, by + s - 3.5, ox + s - 3, by + 3,
                          stroke="#E95420", stroke_width=1.4))
-        g.append(dw.Lines(bx + s - 7, by + 3, bx + s - 3, by + 3,
-                          bx + s - 3, by + 7, fill="none", close=False,
+        g.append(dw.Lines(ox + s - 7, by + 3, ox + s - 3, by + 3,
+                          ox + s - 3, by + 7, fill="none", close=False,
                           stroke="#E95420", stroke_width=1.4))
 
 

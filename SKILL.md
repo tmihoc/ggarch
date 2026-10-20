@@ -117,7 +117,7 @@ new badge; ownership decides the colour of every type.
 | `node` | Juju | A machine or a pod. Machines nest (a LXD container on a VM is a machine inside a machine), so nodes nest. `container` is the older spelling |
 | `pebble` | Juju | Pebble supervisor |
 | `unit` | Juju | A unit |
-| `context-record` | Juju | A record that another page describes, drawn for context in a data model figure: solid border and an outlined arrow badge |
+| `context-record` | Juju | A record that another page describes, drawn for context in a data model figure: the record badge plus a second outlined-arrow badge |
 | `database` | Juju | Database or storage (cylinder badge) |
 | `record` | Juju | Database record or ER row (record badge on plain records) |
 | `person` | outside | Human actor (person badge) |
