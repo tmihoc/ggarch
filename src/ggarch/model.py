@@ -362,6 +362,11 @@ class SelectClause:
     zoom: float = 1.0
     show_records: bool = False  # "records: shown" — render the runtime↔record
                                 # bridges (ADR-005; synthetic, view-level)
+    context_nodes: list[str] = field(default_factory=list)
+                           # "context: a b" — draw these selected nodes as
+                           # context records in THIS view: "whose page is
+                           # this" is a fact about the view, not the model,
+                           # so the type override lives here, beside nodes:.
     hidden_nodes: list[str] = field(default_factory=list)
                            # "hidden: a b" — the progressive reveal: the
                            # FULL diagram solves and renders; hidden

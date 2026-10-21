@@ -395,6 +395,14 @@ def _validate_select(select: SelectClause, model: Model, view_name: str) -> None
                 hint=f"declared nodes: {sorted(node_ids)}",
             )
 
+    for nid in select.context_nodes:
+        if nid not in select.node_ids:
+            raise ValidationError(
+                f"view {view_name!r}: context node {nid!r} is not selected; "
+                "context marks a node this view already draws",
+                hint="add it to nodes: or drop it from context:",
+            )
+
     for nid in select.collapse:
         if nid not in valid_ids:
             raise ValidationError(

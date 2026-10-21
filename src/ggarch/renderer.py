@@ -25,7 +25,7 @@ from __future__ import annotations
 import math
 import re
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Sequence
 
 import drawsvg as dw
@@ -110,13 +110,17 @@ _LEGEND_GAP = 16   # px gap between diagram edge and legend box
 def _legend_items(
     layout: SolvedLayout,
     edges: list,
+    ctx: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
-    """Return (node_types, edge_types) actually present in the view."""
+    """Return (node_types, edge_types) actually present in the view.
+    ctx: the view's context set — those nodes report as context-record,
+    so the legend keeps saying which boxes another page describes."""
     seen_node: list[str] = []
     def _collect(nodes):
         for n in nodes:
-            if n.type not in seen_node and n.type not in ("default",):
-                seen_node.append(n.type)
+            t = "context-record" if ctx and n.id in ctx else n.type
+            if t not in seen_node and t not in ("default",):
+                seen_node.append(t)
             _collect(n.children)
     _collect(layout.nodes)
     seen_edge: list[str] = []
@@ -303,8 +307,9 @@ def render(
     legend_anns = [a for a in view.annotations if isinstance(a, AnnotationLegend)]
     right_extra = left_extra = top_extra = bottom_extra = 0.0
     if not skip_legend:
+        ctx = set(getattr(view.select, "context_nodes", []) or [])
         for ann in legend_anns:
-            node_types, edge_types = _legend_items(layout, routed.edges)
+            node_types, edge_types = _legend_items(layout, routed.edges, ctx)
             if not node_types and not edge_types:
                 continue
             lw, lh = _legend_dims(node_types, edge_types)
@@ -563,10 +568,19 @@ def _render_nodes(
     salience: dict | None = None,
 ) -> None:
     hidden = set(getattr(view.select, "hidden_nodes", []) or [])
+    ctx = set(getattr(view.select, "context_nodes", []) or [])
+    def _draw(g_, node):
+        # "context: a b" — the type override is view-relative, so it is
+        # applied to the solved node the renderer sees, where every
+        # downstream decision (style lookup, the record badge rule)
+        # reads node.type. The model keeps its own, page-agnostic type.
+        if node.id in ctx and node.type != "context-record":
+            node = replace(node, type="context-record")
+        _render_node(g_, node, node_styles, ox, oy, view, dark,
+                     model, salience=salience)
     for node in nodes:
         if node.children:
-            _render_node(g, node, node_styles, ox, oy, view, dark,
-                         model, salience=salience)
+            _draw(g, node)
     for node in nodes:
         if not node.children:
             if node.id in hidden:
@@ -576,11 +590,9 @@ def _render_nodes(
                 # the opacity schedule.
                 quiet = dw.Group(opacity="0")
                 g.append(quiet)
-                _render_node(quiet, node, node_styles, ox, oy, view, dark,
-                             model, salience=salience)
+                _draw(quiet, node)
                 continue
-            _render_node(g, node, node_styles, ox, oy, view, dark,
-                         model, salience=salience)
+            _draw(g, node)
 
 
 # ---------------------------------------------------------------------------
