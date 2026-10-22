@@ -257,6 +257,31 @@ class TestSlideshowCaptionsAreText:
         assert "1. **One:** First." in added
         assert "2. **Three:** Third." in added  # the empty caption is dropped
 
+    def test_markdown_visitor_emits_alt_not_source(self):
+        """The llms/markdown export carries the figure's inventory (the
+        alt text), never the fenced model source -- every figure would
+        inline the whole model file verbatim (measured 84% of
+        llms-full.txt on the Juju docs)."""
+        from docutils import nodes
+        from ggarch.sphinxcontrib_ggarch import ggarch, markdown_visit_ggarch
+
+        node = ggarch()
+        node["code"] = 'model Secret { }\n' * 100
+        node["alt"] = "one view"
+        added = []
+
+        class Fake:
+            def add(self, text, prefix_eol=0, suffix_eol=0):
+                added.append(text)
+
+        try:
+            markdown_visit_ggarch(Fake(), node)
+        except nodes.SkipNode:
+            pass
+        assert "<!-- one view -->" in added
+        assert not any("```" in t for t in added)
+        assert not any("model Secret" in t for t in added)
+
 
     def test_search_index_finds_a_single_figure_caption(self, tmp_path):
         index = (

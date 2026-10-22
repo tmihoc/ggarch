@@ -2139,9 +2139,12 @@ The extension:
 4. Renders two SVGs (light + dark).
 5. Emits light/dark image pair with lightbox anchors, following the same
    pattern as `sphinxcontrib_d2.py`.
-6. In markdown/llms output: emits the ggarch source verbatim as a fenced
-   `ggarch` code block so agents see the full diagram structure, preceded by
-   an HTML comment containing the alt text.
+6. In markdown/llms output: emits the figure's alt text as an HTML
+   comment (a fallback line when the author omits it), then the caption
+   and the slide captions. The fenced source stays out: each figure
+   would inline the whole model file verbatim (measured 84% of
+   llms-full.txt on the Juju docs), and the alt text already carries
+   the figure's inventory.
 
 ---
 

@@ -1067,15 +1067,17 @@ def html_depart_ggarch(self: object, node: ggarch) -> None:
 # ---------------------------------------------------------------------------
 
 def markdown_visit_ggarch(self: object, node: ggarch) -> None:
-    """Emit ggarch source verbatim in markdown/llms output."""
-    code    = node["code"]
-    alt     = node.get("alt", "")
+    """Emit the figure's text inventory in markdown/llms output.
+
+    The fenced ggarch source stays OUT: every figure would inline the
+    whole model file verbatim (measured on the Juju docs: 57 embeds =
+    12.27 MB, 84% of llms-full.txt), and the alt text already carries
+    the figure's own inventory, written for exactly this -- image and
+    figure nodes do the same.
+    """
+    alt     = node.get("alt", "") or "Architecture diagram"
     caption = node.get("caption", "")
-    if alt:
-        self.add(f"<!-- {alt} -->", prefix_eol=1, suffix_eol=1)
-    self.add("```ggarch", prefix_eol=1, suffix_eol=1)
-    self.add(code, prefix_eol=0, suffix_eol=1)
-    self.add("```", prefix_eol=1, suffix_eol=2)
+    self.add(f"<!-- {alt} -->", prefix_eol=1, suffix_eol=1)
     if caption:
         self.add(f"*{caption}*", prefix_eol=1, suffix_eol=2)
     for i, (name, cap) in enumerate(_slide_caption_pairs(node), start=1):
