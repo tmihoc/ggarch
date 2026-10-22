@@ -143,7 +143,10 @@ style {
 ```
 
 Edge rules accept `stroke`, `stroke-width`, `stroke-dash`, `font-color`,
-`font-size`. An edge whose type is neither built-in nor styled in the style
+`font-size`. One rule accepts the head's size: `arrowhead-size` (px), on
+the `default` edge style only — the whole diagram's heads grow and shrink
+together (size is not a semantic channel; default 8, the strip caps follow).
+An edge whose type is neither built-in nor styled in the style
 block is a validation error (catches typos).
 
 ### Node attributes

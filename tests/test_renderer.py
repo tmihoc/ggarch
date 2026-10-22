@@ -719,6 +719,44 @@ class TestArrowheadChannel:
             re.DOTALL)
 
 
+class TestArrowheadSize:
+    """The head's size is a style knob on the `default` edge style —
+    the whole diagram's heads grow together (size is not a semantic
+    channel, ADR-004); the drawn marker follows the style."""
+
+    def test_default_heads_are_eight_px(self):
+        svg = pipeline(ARROW_SRC.replace("event", "api"))
+        assert re.search(r'<marker[^>]*id="arrow"[^>]*refX="8"', svg)
+
+    def test_style_resizes_every_head(self):
+        src = ARROW_SRC.replace(
+            "style { extends: juju }",
+            "style {\n"
+            "    extends: juju\n"
+            "    edge default { arrowhead-size: 14 }\n"
+            "  }")
+        svg = pipeline(src)
+        # Every head marker (filled, open, hollow — and their -start
+        # twins) grows to the declared size.
+        for mid in ("arrow", "arrow-start", "arrow-open",
+                    "arrow-open-start", "arrow-hollow",
+                    "arrow-hollow-start"):
+            assert re.search(
+                rf'<marker[^>]*id="{mid}"[^>]*refX="14"', svg), mid
+
+    def test_per_type_size_is_rejected(self):
+        from ggarch.errors import ValidationError
+        src = ARROW_SRC.replace(
+            "style { extends: juju }",
+            "style {\n"
+            "    extends: juju\n"
+            "    edge api { arrowhead-size: 12 }\n"
+            "  }")
+        f = parse(src)
+        with pytest.raises(ValidationError, match="arrowhead size"):
+            validate(f)
+
+
 # ---------------------------------------------------------------------------
 # ERD edge grammar — the architect's-idiom verdict (session 45;
 # supersedes the round-24 crow's-foot): data edges render BARE — no

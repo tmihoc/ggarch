@@ -43,6 +43,7 @@ class EdgeStyle:
     stroke_width: int = 1
     stroke_dash: str = ""      # "" | "6,3" | "2,2"
     arrowhead: str = "filled"  # filled | open | hollow | none (ADR-004 commitment)
+    arrowhead_size: int = 8    # px — the head's side length, style-overridable
     font_color: str = "#444444"
     font_size: int = 11
 
@@ -192,6 +193,7 @@ def resolve_edge_style(model_style, dark: bool = False) -> dict[str, EdgeStyle]:
             stroke_width=rule.stroke_width or existing.stroke_width,
             stroke_dash=rule.stroke_dash or existing.stroke_dash,
             arrowhead=rule.arrowhead or existing.arrowhead,
+            arrowhead_size=rule.arrowhead_size or existing.arrowhead_size,
             font_color=rule.font_color or existing.font_color,
             font_size=rule.font_size or existing.font_size,
         )

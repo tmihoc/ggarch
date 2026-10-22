@@ -44,7 +44,6 @@ from ggarch.model import (
 from ggarch.presets import (
     EdgeStyle,
     NodeStyle,
-    ResolvedStyle,
     get_preset,
     resolve_edge_style,
     resolve_style,
@@ -66,7 +65,6 @@ from ggarch.geometry import (  # noqa: E402 — re-export
     ANNOTATION_FONT,
     ann_label_text_rect,
     choose_annotation_position,
-    ARROWHEAD_SIZE,
     LABEL_CHAR_W,
     LABEL_CLEARANCE,
     LABEL_DESCENT,
@@ -438,7 +436,7 @@ def render(
     if zoom != 1.0:
         drawing.set_pixel_scale(zoom)
     # No canvas background: the page shows through in both modes.
-    _add_arrowhead_defs(drawing, dark, preset)
+    _add_arrowhead_defs(drawing, dark, edge_styles)
 
     nodes_g = dw.Group(id="ggarch-nodes")
     edges_g = dw.Group(id="ggarch-edges")
@@ -471,10 +469,10 @@ def render(
 def _add_arrowhead_defs(
     drawing: dw.Drawing,
     dark: bool,
-    preset: ResolvedStyle,
+    edge_styles: dict[str, EdgeStyle],
 ) -> None:
     arrow_color = "#AAAAAA" if dark else "#555555"
-    s = ARROWHEAD_SIZE
+    s = edge_styles["default"].arrowhead_size
     # refX=s places the tip of the triangle (at x=s) on the path endpoint.
     # refY=s/2 centres the triangle vertically on the path.
     marker = dw.Marker(0, 0, s, s, scale=1, orient="auto", id="arrow",

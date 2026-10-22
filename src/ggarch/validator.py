@@ -289,6 +289,19 @@ def _validate_model(model: Model) -> None:
                     hint="arrowhead is one of: filled, open, hollow, none "
                          "(ADR-004 — the commitment channel)",
                 )
+    # The head size is one knob per diagram, not a per-type channel:
+    # size is not a semantic channel (ADR-004), so per-type heads would
+    # read as noise. Declared on the `default` edge style only; 0 and
+    # unset keep the preset's size.
+    for rules in (model.style.edge_rules, model.style.dark_edge_rules):
+        for type_name, rule in rules.items():
+            if rule.arrowhead_size and type_name != "default":
+                raise ValidationError(
+                    f"model {model.name!r}: edge {type_name!r} declares an "
+                    f"arrowhead size ({rule.arrowhead_size!r})",
+                    hint="the head size is one knob per diagram: set it on "
+                         "edge default { arrowhead-size: N }, not per type",
+                )
 
     # Check pairing values -- the only supported expansion semantic
     for edge in model.edges:

@@ -26,7 +26,9 @@ from dataclasses import dataclass, field
 
 LABEL_FONT      = "'Ubuntu Sans', Ubuntu, system-ui, -apple-system, sans-serif"
 ANNOTATION_FONT = LABEL_FONT
-ARROWHEAD_SIZE  = 8     # px
+ARROWHEAD_SIZE  = 8     # px — planning constant: the caps a routed strip
+                        # sweeps at its arrowed ends; the drawn head size is
+                        # a style knob (EdgeStyle.arrowhead_size)
 
 
 # ---------------------------------------------------------------------------

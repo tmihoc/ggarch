@@ -37,12 +37,11 @@ from ggarch.model import (
     StepKind,
 )
 
-from ggarch.presets import resolve_style
+from ggarch.presets import resolve_edge_style, resolve_style
 from ggarch.geometry import label_geometry, rects_overlap, strip_for_edge
 from ggarch.layout import Rect
 from ggarch.renderer import (
     ANNOTATION_FONT,
-    ARROWHEAD_SIZE,
     LABEL_FONT,
     _edge_path_d,
     draw_path_label,
@@ -358,6 +357,7 @@ def render_state(
         state_ids = [s for s in state_ids if s in view.select.participants]
 
     node_styles = resolve_style(model.style, dark=dark)
+    edge_styles = resolve_edge_style(model.style, dark=dark)
 
     # -- Layered layout ---------------------------------------------------
     # Columns follow topological depth along forward edges (main flow
@@ -511,7 +511,7 @@ def render_state(
     drawing.append(dw.Rectangle(0, 0, w, h, fill=bg))
 
     # Arrowhead.
-    s = ARROWHEAD_SIZE
+    s = edge_styles["default"].arrowhead_size
     marker = dw.Marker(0, 0, s, s, scale=1, orient="auto", id="st-arrow",
                        refX=s, refY=s/2)
     marker.append(dw.Lines(0, 0, s, s/2, 0, s, fill=arrow_color, close=True))

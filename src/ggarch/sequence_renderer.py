@@ -31,10 +31,9 @@ from ggarch.model import (
     Step,
     StepKind,
 )
-from ggarch.presets import NodeStyle, get_preset, resolve_style
+from ggarch.presets import NodeStyle, get_preset, resolve_edge_style, resolve_style
 from ggarch.renderer import (
     ANNOTATION_FONT,
-    ARROWHEAD_SIZE,
     LABEL_FONT,
     _render_box,
     _render_cylinder,
@@ -150,6 +149,7 @@ def render_sequence(
 
     preset = get_preset(model.style.extends)
     node_styles = resolve_style(model.style, dark=dark)
+    edge_styles = resolve_edge_style(model.style, dark=dark)
 
     # Geometry.
     n = len(participants)
@@ -181,7 +181,7 @@ def render_sequence(
     drawing = dw.Drawing(diagram_w, diagram_h, origin=(0, 0))
 
     # Arrowhead marker.
-    _add_sequence_arrowhead(drawing, dark)
+    _add_sequence_arrowhead(drawing, dark, edge_styles["default"].arrowhead_size)
 
     content = dw.Group()
 
@@ -303,9 +303,9 @@ def _render_participant_box(
 
 
 
-def _add_sequence_arrowhead(drawing: dw.Drawing, dark: bool) -> None:
+def _add_sequence_arrowhead(drawing: dw.Drawing, dark: bool, size: int) -> None:
     color = "#AAAAAA" if dark else "#555555"
-    s = ARROWHEAD_SIZE
+    s = size
     marker = dw.Marker(0, 0, s, s, scale=1, orient="auto",
                        id="seq-arrow", refX=s, refY=s / 2)
     marker.append(dw.Lines(0, 0, s, s / 2, 0, s, fill=color, close=True))

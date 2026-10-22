@@ -1,4 +1,5 @@
 """Tests for Phase 11: state view renderer."""
+import re
 import pytest
 from ggarch import parse, validate
 from ggarch.state_renderer import render_state, render_state_both
@@ -103,6 +104,21 @@ class TestStateRendering:
         assert "<svg" in light
         assert "<svg" in dark
         assert light != dark
+
+    def test_style_resizes_the_heads(self):
+        """One knob on the default edge style: the transition heads (and
+        the init arrow's) grow together."""
+        src = STATE_SRC.replace(
+            "style { extends: juju }",
+            "style {\n"
+            "    extends: juju\n"
+            "    edge default { arrowhead-size: 14 }\n"
+            "  }")
+        f = parse(src); validate(f)
+        sv = f.states[0]; m = f.get_model(sv.model_name)
+        svg = render_state(sv, m)
+        assert re.search(
+            r'<marker[^>]*id="st-arrow"[^>]*refX="14"', svg)
 
 
 UNITER_SRC = """\

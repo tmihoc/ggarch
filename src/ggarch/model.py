@@ -200,6 +200,7 @@ class StyleRule:
     stroke_width: int = 0
     stroke_dash: str = ""    # "" | "6,3" | "2,2"
     arrowhead: str = ""      # filled | open | hollow | none — edge rules only (ADR-004)
+    arrowhead_size: int = 0  # px — 0 = unset: the preset's size applies
 
 
 @dataclass

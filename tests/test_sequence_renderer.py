@@ -86,6 +86,22 @@ class TestSequenceStructure:
         svg = pipeline(SIMPLE_SEQ)
         assert "seq-arrow" in svg
 
+    def test_style_resizes_the_heads(self):
+        """One knob on the default edge style: every message head grows
+        together (the size is not a semantic channel)."""
+        src = SIMPLE_SEQ.replace(
+            'model "M" {',
+            'model "M" {\n'
+            '  style {\n'
+            '    extends: juju\n'
+            '    edge default { arrowhead-size: 14 }\n'
+            '  }\n')
+        svg = pipeline(src)
+        assert re.search(
+            r'<marker[^>]*id="seq-arrow"[^>]*refX="14"', svg)
+        assert re.search(
+            r'<marker[^>]*id="seq-arrow-open"[^>]*refX="14"', svg)
+
 
 class TestParticipantOrdering:
     def test_order_of_first_appearance(self):
