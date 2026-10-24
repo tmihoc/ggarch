@@ -170,7 +170,5 @@ files. PATCH means fixes and renderer tweaks with no source changes required.
 
 ## License
 
-Copyright (C) 2026 Teodora Mihoc.
-
 Licensed under [Apache-2.0](LICENSE). Generated SVG output is not a derived
 work of the tool and carries no licence obligations.
