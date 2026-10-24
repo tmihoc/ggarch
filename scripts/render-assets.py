@@ -177,13 +177,13 @@ def render_assets(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------
 
 def _rasterize(svg_path: pathlib.Path, png_path: pathlib.Path,
-               width: int, height: int) -> bool:
-    """Rasterize a slide SVG to PNG. Chromium first: cairosvg drops the
-    embedded figure's textPath edge labels and marker glyphs when a
-    diagram SVG is embedded raw in a slide (round-22 note: rasterize
-    via Chromium). Falls back to cairosvg when no Chromium is
-    available. Snap-confined Chromium cannot read /tmp, so slides go
-    through ~/.cache."""
+               width: int, height: int, scale: int = 1) -> bool:
+    """Rasterize a slide SVG to PNG at width*scale x height*scale.
+    Chromium first: cairosvg drops the embedded figure's textPath edge
+    labels and marker glyphs when a diagram SVG is embedded raw in a
+    slide (round-22 note: rasterize via Chromium). Falls back to
+    cairosvg when no Chromium is available. Snap-confined Chromium
+    cannot read /tmp, so slides go through ~/.cache."""
     chromium = (shutil.which("chromium")
                 or shutil.which("chromium-browser")
                 or shutil.which("google-chrome"))
@@ -199,6 +199,7 @@ def _rasterize(svg_path: pathlib.Path, png_path: pathlib.Path,
         result = subprocess.run(
             [chromium, "--headless", "--disable-gpu", "--no-sandbox",
              "--hide-scrollbars", "--default-background-color=FFFFFFFF",
+             f"--force-device-scale-factor={scale}",
              f"--screenshot={real_png}",
              f"--window-size={width},{height}",
              real_svg.as_uri()],
@@ -214,7 +215,7 @@ def _rasterize(svg_path: pathlib.Path, png_path: pathlib.Path,
     except ImportError:
         return False
     cairosvg.svg2png(url=str(svg_path), write_to=str(png_path),
-                     output_width=width, output_height=height)
+                     output_width=width*scale, output_height=height*scale)
     return True
 
 
@@ -307,7 +308,7 @@ def build_gif(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
     # Slide chrome palettes. The dark BG is the renderer's dark figure
     # background (#1E1E2E), so embedded figures sit flush on the slide.
     THEMES = [
-        ("light", False, "ggarch-demo.gif", dict(
+        ("light", False, dict(
             BG="#FFFFFF", PANEL="#F5F5F5", DIVIDER="#CCCCCC",
             TEXT="#222222", MUTED="#666666", BORDER="#DDDDDD",
             FIGBORDER="#EEEEEE", CK=ORANGE, CN="#222222", CM="#999999",
@@ -315,7 +316,7 @@ def build_gif(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
             CHROME="#EBEBEB", URLBG="#FFFFFF", URLTEXT="#555555",
             NAVBG="#FAFAFA", DOT="#CCCCCC", BTN="#555555",
             EXPFILL="rgba(255,255,255,0.92)", EXPBORDER="#CCCCCC")),
-        ("dark", True, "ggarch-demo-dark.gif", dict(
+        ("dark", True, dict(
             BG="#1E1E2E", PANEL="#262636", DIVIDER="#3A3A4E",
             TEXT="#E4E4F4", MUTED="#A0A0B8", BORDER="#3A3A4E",
             FIGBORDER="#3A3A4E", CK=ORANGE, CN="#CDD6F4", CM="#77778A",
@@ -327,17 +328,19 @@ def build_gif(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
 
     figures = {theme: _render_gif_views(juju_docs, ROOT / "build" / "gif" / theme,
                                         dark=dark)
-               for theme, dark, _, _ in THEMES}
+               for theme, dark, _ in THEMES}
 
-    # (output name, netscape loop count, delay in centiseconds).
-    # All cuts run at the same 2.5 s pace; the deck's ggarch-demo-once.gif
-    # is the dark cut that plays once and stops on the QR end slide,
-    # while the README pair loops.
+    # Per theme: (output name, netscape loop count, delay in
+    # centiseconds, ends on the QR slide). All cuts run at 2.5 s.
+    # The README pair has no QR end slide; the dark cuts with QR are
+    # the looping ggarch-demo-dark-QR.gif and the play-once deck cut.
     DELAY = "250"
+    SCALE = 2   # rasterize slides at 2x (1920x1040) so GIF text stays crisp
     THEME_OUTPUTS = {
-        "light": [("ggarch-demo.gif", "0", DELAY)],
-        "dark":  [("ggarch-demo-dark.gif", "0", DELAY),
-                  ("ggarch-demo-once.gif", "1", DELAY)],
+        "light": [("ggarch-demo.gif", "0", DELAY, False)],
+        "dark":  [("ggarch-demo-dark.gif", "0", DELAY, False),
+                  ("ggarch-demo-dark-QR.gif", "0", DELAY, True),
+                  ("ggarch-demo-once.gif", "1", DELAY, True)],
     }
 
     def _build_slides(figs, T):
@@ -623,55 +626,68 @@ def build_gif(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
             _prose(d6, line, cx6, cy, size=12, color=MUTED)
             cy += 16
 
-        # ── Slide 7: QR to the repo (last frame; the "once" GIFs stop here) ────
+        # ── Slide 7: QR to the repo (only in the QR cuts) ───────────────────────
         slides = [d1, *view_slides, d5, d6]
         qr_path = ROOT / "assets" / "ggarch-QR.png"
-        if qr_path.exists():
-            d7 = dw.Drawing(SLIDE_W, SLIDE_H)
-            _header(d7, "scan to try ggarch")
-            qr_size = 320
-            card = qr_size + 48
-            cx7 = (SLIDE_W - card) / 2
-            cy7 = max(70, (SLIDE_H - card - 60) / 2)
-            # QR codes need a light, uniform background to scan: keep the
-            # card white in both themes.
-            d7.append(dw.Rectangle(cx7, cy7, card, card, fill="#FFFFFF",
-                                   stroke=T["FIGBORDER"], stroke_width=1, rx=6))
-            qr_b64 = base64.b64encode(qr_path.read_bytes()).decode("ascii")
-            d7.append(dw.Raw(
-                f'<image x="{cx7+24:.1f}" y="{cy7+24:.1f}" '
-                f'width="{qr_size}" height="{qr_size}" '
-                f'xmlns:xlink="http://www.w3.org/1999/xlink" '
-                f'xlink:href="data:image/png;base64,{qr_b64}"/>'))
-            _prose(d7, "https://github.com/tmihoc/ggarch",
-                   SLIDE_W / 2, cy7 + card + 34, size=14, color=T["TEXT"],
-                   anchor="middle")
-            slides.append(d7)
-        return slides
+        if not qr_path.exists():
+            return slides, slides
+        d7 = dw.Drawing(SLIDE_W, SLIDE_H)
+        _header(d7, "scan to try ggarch")
+        qr_size = 320
+        card = qr_size + 48
+        cx7 = (SLIDE_W - card) / 2
+        cy7 = max(70, (SLIDE_H - card - 60) / 2)
+        # QR codes need a light, uniform background to scan: keep the
+        # card white in both themes.
+        d7.append(dw.Rectangle(cx7, cy7, card, card, fill="#FFFFFF",
+                               stroke=T["FIGBORDER"], stroke_width=1, rx=6))
+        qr_b64 = base64.b64encode(qr_path.read_bytes()).decode("ascii")
+        d7.append(dw.Raw(
+            f'<image x="{cx7+24:.1f}" y="{cy7+24:.1f}" '
+            f'width="{qr_size}" height="{qr_size}" '
+            f'xmlns:xlink="http://www.w3.org/1999/xlink" '
+            f'xlink:href="data:image/png;base64,{qr_b64}"/>'))
+        _prose(d7, "https://github.com/tmihoc/ggarch",
+               SLIDE_W / 2, cy7 + card + 34, size=14, color=T["TEXT"],
+               anchor="middle")
+        return slides, slides + [d7]
 
     # ── Convert to PNG and assemble the GIFs ────────────────────────────────
-    for theme, dark, _loop_name, T in THEMES:
-        slides = _build_slides(figures[theme], T)
+    for theme, dark, T in THEMES:
+        slides, slides_qr = _build_slides(figures[theme], T)
         slides_dir = ROOT / "build" / "gif" / theme
         slides_dir.mkdir(parents=True, exist_ok=True)
-        pngs = []
-        for i, slide in enumerate(slides, 1):
-            svg_path = slides_dir / f"slide{i}.svg"
-            png_path = slides_dir / f"slide{i}.png"
-            slide.save_svg(str(svg_path))
-            # Chromium collapses runs of spaces in <text> unless they are
-            # marked whitespace-preserving; the code slides rely on indent.
-            svg_txt = svg_path.read_text(encoding="utf-8")
-            svg_path.write_text(
-                svg_txt.replace("<text ", '<text xml:space="preserve" '),
-                encoding="utf-8")
-            if not _rasterize(svg_path, png_path, SLIDE_W, SLIDE_H):
-                print("no rasterizer available -- skipping GIF",
-                      file=sys.stderr)
-                return
-            pngs.append(str(png_path))
 
-        for name, loop, delay in THEME_OUTPUTS[theme]:
+        def _pngs(slide_list, start=1):
+            out = []
+            for i, slide in enumerate(slide_list, start):
+                svg_path = slides_dir / f"slide{i}.svg"
+                png_path = slides_dir / f"slide{i}.png"
+                slide.save_svg(str(svg_path))
+                # Chromium collapses runs of spaces in <text> unless they
+                # are marked whitespace-preserving; the code slides rely
+                # on indent.
+                svg_txt = svg_path.read_text(encoding="utf-8")
+                svg_path.write_text(
+                    svg_txt.replace("<text ", '<text xml:space="preserve" '),
+                    encoding="utf-8")
+                if not _rasterize(svg_path, png_path, SLIDE_W, SLIDE_H,
+                                  SCALE):
+                    print("no rasterizer available -- skipping GIF",
+                          file=sys.stderr)
+                    return None
+                out.append(str(png_path))
+            return out
+
+        png_sets = {False: _pngs(slides)}
+        if png_sets[False] is None:
+            return
+        if slides_qr is not slides:
+            png_sets[True] = png_sets[False] + _pngs(slides_qr[-1:],
+                                                     start=len(slides) + 1)
+
+        for name, loop, delay, with_qr in THEME_OUTPUTS[theme]:
+            pngs = png_sets.get(with_qr, png_sets[False])
             gif_path = assets_dir / name
             args = ["convert"]
             for png in pngs:
