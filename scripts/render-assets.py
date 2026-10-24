@@ -285,12 +285,12 @@ def _render_gif_views(juju_docs: pathlib.Path, out_dir: pathlib.Path,
 
 
 def build_gif(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
-    """Build the README GIFs and the deck recording:
-    assets/ggarch-demo.gif and assets/ggarch-demo-dark.gif loop at 5 s
-    per slide; assets/ggarch-demo-once.gif is the dark, double-speed,
-    play-once recording for slides (stops on the QR end slide). The
-    story: the architecture.md walkthrough -- one model, three rendered
-    views, the directives, the rendered Sphinx slideshow."""
+    """Build the demo GIFs: assets/ggarch-demo.gif and
+    assets/ggarch-demo-dark.gif loop at 2.5 s per slide;
+    assets/ggarch-demo-once.gif is the dark cut that plays once and
+    stops on the QR end slide (for slides). The story: the
+    architecture.md walkthrough -- one model, three rendered views,
+    the directives, the rendered Sphinx slideshow."""
     try:
         import cairosvg
     except ImportError:
@@ -330,13 +330,14 @@ def build_gif(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
                for theme, dark, _, _ in THEMES}
 
     # (output name, netscape loop count, delay in centiseconds).
-    # README keeps the slow looping pair; the deck gets one dark,
-    # double-speed, play-once recording.
-    DELAY_ONCE = "250"   # 2x faster than the README loop
+    # All cuts run at the same 2.5 s pace; the deck's ggarch-demo-once.gif
+    # is the dark cut that plays once and stops on the QR end slide,
+    # while the README pair loops.
+    DELAY = "250"
     THEME_OUTPUTS = {
         "light": [("ggarch-demo.gif", "0", DELAY)],
         "dark":  [("ggarch-demo-dark.gif", "0", DELAY),
-                  ("ggarch-demo-once.gif", "1", DELAY_ONCE)],
+                  ("ggarch-demo-once.gif", "1", DELAY)],
     }
 
     def _build_slides(figs, T):
