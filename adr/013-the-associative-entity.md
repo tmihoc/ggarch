@@ -75,3 +75,45 @@ grounded in their own rounds.
 their current form until their own spines are cracked (reviewer: "we'll keep investigating till
 we've cracked their logic too"). access.md takes the full entity spine (grants are declarable,
 stored, executed) and is queued after the sweep.
+
+## Amended 2026-09-30 (session 76): the type table checked against the 4.1 source
+
+A read of the 4.1 schema (`domain/schema`), `cmd/` and the domain packages
+corrects the table above. Full page-by-page treatment:
+`~/git/misc/juju-reference/reference-page-types.md`. Corrections:
+
+- **high-availability is not a chain-walk.** The `juju enable-ha` command
+  is gone in 4.1 (the `EnableHA` call remains on the controller API,
+  `apiserver/facades/client/highavailability`); HA is a property of the controller (Dqlite Raft across the
+  controller nodes, scaling of the `juju-controller` charm). It files with
+  controller (execution layer). Scaling is the only pure process; upgrading
+  and removing persist records of their own (`upgrade_info`, `removal`) and
+  upgrade passes the entityhood test.
+- **watcher is a link between stages, not an Executor.** It is the
+  persistence-to-execution hand-off (change stream in, worker wake-up out),
+  so it pairs with the database substrate.
+- **Instruments split in two:** client-side (client, juju-cli, juju-web-cli,
+  dashboard, the `juju-metadata` plugin) and on-host or charm-side (jujuc,
+  hook-command, `juju-db-repl`, which is a shell function from the
+  introspection worker, and the on-machine commands). `juju.md` is a platform
+  overview, not an instrument; resource-compute is a supertype alias of
+  machine.
+- **pebble is an external product.** No declaration layer from Juju's side
+  (the charm declares its layers); Juju stores nothing about it.
+- **The facet-honest class is three cases, not one:** no record (bundle);
+  record held on another entity's record (placement-directive, loosely
+  constraint, which also has its own tables); discovered, no declaration
+  (zone and subnet: `cmd/juju/subnet` has `list` only, `availability_zone`
+  and `provider_subnet` are cached provider facts; space is declarable).
+- **script's stated reason is wrong, the class holds.** `juju exec` runs
+  arbitrary commands, so script is not "charm content". What is stored is
+  the operation and its tasks (`0033-operation.sql`, ten tables), shared with
+  action. The entity is the operation/task; action and script are kinds of it.
+- **configuration and image metadata are entity-like.** Configuration is
+  three stores (`controller_config`, `model_config`, `application_config`),
+  a facet of three entities. Image metadata is stored and declarable
+  (`cloud_image_metadata`, `juju-metadata` plugin); the simplestreams page
+  documents the external format.
+- **Entities with tables and commands but no reference page:** model
+  migration, secret backend (only inside secret.md), block commands
+  (`disable-command`), firewall rules, model defaults.

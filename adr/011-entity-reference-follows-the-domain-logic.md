@@ -364,3 +364,5 @@ the pipeline as structure. The amendments:
      strata carrying the entity in each title.
    - **Watchers keep an h3** under the execution layer (the juju-dev chip's home; the code's own
      Service/WatchableService split).
+
+AMENDED 2026-09-30 (session 76): item 5 (rules-and-errors = the enforcement surface only) and the standalone *X rules and errors* h2s are superseded by ADR-016: rules and errors anchor inside their own layer, filed by the Go raise site.
