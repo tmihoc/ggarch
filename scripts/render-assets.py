@@ -12,8 +12,11 @@ Produces two sets of output:
     (docs/juju.ggarch and docs/principles.ggarch in the juju repo,
     or whichever path is given via --juju-docs).
 
-  assets/ggarch-demo.gif
-    Three-slide README walkthrough built from the assets SVGs.
+  assets/ggarch-demo.gif, assets/ggarch-demo-dark.gif
+    Six-slide README walkthrough built from the juju.ggarch model:
+    the source, three rendered narrative views, the Markdown
+    directives, and the rendered Sphinx slideshow -- in light and
+    dark variants.
     Requires cairosvg and ImageMagick (convert).
 
 Run from the ggarch repo root:
@@ -32,18 +35,20 @@ Options:
 from __future__ import annotations
 
 import argparse
+import base64
 import os
 import pathlib
 import re
 import shutil
 import subprocess
 import sys
-import tempfile
 
 ROOT = pathlib.Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from ggarch import parse, validate, solve, route, render
+from ggarch.errors import ParseError
+from ggarch.geometry import LABEL_FONT_SIZE
 from ggarch.sequence_renderer import render_sequence
 
 
@@ -213,7 +218,79 @@ def _rasterize(svg_path: pathlib.Path, png_path: pathlib.Path,
     return True
 
 
-def build_gif(assets_dir: pathlib.Path) -> None:
+# The GIF tells the architecture.md story: one model -> the three narrative
+# views -> the directives -> the rendered Sphinx slideshow.
+GIF_VIEWS = ["The problem", "The insight", "The topology"]
+GIF_SEQUENCE = "juju integrate"
+
+
+def _gif_source(juju_docs: pathlib.Path) -> str:
+    """Source for the GIF views. Try the full docs file first; if this
+    ggarch's grammar is older than the file (e.g. `context:` in the
+    schema models), fall back to the model "Juju" block plus its
+    sequence views, which is all the GIF needs."""
+    code = (juju_docs / "juju.ggarch").read_text(encoding="utf-8")
+    try:
+        parse(code)
+        return code
+    except ParseError:
+        def block_at(start: int) -> str:
+            depth = 0
+            for i in range(start, len(code)):
+                if code[i] == "{":
+                    depth += 1
+                elif code[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return code[start:i + 1]
+            return code[start:]
+
+        start = code.index('model "Juju" {')
+        model_block = block_at(start)
+        parts = [model_block]
+        # Top-level views that draw from the Juju model: multi-line
+        # diagram/view blocks and single-line sequence views.
+        model_end = start + len(model_block)
+        for m in re.finditer(r'^(diagram|view) "[^"]*" from "Juju" \{', code, re.M):
+            if m.start() > model_end:
+                parts.append(block_at(m.start()))
+        for m in re.finditer(r'^sequence "juju [^"]*"\s+from "Juju" \{.*\}$', code, re.M):
+            parts.append(m.group(0))
+        return "\n".join(parts) + "\n"
+
+
+def _render_gif_views(juju_docs: pathlib.Path, out_dir: pathlib.Path,
+                      dark: bool = False) -> dict[str, pathlib.Path]:
+    """Render the GIF's figure SVGs (light or dark theme) into out_dir."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    f = parse(_gif_source(juju_docs))
+    validate(f)
+    svgs: dict[str, pathlib.Path] = {}
+    for name in GIF_VIEWS:
+        d = next(d for d in f.diagrams if d.name == name)
+        m  = f.get_model(d.model_name)
+        rl = route(solve(d, m), m, d.select)
+        svg = render(rl, m, d, dark=dark, skip_legend=True)
+        p = out_dir / f"{slug(name)}.svg"
+        p.write_text(svg, encoding="utf-8")
+        svgs[name] = p
+    s = next(s for s in f.sequences if s.name == GIF_SEQUENCE)
+    m = f.get_model(s.model_name)
+    svg = render_sequence(s, m, dark=dark)
+    p = out_dir / f"{slug(GIF_SEQUENCE)}.svg"
+    p.write_text(svg, encoding="utf-8")
+    svgs[GIF_SEQUENCE] = p
+    print(f"  GIF figures: {', '.join(svgs)}")
+    return svgs
+
+
+def build_gif(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
+    """Build the README GIFs and the deck recording:
+    assets/ggarch-demo.gif and assets/ggarch-demo-dark.gif loop at 5 s
+    per slide; assets/ggarch-demo-once.gif is the dark, double-speed,
+    play-once recording for slides (stops on the QR end slide). The
+    story: the architecture.md walkthrough -- one model, three rendered
+    views, the directives, the rendered Sphinx slideshow."""
     try:
         import cairosvg
     except ImportError:
@@ -223,248 +300,389 @@ def build_gif(assets_dir: pathlib.Path) -> None:
     import drawsvg as dw
     from ggarch.renderer import LABEL_FONT
 
-    ORANGE = "#E95420"; LGRAY = "#F5F5F5"; DGRAY = "#222222"
-    MUTED  = "#666666"; WHITE = "#FFFFFF"; BORDER = "#DDDDDD"
-    CBLU   = "#1050A0"; CGRN  = "#2D7A2D"
+    ORANGE = "#E95420"
     SLIDE_W = 960; SLIDE_H = 520; PAD = 28
-    CK = ORANGE; CN = DGRAY; CM = "#999999"
+    DELAY = "500"   # centiseconds per slide
 
-    def _clean(svg):
-        svg = re.sub(r'<\?xml[^?]*\?>', '', svg)
-        svg = re.sub(r'<!DOCTYPE[^>]*>', '', svg)
-        return svg.strip()
-
-    def _header(d, title):
-        d.append(dw.Rectangle(0,0,SLIDE_W,SLIDE_H,fill=WHITE))
-        d.append(dw.Rectangle(0,0,SLIDE_W,SLIDE_H,fill="none",stroke=BORDER,stroke_width=1))
-        d.append(dw.Rectangle(0,0,SLIDE_W,44,fill=ORANGE))
-        d.append(dw.Text(title,15,SLIDE_W/2,22,font_family=LABEL_FONT,fill=WHITE,
-                         text_anchor="middle",dominant_baseline="central",font_weight="bold"))
-
-    def _code(d, lines, x, y, lh=16):
-        for text, color in lines:
-            d.append(dw.Text(text,11,x,y,font_family="monospace",fill=color,dominant_baseline="auto"))
-            y += lh
-
-    def _prose(d, text, x, y, size=9.5, bold=False, color=DGRAY):
-        d.append(dw.Text(text,size,x,y,font_family=LABEL_FONT,fill=color,
-                         font_weight="bold" if bold else "normal",dominant_baseline="central"))
-        return y + 16
-
-    # ── Slide 1: juju.ggarch source ─────────────────────────────────────────
-    d1 = dw.Drawing(SLIDE_W, SLIDE_H)
-    _header(d1, "juju.ggarch")
-    d1.append(dw.Rectangle(PAD,56,SLIDE_W-PAD*2,SLIDE_H-56-PAD,fill=LGRAY,rx=4))
-    col_w = (SLIDE_W-PAD*2-20)//3
-    for i in range(1,3):
-        divx = PAD + i*(col_w+10) - 5
-        d1.append(dw.Line(divx,64,divx,SLIDE_H-PAD-8,stroke="#CCCCCC",stroke_width=1))
-    cx = [PAD+14+i*(col_w+10) for i in range(3)]
-    left = [
-        ("nodes {",                                         CK),
-        ("  controller_pod [type: container] {",           CK),
-        ("    jujud [type: juju-software,",                CN),
-        ('           label: "Controller agent"]',          CN),
-        ("  }",                                            CK),
-        ("  unit_agent  [type: juju-software,",            CN),
-        ('              label: "Unit agent"]',             CN),
-        ("  charm       [type: charm,",                    CN),
-        ('              label: "Charm"]',                  CN),
-        ("  pebble      [type: pebble,",                   CN),
-        ('              label: "Pebble (init)",',          CN),
-        ("              lifecycle: init]",                 CN),
-        ("  k8s         [type: external,",                 CN),
-        ('              label: "Kubernetes cloud"]',       CN),
-        ("  charmhub    [type: external,",                 CN),
-        ('              label: "Charmhub"]',               CN),
-        ("  ...",                                          CM),
-        ("",                                               CN),
-        ("edges {",                                        CK),
-        ("  jujud -> k8s       [type: control,",           CN),
-        ('                      label: "provisions on"]',  CN),
-        ("  charm -> pebble",                              CN),
-        ("    [type: api,",                                CN),
-        ('     label: "calls Pebble API"]',                CN),
-        ("  ...",                                          CM),
+    # Slide chrome palettes. The dark BG is the renderer's dark figure
+    # background (#1E1E2E), so embedded figures sit flush on the slide.
+    THEMES = [
+        ("light", False, "ggarch-demo.gif", dict(
+            BG="#FFFFFF", PANEL="#F5F5F5", DIVIDER="#CCCCCC",
+            TEXT="#222222", MUTED="#666666", BORDER="#DDDDDD",
+            FIGBORDER="#EEEEEE", CK=ORANGE, CN="#222222", CM="#999999",
+            CBLU="#1050A0", CGRN="#2D7A2D",
+            CHROME="#EBEBEB", URLBG="#FFFFFF", URLTEXT="#555555",
+            NAVBG="#FAFAFA", DOT="#CCCCCC", BTN="#555555",
+            EXPFILL="rgba(255,255,255,0.92)", EXPBORDER="#CCCCCC")),
+        ("dark", True, "ggarch-demo-dark.gif", dict(
+            BG="#1E1E2E", PANEL="#262636", DIVIDER="#3A3A4E",
+            TEXT="#E4E4F4", MUTED="#A0A0B8", BORDER="#3A3A4E",
+            FIGBORDER="#3A3A4E", CK=ORANGE, CN="#CDD6F4", CM="#77778A",
+            CBLU="#8FA8E8", CGRN="#8CC98C",
+            CHROME="#2A2A3A", URLBG="#15151F", URLTEXT="#A0A0B8",
+            NAVBG="#23233A", DOT="#55556A", BTN="#CDD6F4",
+            EXPFILL="rgba(30,30,46,0.92)", EXPBORDER="#3A3A4E")),
     ]
-    mid = [
-        ("behaviours {",                                   CK),
-        ('  behaviour "Hook execution" {',                 CK),
-        ("    apiserver -> unit_agent:",                   CN),
-        ('      async "watcher fires"',                    CN),
-        ("    unit_agent -> unit_agent:",                  CN),
-        ('      self "snapshot remote state"',             CN),
-        ("    unit_agent -> charm:",                       CN),
-        ('      call "exec dispatch"',                     CN),
-        ('    loop "during hook" {',                       CBLU),
-        ("      charm -> unit_agent:",                     CN),
-        ('        call "hook command"',                    CN),
-        ("      unit_agent -> apiserver:",                 CN),
-        ('        call "serve via API"',                   CN),
-        ("    }",                                          CBLU),
-        ('    alt "exit 0" {',                             CBLU),
-        ("      ...",                                      CM),
-        ("    } else \"failure\" {",                       CBLU),
-        ("      ...",                                      CM),
-        ("    }",                                          CBLU),
-        ("  }",                                            CK),
-        ("  ...",                                          CM),
-    ]
-    right = [
-        ("diagram \"K8s topology\"",                       CK),
-        ("    from \"Juju\" {",                            CK),
-        ("  select {",                                     CK),
-        ("    nodes: k8s controller_pod",                  CN),
-        ("           unit_pod charmhub",                   CN),
-        ("    edges: type api type control",               CN),
-        ("  }",                                            CK),
-        ("  positions {",                                  CK),
-        ("    controller_pod",                             CN),
-        ("      left-of unit_pod gap: 60",                 CN),
-        ("    k8s above controller_pod",                   CN),
-        ("    charmhub below controller_pod",              CN),
-        ("    unit_pod direction: right",                  CN),
-        ("  }",                                            CK),
-        ("}",                                              CK),
-        ("",                                               CN),
-        ("view \"Hook execution\"",                        CK),
-        ("    from \"Juju\" {",                            CK),
-        ("  select {",                                     CK),
-        ('    behaviour: "Hook execution"',                CN),
-        ("  }",                                            CK),
-        ("}",                                              CK),
-        ("",                                               CM),
-        ("// :view: works for both",                       CM),
-        ("// diagrams and sequences",                      CM),
-    ]
-    _code(d1, left,  cx[0], 72)
-    _code(d1, mid,   cx[1], 72)
-    _code(d1, right, cx[2], 72)
 
-    # ── Slide 2: explanation/architecture.md ────────────────────────────────
-    d2 = dw.Drawing(SLIDE_W, SLIDE_H)
-    _header(d2, "explanation/architecture.md")
-    d2.append(dw.Rectangle(PAD,56,SLIDE_W-PAD*2,SLIDE_H-56-PAD,fill=LGRAY,rx=4))
-    md = [
-        ("",                                                                  CN),
-        ("# Juju architecture",                                               CGRN),
-        ("",                                                                  CN),
-        ("The key insight is the separation of two concerns that are usually", CN),
-        ("tangled. Cloud knowledge -- how to get a machine, attach storage,", CN),
-        ("configure networking -- stays on the cloud side. Application",      CN),
-        ("knowledge stays in charms, reusable packages published on",         CN),
-        ("Charmhub. Juju sits between the user and both sides.",              CN),
-        ("",                                                                  CN),
-        ("The second separation is between intent and execution. You declare",CN),
-        ("what you want; Juju stores that as goal state and drives the real", CN),
-        ("world toward it continuously -- through restarts, failures, drift.",CN),
-        ("",                                                                  CN),
-        ("## Topology",                                                       CGRN),
-        ("",                                                                  CN),
-        ("A live Juju deployment has a controller -- the management process", CN),
-        ("that holds all goal state -- and one or more applications, each",   CN),
-        ("broken into one or more units. Every unit runs the same chain: a", CN),
-        ("unit agent drives a charm, which operates the workload.",           CN),
-        ("",                                                                  CN),
-        ("```{ggarch}",                                                       CK),
-        (":file: juju.ggarch",                                                CBLU),
-        (":view: K8s deployment topology",                                    CBLU),
-        (":caption: Controller pod (left); unit pod (right) with",            CBLU),
-        ("          charm container and workload container.",                 CBLU),
-        ("```",                                                               CK),
-    ]
-    _code(d2, md, PAD+20, 66, lh=15)
+    figures = {theme: _render_gif_views(juju_docs, ROOT / "build" / "gif" / theme,
+                                        dark=dark)
+               for theme, dark, _, _ in THEMES}
 
-    # ── Slide 3: rendered Sphinx page ────────────────────────────────────────
-    topo_svg   = (assets_dir / "topology-light.svg").read_text(encoding="utf-8")
-    topo_clean = _clean(topo_svg)
-    tw = float(re.search(r'<svg[^>]*width="([0-9.]+)"',  topo_clean).group(1))
-    th = float(re.search(r'<svg[^>]*height="([0-9.]+)"', topo_clean).group(1))
+    # (output name, netscape loop count, delay in centiseconds).
+    # README keeps the slow looping pair; the deck gets one dark,
+    # double-speed, play-once recording.
+    DELAY_ONCE = "250"   # 2x faster than the README loop
+    THEME_OUTPUTS = {
+        "light": [("ggarch-demo.gif", "0", DELAY)],
+        "dark":  [("ggarch-demo-dark.gif", "0", DELAY),
+                  ("ggarch-demo-once.gif", "1", DELAY_ONCE)],
+    }
 
-    d3 = dw.Drawing(SLIDE_W, SLIDE_H)
-    _header(d3, "http://127.0.0.1:8000/explanation/architecture/")
+    def _build_slides(figs, T):
+        LGRAY = T["PANEL"]; DGRAY = T["TEXT"]; MUTED = T["MUTED"]
+        WHITE = T["BG"]; BORDER = T["BORDER"]
+        CK = T["CK"]; CN = T["CN"]; CM = T["CM"]
+        CBLU = T["CBLU"]; CGRN = T["CGRN"]
 
-    chrome_y=50; chrome_h=28
-    d3.append(dw.Rectangle(PAD,chrome_y,SLIDE_W-PAD*2,chrome_h,
-                            fill="#EBEBEB",stroke="#CCCCCC",stroke_width=1,rx=3))
-    url_x=PAD+12; url_w=SLIDE_W-PAD*2-24
-    d3.append(dw.Rectangle(url_x,chrome_y+4,url_w,20,
-                            fill=WHITE,stroke="#CCCCCC",stroke_width=1,rx=3))
-    d3.append(dw.Text("🔒  http://127.0.0.1:8000/explanation/architecture/",
-                       9,url_x+8,chrome_y+14,font_family="monospace",fill="#555555",
-                       dominant_baseline="central"))
+        def _clean(svg):
+            svg = re.sub(r'<\?xml[^?]*\?>', '', svg)
+            svg = re.sub(r'<!DOCTYPE[^>]*>', '', svg)
+            return svg.strip()
 
-    page_top=chrome_y+chrome_h+4; page_h=SLIDE_H-page_top-PAD
-    d3.append(dw.Rectangle(PAD,page_top,SLIDE_W-PAD*2,page_h,fill=WHITE,stroke=BORDER,stroke_width=1))
+        def _header(d, title):
+            d.append(dw.Rectangle(0,0,SLIDE_W,SLIDE_H,fill=WHITE))
+            d.append(dw.Rectangle(0,0,SLIDE_W,SLIDE_H,fill="none",stroke=BORDER,stroke_width=1))
+            d.append(dw.Rectangle(0,0,SLIDE_W,44,fill=ORANGE))
+            d.append(dw.Text(title,15,SLIDE_W/2,22,font_family=LABEL_FONT,fill=WHITE,
+                             text_anchor="middle",dominant_baseline="central",font_weight="bold"))
 
-    NAV_W=120; nav_x=PAD+1
-    d3.append(dw.Rectangle(nav_x,page_top+1,NAV_W,page_h-2,fill="#FAFAFA",stroke=BORDER,stroke_width=1))
-    d3.append(dw.Text("Architecture",9,nav_x+10,page_top+18,font_family=LABEL_FONT,
-                       fill=ORANGE,font_weight="bold",dominant_baseline="central"))
-    for i,(item,col,bold) in enumerate([
-        ("Overview",    MUTED,  False),
-        ("Topology",    ORANGE, True),
-        ("Hook execution",MUTED,False),
-        ("Data model",  MUTED,  False),
-    ]):
-        d3.append(dw.Text(item,8,nav_x+14,page_top+36+i*17,font_family=LABEL_FONT,
-                           fill=col,font_weight="bold" if bold else "normal",
+        def _code(d, lines, x, y, lh=15):
+            for text, color in lines:
+                d.append(dw.Text(text,10.5,x,y,font_family="monospace",fill=color,dominant_baseline="auto"))
+                y += lh
+
+        def _prose(d, text, x, y, size=9.5, bold=False, color=DGRAY, style="normal",
+                   anchor="start"):
+            d.append(dw.Text(text,size,x,y,font_family=LABEL_FONT,fill=color,
+                             font_weight="bold" if bold else "normal",font_style=style,
+                             text_anchor=anchor,dominant_baseline="central"))
+            return y + max(16, int(size * 1.35))
+
+        def _embed(d, svg_path, x, y, max_w, max_h):
+            """Draw the figure SVG fitted into (max_w, max_h) at (x, y),
+            centred horizontally; return (width, height) drawn."""
+            svg   = _clean(svg_path.read_text(encoding="utf-8"))
+            tw = float(re.search(r'<svg[^>]*width="([0-9.]+)"',  svg).group(1))
+            th = float(re.search(r'<svg[^>]*height="([0-9.]+)"', svg).group(1))
+            scale = min(max_w/tw, max_h/th)
+            w, h = tw*scale, th*scale
+            fx = x + (max_w - w)/2
+            d.append(dw.Rectangle(fx-2, y, w+4, h+2, fill=WHITE,
+                                  stroke=T["FIGBORDER"], stroke_width=1, rx=2))
+            inner = re.sub(r'^<svg[^>]*>', '', svg, 1)
+            inner = re.sub(r'</svg>\s*$', '', inner)
+            d.append(dw.Raw(f'<g transform="translate({fx:.1f},{y:.1f}) scale({scale:.4f})">{inner}</g>'))
+            return w, h, fx
+
+        def _expand_button(d, bx, by, btn=20):
+            d.append(dw.Rectangle(bx,by,btn,btn,fill=T["EXPFILL"],
+                                  stroke=T["EXPBORDER"],stroke_width=1,rx=3))
+            d.append(dw.Text("⤢",11,bx+btn/2,by+btn/2,text_anchor="middle",
+                             dominant_baseline="central",fill=T["BTN"]))
+
+        # ── Slide 1: juju.ggarch -- one model, written once ─────────────────────
+        d1 = dw.Drawing(SLIDE_W, SLIDE_H)
+        _header(d1, "juju.ggarch -- one model, written once")
+        d1.append(dw.Rectangle(PAD,56,SLIDE_W-PAD*2,SLIDE_H-56-PAD,fill=LGRAY,rx=4))
+        col_w = (SLIDE_W-PAD*2-20)//3
+        for i in range(1,3):
+            divx = PAD + i*(col_w+10) - 5
+            d1.append(dw.Line(divx,64,divx,SLIDE_H-PAD-8,stroke=T["DIVIDER"],stroke_width=1))
+        cx = [PAD+14+i*(col_w+10) for i in range(3)]
+        left = [
+            ('model "Juju" {',                                  CK),
+            ("  nodes {",                                       CK),
+            ('    sre    [type: person, label: "SRE"]',         CN),
+            ('    client [type: juju-software,',                CN),
+            ('            label: "Client"]',                    CN),
+            ('    charmhub [type: external,',                   CN),
+            ('              label: "Charmhub"]',                CN),
+            ('    clouds [type: external,',                     CN),
+            ('            label: "Clouds\\n(AWS, MAAS, ...)",', CN),
+            ('            collective: cloud]',                  CN),
+            ('    model [type: entity, label: "Model",',        CN),
+            ('           deployed: true] {',                    CN),
+            ('      application [type: entity] {',              CN),
+            ('        unit_node [type: node, label: "Unit"] {', CN),
+            ('          unit_agent [type: juju-software,',      CN),
+            ('                      label: "Unit agent"]',      CN),
+            ('          charm    [type: charm, label: "Charm"]',CN),
+            ('          workload [type: workload,',             CN),
+            ('                     label: "Workload"]',         CN),
+            ("        }",                                       CN),
+            ("      }",                                         CN),
+            ("    }",                                           CN),
+            ("    ...",                                         CM),
+            ("  }",                                             CK),
+        ]
+        mid = [
+            ("  edges {",                                       CK),
+            ("    sre -> bare_applications",                    CN),
+            ('      [type: control, label: "operates"]',        CN),
+            ("    user -> juju",                                CN),
+            ('      [type: api, label: "declares intent to"]',  CN),
+            ("    client -> controller",                        CN),
+            ('      [type: api,',                               CN),
+            ('       label: "persists goal state in"]',         CN),
+            ("    unit_agent -> controller",                    CN),
+            ('      [type: stream,',                            CN),
+            ('       label: "reconciles state with"]',          CN),
+            ("    charm -> workload",                           CN),
+            ('      [type: control, label: "operates"]',        CN),
+            ("    ...",                                         CM),
+            ("  }",                                             CK),
+            ("  behaviours {",                                  CK),
+            ('    behaviour "integrate" {',                     CK),
+            ("      user -> client:",                           CN),
+            ('        call "juju integrate foo bar"',           CN),
+            ("      client -> controller:",                     CN),
+            ('        call "declare the integration"',          CN),
+            ("      controller -> agent_foo:",                  CN),
+            ('        async "watcher fires"',                   CN),
+            ("      controller -> agent_bar:",                  CN),
+            ('        async "watcher fires"',                   CN),
+            ("      ...",                                       CM),
+            ("    }",                                           CK),
+            ("  }",                                             CK),
+            ("  style { extends: juju }",                       CBLU),
+            ("}",                                               CK),
+        ]
+        right = [
+            ('diagram "The problem" from "Juju" {',             CK),
+            ("  select {",                                      CK),
+            ("    nodes: sre bare_applications",                CN),
+            ("    edges: type control",                         CN),
+            ("  }",                                             CK),
+            ("  positions {",                                   CK),
+            ("    sre left-of bare_applications",               CN),
+            ("        gap: 120",                                CN),
+            ("    sre align-middle bare_applications",          CN),
+            ("  }",                                             CK),
+            ("}",                                               CK),
+            ("",                                                CN),
+            ('diagram "The insight" from "Juju" { ... }',       CK),
+            ('diagram "The topology" from "Juju" { ... }',      CK),
+            ("",                                                CN),
+            ('sequence "juju integrate" from "Juju" {',         CK),
+            ('  select { behaviour: "integrate" }',             CN),
+            ("}",                                               CK),
+            ("",                                                CM),
+            ("// three views and one slideshow,",               CM),
+            ("// all drawn from this one model",                CM),
+        ]
+        _code(d1, left,  cx[0], 70)
+        _code(d1, mid,   cx[1], 70)
+        _code(d1, right, cx[2], 70)
+
+        # ── Slides 2-4: three views rendered from the same model ────────────────
+        VIEW_SLIDES = [
+            ("The problem",
+             "rendered from the model: The problem",
+             ["An SRE operates applications that run on cloud nodes. Every cloud,",
+              "every application, and every link between applications adds its own work."],
+             2.1, None),
+            ("The insight",
+             "rendered from the model: The insight",
+             ["Juju sits between the user and the applications. The user declares what",
+              "they want, and Juju operates the applications on nodes from clouds."],
+             1.6, None),
+            ("The topology",
+             "rendered from the model: The topology",
+             ["The user declares goal state through a client; the controller persists it,",
+              "gets nodes from clouds and charms from Charmhub, and the model's unit",
+              "agents reconcile with it."],
+             None, (880, 330)),
+        ]
+        view_slides = []
+        for name, title, caption, scale, box in VIEW_SLIDES:
+            d = dw.Drawing(SLIDE_W, SLIDE_H)
+            _header(d, title)
+            svg = _clean(figs[name].read_text(encoding="utf-8"))
+            tw = float(re.search(r'<svg[^>]*width="([0-9.]+)"',  svg).group(1))
+            th = float(re.search(r'<svg[^>]*height="([0-9.]+)"', svg).group(1))
+            if box:
+                max_w, max_h = box
+            else:
+                max_w, max_h = tw*scale, th*scale
+            disp_h = th * min(max_w/tw, max_h/th)
+            # Captions read at the same size as the figure's node labels:
+            # LABEL_FONT_SIZE as embedded (scaled), floored for legibility.
+            cap_size = max(12, round(LABEL_FONT_SIZE * min(max_w/tw, max_h/th)))
+            cap_h = max(16, int(cap_size * 1.35)) * len(caption) + 26
+            y0 = max(60, (SLIDE_H - disp_h - cap_h)/2)
+            w, h, fx = _embed(d, figs[name], (SLIDE_W-max_w)/2, y0, max_w, max_h)
+            cy = y0 + h + 22
+            for line in caption:
+                _prose(d, line, SLIDE_W/2, cy, size=cap_size, color=MUTED,
+                       style="italic", anchor="middle")
+                cy += max(16, int(cap_size * 1.35))
+            view_slides.append(d)
+
+        # ── Slide 5: explanation/architecture.md -- directives over one model ───
+        d5 = dw.Drawing(SLIDE_W, SLIDE_H)
+        _header(d5, "explanation/architecture.md")
+        d5.append(dw.Rectangle(PAD,56,SLIDE_W-PAD*2,SLIDE_H-56-PAD,fill=LGRAY,rx=4))
+        md = [
+            ("",                                                                  CN),
+            ("## The basic topology",                                             CGRN),
+            ("",                                                                  CN),
+            ("```{ggarch}",                                                       CK),
+            (":file: ../juju.ggarch",                                             CBLU),
+            (":view: The topology",                                               CBLU),
+            (":caption: The user tells the client what they want, and the client",CBLU),
+            ("          sends it to the controller, which stores it as the",      CBLU),
+            ("          goal state.",                                             CBLU),
+            ("```",                                                               CK),
+            ("",                                                                  CN),
+            ("## Under the hood",                                                 CGRN),
+            ("",                                                                  CN),
+            ("`````{tabs}",                                                       CK),
+            ("`````{tab} Kubernetes",                                             CK),
+            ("",                                                                  CN),
+            ("```{ggarch}",                                                       CK),
+            (":file: ../juju.ggarch",                                             CBLU),
+            (":slides: juju add-k8s | juju bootstrap (Kubernetes) |",             CBLU),
+            ("         juju add-model | juju deploy (Kubernetes) |",              CBLU),
+            ("         juju config | juju integrate",                             CBLU),
+            (":slide-captions: The user starts by connecting a Kubernetes | ...", CBLU),
+            ("```",                                                               CK),
+            ("",                                                                  CN),
+            ("// :view: picks a diagram; :slides: turns a list of",               CM),
+            ("// sequence views into a carousel with captions",                   CM),
+        ]
+        _code(d5, md, PAD+20, 68)
+
+        # ── Slide 6: the rendered Sphinx page with the slideshow ────────────────
+        d6 = dw.Drawing(SLIDE_W, SLIDE_H)
+        _header(d6, "http://127.0.0.1:8000/explanation/architecture/")
+
+        chrome_y=50; chrome_h=28
+        d6.append(dw.Rectangle(PAD,chrome_y,SLIDE_W-PAD*2,chrome_h,
+                                fill=T["CHROME"],stroke=T["DIVIDER"],stroke_width=1,rx=3))
+        url_x=PAD+12; url_w=SLIDE_W-PAD*2-24
+        d6.append(dw.Rectangle(url_x,chrome_y+4,url_w,20,
+                                fill=T["URLBG"],stroke=T["DIVIDER"],stroke_width=1,rx=3))
+        d6.append(dw.Text("🔒  http://127.0.0.1:8000/explanation/architecture/",
+                           9,url_x+8,chrome_y+14,font_family="monospace",fill=T["URLTEXT"],
                            dominant_baseline="central"))
 
-    cx3=PAD+NAV_W+16; cw3=SLIDE_W-PAD-NAV_W-PAD-16
-    y = page_top+18
-    y = _prose(d3,"Juju architecture",cx3,y,size=13,bold=True); y+=4
-    y = _prose(d3,"A live Juju deployment has a controller -- the management process that holds all",cx3,y)
-    y = _prose(d3,"goal state -- and one or more applications, each broken into one or more units.",cx3,y)
-    y = _prose(d3,"Every unit runs the same chain: a unit agent drives a charm, which operates the",cx3,y)
-    y = _prose(d3,"workload. The controller is the single point through which all integration flows.",cx3,y)
-    y+=8
-    y = _prose(d3,"Topology",cx3,y,size=11,bold=True); y+=2
-    y = _prose(d3,"On Kubernetes, Juju provisions pods for its own processes. The controller pod runs",cx3,y)
-    y = _prose(d3,"the controller agent; each unit gets its own pod with a charm container and a",cx3,y)
-    y = _prose(d3,"workload container.",cx3,y)
-    y+=8
+        page_top=chrome_y+chrome_h+4; page_h=SLIDE_H-page_top-PAD
+        d6.append(dw.Rectangle(PAD,page_top,SLIDE_W-PAD*2,page_h,fill=WHITE,stroke=BORDER,stroke_width=1))
 
-    fig_max_w=cw3*0.88; scale3=min(fig_max_w/tw,(page_h-(y-page_top)-32)/th)
-    dw3=tw*scale3; dh3=th*scale3
-    fig_x=cx3+(cw3-dw3)/2; fig_y=y
+        NAV_W=120; nav_x=PAD+1
+        d6.append(dw.Rectangle(nav_x,page_top+1,NAV_W,page_h-2,fill=T["NAVBG"],stroke=BORDER,stroke_width=1))
+        d6.append(dw.Text("Architecture",9,nav_x+10,page_top+18,font_family=LABEL_FONT,
+                           fill=ORANGE,font_weight="bold",dominant_baseline="central"))
+        for i,(item,col,bold) in enumerate([
+            ("Overview",      MUTED,  False),
+            ("The problem",   MUTED,  False),
+            ("The insight",   MUTED,  False),
+            ("The topology",  MUTED,  False),
+            ("Under the hood",ORANGE, True),
+        ]):
+            d6.append(dw.Text(item,8,nav_x+14,page_top+36+i*17,font_family=LABEL_FONT,
+                               fill=col,font_weight="bold" if bold else "normal",
+                               dominant_baseline="central"))
 
-    d3.append(dw.Rectangle(fig_x-2,fig_y,dw3+4,dh3+2,fill=WHITE,stroke="#EEEEEE",stroke_width=1,rx=2))
-    inner3=re.sub(r'^<svg[^>]*>','',topo_clean,1)
-    inner3=re.sub(r'</svg>\s*$','',inner3)
-    d3.append(dw.Raw(f'<g transform="translate({fig_x:.1f},{fig_y:.1f}) scale({scale3:.4f})">{inner3}</g>'))
+        cx6=PAD+NAV_W+16; cw6=SLIDE_W-PAD-NAV_W-PAD-16
+        y = page_top+16
+        y = _prose(d6,"Juju architecture",cx6,y,size=13,bold=True); y+=2
+        y = _prose(d6,"Under the hood -- Kubernetes",cx6,y,size=11,bold=True); y+=6
 
-    btn=20; bx=fig_x+dw3-btn-5; by=fig_y+5
-    d3.append(dw.Rectangle(bx,by,btn,btn,fill="rgba(255,255,255,0.92)",stroke="#CCCCCC",stroke_width=1,rx=3))
-    d3.append(dw.Text("⤢",11,bx+btn/2,by+btn/2,text_anchor="middle",dominant_baseline="central",fill="#555555"))
-    d3.append(dw.Text("Controller pod (left); unit pod (right) with charm container and workload container.",
-                       8.5,fig_x,fig_y+dh3+13,font_family=LABEL_FONT,fill=MUTED,
-                       font_style="italic",dominant_baseline="central"))
+        fig_max_w=cw6-8; fig_max_h=page_h-(y-page_top)-64
+        w6, h6, fx6 = _embed(d6, figs[GIF_SEQUENCE], cx6, y, fig_max_w, fig_max_h)
+        _expand_button(d6, fx6+w6-25, y+5)
 
-    # ── Convert to PNG and assemble GIF ─────────────────────────────────────
-    with tempfile.TemporaryDirectory() as tmp:
+        # slideshow controls: prev/next arrows and one dot per slide, last active
+        dots_y = y + h6 + 16
+        n_dots = 6; dot_r = 3; dot_gap = 12
+        dots_w = n_dots*dot_gap
+        cx_dots = cx6 + (cw6 - dots_w)/2 + 14
+        d6.append(dw.Text("‹",13,cx_dots-24,dots_y,text_anchor="middle",
+                          dominant_baseline="central",fill=T["MUTED"]))
+        d6.append(dw.Text("›",13,cx_dots+dots_w+10,dots_y,text_anchor="middle",
+                          dominant_baseline="central",fill=T["BTN"]))
+        for i in range(n_dots):
+            col = ORANGE if i == n_dots-1 else T["DOT"]
+            d6.append(dw.Circle(cx_dots+i*dot_gap, dots_y, dot_r, fill=col))
+        cy = dots_y + 18
+        for line in ["Finally, the user integrates two applications so that they work together. The controller",
+                     "persists the integration, and the watchers of both applications fire."]:
+            _prose(d6, line, cx6, cy, size=12, color=MUTED)
+            cy += 16
+
+        # ── Slide 7: QR to the repo (last frame; the "once" GIFs stop here) ────
+        slides = [d1, *view_slides, d5, d6]
+        qr_path = ROOT / "assets" / "ggarch-QR.png"
+        if qr_path.exists():
+            d7 = dw.Drawing(SLIDE_W, SLIDE_H)
+            _header(d7, "scan to try ggarch")
+            qr_size = 320
+            card = qr_size + 48
+            cx7 = (SLIDE_W - card) / 2
+            cy7 = max(70, (SLIDE_H - card - 60) / 2)
+            # QR codes need a light, uniform background to scan: keep the
+            # card white in both themes.
+            d7.append(dw.Rectangle(cx7, cy7, card, card, fill="#FFFFFF",
+                                   stroke=T["FIGBORDER"], stroke_width=1, rx=6))
+            qr_b64 = base64.b64encode(qr_path.read_bytes()).decode("ascii")
+            d7.append(dw.Raw(
+                f'<image x="{cx7+24:.1f}" y="{cy7+24:.1f}" '
+                f'width="{qr_size}" height="{qr_size}" '
+                f'xmlns:xlink="http://www.w3.org/1999/xlink" '
+                f'xlink:href="data:image/png;base64,{qr_b64}"/>'))
+            _prose(d7, "https://github.com/tmihoc/ggarch",
+                   SLIDE_W / 2, cy7 + card + 34, size=14, color=T["TEXT"],
+                   anchor="middle")
+            slides.append(d7)
+        return slides
+
+    # ── Convert to PNG and assemble the GIFs ────────────────────────────────
+    for theme, dark, _loop_name, T in THEMES:
+        slides = _build_slides(figures[theme], T)
+        slides_dir = ROOT / "build" / "gif" / theme
+        slides_dir.mkdir(parents=True, exist_ok=True)
         pngs = []
-        for i, slide in enumerate([d1, d2, d3], 1):
-            svg_path = pathlib.Path(tmp) / f"slide{i}.svg"
-            png_path = pathlib.Path(tmp) / f"slide{i}.png"
+        for i, slide in enumerate(slides, 1):
+            svg_path = slides_dir / f"slide{i}.svg"
+            png_path = slides_dir / f"slide{i}.png"
             slide.save_svg(str(svg_path))
+            # Chromium collapses runs of spaces in <text> unless they are
+            # marked whitespace-preserving; the code slides rely on indent.
+            svg_txt = svg_path.read_text(encoding="utf-8")
+            svg_path.write_text(
+                svg_txt.replace("<text ", '<text xml:space="preserve" '),
+                encoding="utf-8")
             if not _rasterize(svg_path, png_path, SLIDE_W, SLIDE_H):
                 print("no rasterizer available -- skipping GIF",
                       file=sys.stderr)
                 return
             pngs.append(str(png_path))
 
-        gif_path = assets_dir / "ggarch-demo.gif"
-        args = ["convert"]
-        for png in pngs:
-            args += ["-delay", "350", png]
-        args += ["-loop", "0", "-layers", "optimize", str(gif_path)]
-        result = subprocess.run(args, capture_output=True)
-        if result.returncode != 0:
-            print(f"GIF error: {result.stderr.decode()}", file=sys.stderr)
-        else:
-            size = gif_path.stat().st_size // 1024
-            print(f"  ggarch-demo.gif  ({size} KB)")
+        for name, loop, delay in THEME_OUTPUTS[theme]:
+            gif_path = assets_dir / name
+            args = ["convert"]
+            for png in pngs:
+                args += ["-delay", delay, png]
+            args += ["-loop", loop, "-layers", "optimize", str(gif_path)]
+            result = subprocess.run(args, capture_output=True)
+            if result.returncode != 0:
+                print(f"GIF error: {result.stderr.decode()}", file=sys.stderr)
+            else:
+                size = gif_path.stat().st_size // 1024
+                print(f"  {name}  ({size} KB, "
+                      f"{len(pngs)} slides x {int(delay)/100:.1f} s)")
 
 
 # ---------------------------------------------------------------------------
@@ -494,7 +712,7 @@ def main() -> None:
 
         if args.gif:
             print("\nBuilding GIF")
-            build_gif(assets_dir)
+            build_gif(juju_docs, assets_dir)
     elif args.gif:
         print("--gif requires --juju-docs", file=sys.stderr)
         sys.exit(1)
