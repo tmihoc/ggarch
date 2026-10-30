@@ -626,12 +626,35 @@ _GGARCH_JS = """\
   modal.appendChild(inner);
   document.body.appendChild(modal);
 
-  function closeModal() {
-    modal.classList.remove('active');
+  // Slideshow state of the open modal: null for a single diagram, else
+  // { items: [{src, alt, caption}], idx, sync(i) }.
+  var show_state = null;
+  var modalNav = document.createElement('div');
+  modalNav.className = 'ggarch-slide-nav ggarch-modal-nav';
+  var modalPrev = document.createElement('button');
+  modalPrev.type = 'button'; modalPrev.className = 'ggarch-slide-btn';
+  modalPrev.textContent = '\\u2190'; modalPrev.setAttribute('aria-label', 'Previous slide');
+  var modalCounter = document.createElement('span');
+  modalCounter.className = 'ggarch-slide-counter';
+  var modalNext = document.createElement('button');
+  modalNext.type = 'button'; modalNext.className = 'ggarch-slide-btn';
+  modalNext.textContent = '\\u2192'; modalNext.setAttribute('aria-label', 'Next slide');
+  modalNav.appendChild(modalPrev); modalNav.appendChild(modalCounter); modalNav.appendChild(modalNext);
+
+  function clearModal() {
     ['ggarch-modal-img', 'ggarch-modal-legend', 'ggarch-modal-caption'].forEach(function(cls) {
       var el = inner.querySelector('.' + cls);
       if (el) inner.removeChild(el);
     });
+    if (modalNav.parentNode === inner) inner.removeChild(modalNav);
+  }
+
+  function closeModal() {
+    modal.classList.remove('active');
+    clearModal();
+    // Leave the page on the slide the reader ended on.
+    if (show_state) show_state.sync(show_state.idx);
+    show_state = null;
     document.documentElement.style.overflow = '';
     document.body.style.overflow = '';
     if (openModal._scrollY != null) {
@@ -641,26 +664,54 @@ _GGARCH_JS = """\
   }
   closeBtn.addEventListener('click', closeModal);
   modal.addEventListener('click', function(e) { if (e.target === modal) closeModal(); });
+
+  function modalGo(i) {
+    if (!show_state || i < 0 || i >= show_state.items.length) return;
+    show_state.idx = i;
+    renderModal(null);
+  }
+  modalPrev.addEventListener('click', function() { if (show_state) modalGo(show_state.idx - 1); });
+  modalNext.addEventListener('click', function() { if (show_state) modalGo(show_state.idx + 1); });
   document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape' && modal.classList.contains('active')) closeModal();
+    if (!modal.classList.contains('active')) return;
+    if (e.key === 'Escape') closeModal();
+    else if (e.key === 'ArrowLeft' && show_state) { e.preventDefault(); modalGo(show_state.idx - 1); }
+    else if (e.key === 'ArrowRight' && show_state) { e.preventDefault(); modalGo(show_state.idx + 1); }
   });
 
-  function openModal(src, alt, legendEl, caption) {
+  // Draw the current item of the modal: image, optional legend, caption,
+  // and, for a slideshow, the nav bar.
+  function renderModal(legendEl) {
+    var item = show_state ? show_state.items[show_state.idx] : openModal._single;
+    clearModal();
     var clone = document.createElement('img');
     clone.className = 'ggarch-modal-img';
-    clone.src = src; clone.alt = alt;
+    clone.src = item.src; clone.alt = item.alt;
     inner.appendChild(clone);
     if (legendEl) {
       var legClone = legendEl.cloneNode(true);
       legClone.className = 'ggarch-legend ggarch-modal-legend';
       inner.appendChild(legClone);
     }
-    if (caption) {
+    if (item.caption) {
       var cap = document.createElement('p');
       cap.className = 'ggarch-modal-caption';
-      cap.textContent = caption;
+      cap.textContent = item.caption;
       inner.appendChild(cap);
     }
+    if (show_state) {
+      modalCounter.textContent = (show_state.idx + 1) + ' / ' + show_state.items.length;
+      modalPrev.disabled = (show_state.idx === 0);
+      modalNext.disabled = (show_state.idx === show_state.items.length - 1);
+      inner.appendChild(modalNav);
+    }
+  }
+
+  // slideshow (optional): { items: [{src, alt, caption}], idx, sync(i) }
+  function openModal(src, alt, legendEl, caption, slideshow) {
+    show_state = slideshow || null;
+    openModal._single = { src: src, alt: alt, caption: caption };
+    renderModal(legendEl);
     modal.classList.add('active');
     // Remember the scroll position: hiding the body overflow reflows
     // the page and some themes lose the offset — closing then jumped
@@ -719,11 +770,16 @@ _GGARCH_JS = """\
       expandBtn.setAttribute('aria-label', 'View diagram fullscreen');
       expandBtn.innerHTML = EXPAND_ICON;
       expandBtn.addEventListener('click', function() {
-        var activeSlide = slides.querySelector('.ggarch-slide.active');
-        var wrap = activeSlide || slides;
-        var r = getVisibleSrc(wrap);
-        var caption = figcap ? figcap.textContent : '';
-        openModal(r.src, r.alt, null, caption);
+        var items = [];
+        allSlides.forEach(function(s) {
+          var r = getVisibleSrc(s);
+          items.push({ src: r.src, alt: r.alt, caption: s.dataset.caption || '' });
+        });
+        var cur = items[idx];
+        openModal(cur.src, cur.alt, null, cur.caption, {
+          items: items, idx: idx,
+          sync: function(i) { idx = i; show(i); }
+        });
       });
       slides.style.position = 'relative';
       slides.appendChild(expandBtn);
