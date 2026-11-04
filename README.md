@@ -92,7 +92,7 @@ and extend the type system without touching ggarch itself.
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/ggarch-demo-dark.gif">
     <img src="assets/ggarch-demo.gif"
-         alt="Six-slide walkthrough: the juju.ggarch model source (typed nodes and edges, behaviours, style preset), three views rendered from that one model -- The problem, The insight, The topology --, the Markdown file with {ggarch} directives selecting a view and a slideshow, and the rendered Sphinx page with the slideshow carousel, expand button, and caption."
+         alt="Six-slide walkthrough: the juju.ggarch model source (typed nodes and edges, behaviours, style preset), the Markdown file with {ggarch} directives selecting a view and a slideshow, the results rendered from that one model -- The problem, The insight, The topology --, and the rendered Sphinx page with the juju integrate sequence-view slideshow: carousel dots, expand button, and caption."
          width="100%">
   </picture>
 </div>

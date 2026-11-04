@@ -14,10 +14,13 @@ Produces two sets of output:
 
   assets/ggarch-demo.gif, assets/ggarch-demo-dark.gif
     Six-slide README walkthrough built from the juju.ggarch model:
-    the source, three rendered narrative views, the Markdown
-    directives, and the rendered Sphinx slideshow -- in light and
-    dark variants.
+    the source, the Markdown {ggarch} directives, three rendered
+    narrative views, and the rendered Sphinx page with the
+    sequence-view slideshow -- in light and dark variants.
     Requires cairosvg and ImageMagick (convert).
+  assets/ggarch-demo-dark-<n>-<slug>.png
+    The dark deck's individual slides -- the same images that make
+    up assets/ggarch-demo-dark.gif, one PNG per slide.
 
 Run from the ggarch repo root:
 
@@ -219,9 +222,15 @@ def _rasterize(svg_path: pathlib.Path, png_path: pathlib.Path,
     return True
 
 
-# The GIF tells the architecture.md story: one model -> the three narrative
-# views -> the directives -> the rendered Sphinx slideshow.
+# The GIF tells the walkthrough: one model -> the Markdown directives
+# -> three narrative views -> the Sphinx page with the sequence-view
+# slideshow; all drawn from the one model.
 GIF_VIEWS = ["The problem", "The insight", "The topology"]
+# The dark deck's per-slide stems, in deck order -- each slide is also
+# published to assets/ as an individual image (ggarch-demo-dark-*.png)
+# alongside the GIF.
+GIF_SLIDE_STEMS = ["model", "directives", "the-problem", "the-insight",
+                   "the-topology", "slideshow"]
 GIF_SEQUENCE = "juju integrate"
 
 
@@ -289,9 +298,11 @@ def build_gif(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
     """Build the demo GIFs: assets/ggarch-demo.gif and
     assets/ggarch-demo-dark.gif loop at 2.5 s per slide;
     assets/ggarch-demo-once.gif is the dark cut that plays once and
-    stops on the QR end slide (for slides). The story: the
-    architecture.md walkthrough -- one model, three rendered views,
-    the directives, the rendered Sphinx slideshow."""
+    stops on the QR end slide (for slides); the dark deck's slides
+    are also published to assets/ as individual PNGs. The story:
+    one model, the Markdown directives that embed it, three narrative
+    views, and the command sequence rendered in its Sphinx
+    slideshow -- all drawn from the one model."""
     try:
         import cairosvg
     except ImportError:
@@ -489,7 +500,7 @@ def build_gif(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
         _code(d1, mid,   cx[1], 70)
         _code(d1, right, cx[2], 70)
 
-        # ── Slides 2-4: three views rendered from the same model ────────────────
+        # ── Slides 3-5: three views rendered from the same model ────────────────
         VIEW_SLIDES = [
             ("The problem",
              "rendered from the model: The problem",
@@ -533,7 +544,7 @@ def build_gif(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
                 cy += max(16, int(cap_size * 1.35))
             view_slides.append(d)
 
-        # ── Slide 5: explanation/architecture.md -- directives over one model ───
+        # ── Slide 2: explanation/architecture.md -- directives over one model ───
         d5 = dw.Drawing(SLIDE_W, SLIDE_H)
         _header(d5, "explanation/architecture.md")
         d5.append(dw.Rectangle(PAD,56,SLIDE_W-PAD*2,SLIDE_H-56-PAD,fill=LGRAY,rx=4))
@@ -627,7 +638,7 @@ def build_gif(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
             cy += 16
 
         # ── Slide 7: QR to the repo (only in the QR cuts) ───────────────────────
-        slides = [d1, *view_slides, d5, d6]
+        slides = [d1, d5, *view_slides, d6]
         qr_path = ROOT / "assets" / "ggarch-QR.png"
         if not qr_path.exists():
             return slides, slides
@@ -700,6 +711,17 @@ def build_gif(juju_docs: pathlib.Path, assets_dir: pathlib.Path) -> None:
                 size = gif_path.stat().st_size // 1024
                 print(f"  {name}  ({size} KB, "
                       f"{len(pngs)} slides x {int(delay)/100:.1f} s)")
+
+        # The dark deck's slides also ship as individual images: the
+        # same PNGs that make up assets/ggarch-demo-dark.gif, one file
+        # per slide, named for what the slide shows.
+        if theme == "dark":
+            for i, png in enumerate(png_sets[False]):
+                stem = (GIF_SLIDE_STEMS[i]
+                        if i < len(GIF_SLIDE_STEMS) else f"slide{i+1}")
+                dest = assets_dir / f"ggarch-demo-dark-{i+1:02d}-{stem}.png"
+                shutil.copyfile(png, dest)
+                print(f"  {dest.name}  ({dest.stat().st_size // 1024} KB)")
 
 
 # ---------------------------------------------------------------------------
