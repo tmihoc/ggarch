@@ -58,6 +58,9 @@ from ggarch.router import _route_edge
 # strike target is the centred text rect at ~0.64em per char.
 _ANN_CHAR_W = 7.2
 
+# Break ties in favour of a compact stack without overriding weak alignment.
+_STACK_COMPACTNESS_STRENGTH = 0.01
+
 
 # ---------------------------------------------------------------------------
 # Per-node variable bundle
@@ -259,7 +262,9 @@ def _solve_constraints(
             solver.addConstraint((iv.h >= mh) | "required")
 
     # Add containment constraints (parent must contain all children).
-    _add_containment_constraints(solver, selected, vars_by_id, diagram.select)
+    direction_map = _collect_directions(diagram.constraints)
+    _add_containment_constraints(solver, selected, vars_by_id, diagram.select,
+                                 direction_map)
 
     # Anchor the layout: the top-left node starts at (0, 0) by default.
     # Without this the system is under-constrained (translatable).
@@ -276,7 +281,6 @@ def _solve_constraints(
 
     # Auto-layout container children using direction constraints.
     # This runs before user constraints so user constraints can override.
-    direction_map = _collect_directions(expanded_constraints)
     _add_auto_layout_pass(solver, selected, vars_by_id, diagram.select, direction_map, model)
     # Add user-declared constraints, with label-aware gap expansion.
     _add_user_constraints(solver, expanded_constraints, vars_by_id,
@@ -1325,10 +1329,12 @@ def _add_containment_constraints(
     nodes: list[Node],
     vars_by_id: dict[str, _NodeVars],
     select: SelectClause,
+    direction_map: dict[str, str],
 ) -> None:
     for node in nodes:
         if node.children and node.id not in select.collapse:
-            _add_containment_for_node(solver, node, vars_by_id, select)
+            _add_containment_for_node(solver, node, vars_by_id, select,
+                                      direction_map)
 
 
 def _add_containment_for_node(
@@ -1336,8 +1342,10 @@ def _add_containment_for_node(
     node: Node,
     vars_by_id: dict[str, _NodeVars],
     select: SelectClause,
+    direction_map: dict[str, str],
 ) -> None:
     parent = vars_by_id[node.id]
+    stacked = len(node.children) > 1 and direction_map.get(node.id, "right") != "right"
     for child in node.children:
         cv = vars_by_id[child.id]
         # Child must sit inside parent with padding — REQUIRED.
@@ -1350,27 +1358,23 @@ def _add_containment_for_node(
         solver.addConstraint(
             (cv.x2 <= parent.x2 - CONTAINER_PAD) | "required"
         )
-        # Symmetric vertical padding (2026-09-21 reviewer: a fan arrow
-        # leaving a nested child must be align-middle'ed with the child
-        # AND the hub — possible only when the child row sits on the
-        # container's midline; the label band's top pad alone put rows
-        # ~12px low). The bottom pad equals the top pad, so the content
-        # centres on the box and every level of nesting stays on the
-        # midline.
+        # Use the same padding above and below so content can sit on the midline.
         solver.addConstraint(
             (cv.y2 <= parent.y2 - CONTAINER_PAD_TOP) | "required"
         )
-        # The child row CENTRES on the container's midline (weak): the
-        # symmetric pads make it possible, and a label-driven growth on
-        # one sibling must not leave another's content top-anchored
-        # (measured: the equal-height sibling containers left pebble's
-        # row 22px above the shared midline -- every anchor off a
-        # midpoint). Weak: containment and the label contract keep
-        # their say; the centring takes the slack.
-        solver.addConstraint((cv.cy == parent.cy) | "weak")
-        # Recurse.
+        if not stacked:
+            # Centre the children of a horizontal row on the container midline.
+            solver.addConstraint((cv.cy == parent.cy) | "weak")
         if child.children and child.id not in select.collapse:
-            _add_containment_for_node(solver, child, vars_by_id, select)
+            _add_containment_for_node(solver, child, vars_by_id, select,
+                                      direction_map)
+    if stacked:
+        # Centre the stack as a whole, not each child independently. The
+        # auto-layout pass keeps these endpoints first and last vertically.
+        first = vars_by_id[node.children[0].id]
+        last = vars_by_id[node.children[-1].id]
+        solver.addConstraint(((first.y + last.y2) / 2 == parent.cy) | "weak")
+        solver.addConstraint((parent.h == 0) | _STACK_COMPACTNESS_STRENGTH)
 
 
 # ---------------------------------------------------------------------------
@@ -1407,7 +1411,9 @@ def _add_origin_anchor(
 # Auto-layout pass — sequential child placement
 # ---------------------------------------------------------------------------
 
-def _collect_directions(constraints: list[Constraint]) -> dict[str, str]:
+def _collect_directions(
+    constraints: list[Constraint | FanConstraint],
+) -> dict[str, str]:
     """Return a map of node_id -> direction from direction constraints."""
     d: dict[str, str] = {}
     for c in constraints:
