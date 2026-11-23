@@ -59,9 +59,11 @@ and extend the type system without touching ggarch itself.
   state machine
 - Slideshows: a `:slides:` directive turns a list of views or sequences
   into a carousel with per-slide captions -- one command walkthrough,
-  narrated one step at a time
+  narrated one step at a time. The expanded view keeps the controls and
+  supports Left/Right keys; closing it returns to the last slide viewed.
 - Cross-cutting annotations: `box` regions that span the containment
-  hierarchy without distorting layout
+  hierarchy without distorting layout. In a sequence view, a box spans
+  the named lifelines that are present, without reordering participants.
 - Selective zoom: `collapse` and `expand` per node in each view -- mix
   levels of detail in one diagram
 - Abstraction relationships: `abstracts:` declares that a concrete node
@@ -118,6 +120,15 @@ For Sphinx integration add the optional dependency:
 
 ```bash
 pip install -e ".[sphinx]"
+```
+
+To run the slideshow browser regression, install Playwright and Chromium
+in the test environment:
+
+```bash
+pip install -e ".[dev]" playwright
+python -m playwright install chromium --only-shell
+python -m pytest tests/test_sphinx_directive.py
 ```
 
 **Write a diagram.** Create `my-system.ggarch`:

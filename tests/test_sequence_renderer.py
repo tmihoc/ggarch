@@ -1,6 +1,9 @@
 """Sequence renderer tests."""
-import pytest
 import re
+import xml.etree.ElementTree as ET
+
+import pytest
+
 from ggarch import parse, validate
 from ggarch.sequence_renderer import (
     render_sequence,
@@ -85,6 +88,65 @@ class TestSequenceStructure:
     def test_arrowhead_markers_defined(self):
         svg = pipeline(SIMPLE_SEQ)
         assert "seq-arrow" in svg
+
+
+@pytest.mark.parametrize(("dark", "stroke"), [(False, "#666666"), (True, "#888888")])
+def test_box_groups_rendered_lifelines_without_changing_sequence(dark, stroke):
+    source = """\
+model "M" {
+  nodes {
+    a [type: juju-software, label: "Controller"]
+    b [type: juju-software, label: "Machine agent"]
+    c [type: juju-software, label: "SSH server"]
+    d [type: juju-software, label: "Not in this sequence"]
+  }
+  edges {
+    a -> b [type: api]
+    b -> c [type: api]
+  }
+  behaviours {
+    behaviour "tunnel" {
+      a -> b: call "request tunnel"
+      b -> c: call "connect to SSH server"
+    }
+  }
+}
+sequence "Tunnel" from "M" {
+  select { behaviour: "tunnel" }
+}
+"""
+    annotated = source.replace('select { behaviour: "tunnel" }', '''\
+select { behaviour: "tunnel" }
+  annotations {
+    box [nodes: "c b d", label: "Target machine", padding-top: 18]
+    box [nodes: "d", label: "Not rendered"]
+  }''')
+    svg = ET.fromstring(pipeline(annotated, dark=dark))
+    plain = ET.fromstring(pipeline(source, dark=dark))
+    ns = {"s": "http://www.w3.org/2000/svg"}
+
+    group = svg.find("s:g[@id='ggarch-annotations']", ns)
+    (outline,) = group.findall("s:rect", ns)
+    assert outline.get("fill") == "none"
+    assert outline.get("stroke") == stroke
+    assert outline.get("stroke-dasharray") == "6,4"
+    (label,) = group.findall("s:text", ns)
+    assert label.text == "Target machine"
+    assert float(label.get("y")) > float(svg.get("viewBox").split()[1])
+
+    # Compare the actual drawing (participant placements, lifelines, and
+    # messages), not just the box's text or the parsed selection.
+    svg.remove(group)
+    content = svg.find("s:g", ns)
+    assert ET.tostring(content) == ET.tostring(plain.find("s:g", ns))
+    controller, agent, server, *_, agent_footer, server_footer = content.findall("s:rect", ns)
+    left, top, width, height = (float(outline.get(k)) for k in ("x", "y", "width", "height"))
+    assert float(controller.get("x")) + float(controller.get("width")) < left
+    assert float(agent.get("y")) - top == 18
+    for participant in (agent, server, agent_footer, server_footer):
+        x, y, w, h = (float(participant.get(k)) for k in ("x", "y", "width", "height"))
+        assert left < x and x + w < left + width
+        assert top < y and y + h < top + height
 
 
 class TestParticipantOrdering:

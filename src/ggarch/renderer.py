@@ -1665,7 +1665,9 @@ def _render_annotation(
         pos = None
         if ann_positions is not None and view_index is not None:
             pos = ann_positions.get(view_index)
-        _render_ann_box(g, ann, layout, ox, oy, dark, label_position=pos)
+        bounds = _nodes_bounding_rect(ann.nodes, layout)
+        if bounds is not None:
+            _render_ann_box(g, ann, bounds, ox, oy, dark, label_position=pos)
     elif isinstance(ann, AnnotationCallout):
         _render_ann_callout(g, ann, layout, ox, oy, dark)
     elif isinstance(ann, AnnotationSeparator):
@@ -1696,19 +1698,17 @@ def _nodes_bounding_rect(node_ids: list[str], layout: SolvedLayout) -> Rect | No
 def _render_ann_box(
     g: dw.Group,
     ann: AnnotationBox,
-    layout: SolvedLayout,
+    bounds: Rect,
     ox: float, oy: float,
     dark: bool,
     label_position: str | None = None,
-) -> None:
-    pad   = ann.padding if hasattr(ann, 'padding') else 10
-    pt    = (ann.padding_top    if hasattr(ann, 'padding_top')    and ann.padding_top    is not None else pad)
-    pr    = (ann.padding_right  if hasattr(ann, 'padding_right')  and ann.padding_right  is not None else pad)
-    pb    = (ann.padding_bottom if hasattr(ann, 'padding_bottom') and ann.padding_bottom is not None else pad)
-    pl    = (ann.padding_left   if hasattr(ann, 'padding_left')   and ann.padding_left   is not None else pad)
-    pos   = (label_position if label_position is not None
-             else (ann.label_position
-                   if hasattr(ann, 'label_position') else 'top'))
+) -> tuple[float, float, float, float]:
+    """Draw the box and return its approximate painted extents."""
+    pt = ann.padding if ann.padding_top is None else ann.padding_top
+    pr = ann.padding if ann.padding_right is None else ann.padding_right
+    pb = ann.padding if ann.padding_bottom is None else ann.padding_bottom
+    pl = ann.padding if ann.padding_left is None else ann.padding_left
+    pos = ann.label_position if label_position is None else label_position
 
     # For inside-* positions, reserve an extra strip for the label.
     LABEL_H = ann_band_h(ann.label)
@@ -1717,23 +1717,20 @@ def _render_ann_box(
     elif pos == 'inside-top':
         pt += LABEL_H
 
-    br = _nodes_bounding_rect(ann.nodes, layout)
-    if br is None:
-        return
-    x = br.x + ox - pl
-    y = br.y + oy - pt
-    w = br.w + pl + pr
-    h = br.h + pt + pb
+    x = bounds.x + ox - pl
+    y = bounds.y + oy - pt
+    w = bounds.w + pl + pr
+    h = bounds.h + pt + pb
     color = ann.color or ("#888888" if dark else "#666666")
     dash = "6,4" if ann.style == "dashed" else ""
 
-    # A circling has no gates: annotation boxes are meta elements
-    # (ADR-003 decision 4) — stroke-only, painted last, borders never
-    # notched. Edges cross them freely and are never occluded.
+    # Annotation boxes are meta elements (ADR-003 decision 4): an
+    # unfilled outline lets edges cross freely instead of routing via gates.
     rect_kwargs: dict = dict(fill="none", stroke=color, stroke_width=1, rx=6, ry=6)
     if dash:
         rect_kwargs["stroke_dasharray"] = dash
     g.append(dw.Rectangle(x, y, w, h, **rect_kwargs))
+    x1, y1, x2, y2 = x, y, x + w, y + h
 
     if ann.label:
         if pos == 'inside-bottom':
@@ -1754,6 +1751,11 @@ def _render_ann_box(
         lines = ann.label.split("\\n")
         lh = ANN_LABEL_LINE_H
         start_y = ly - lh * (len(lines) - 1) / 2
+        # Budget up to one em per character; the SVG font varies by client.
+        label_w = 11 * max(map(len, lines))
+        label_x = lx - {"start": 0, "middle": label_w / 2, "end": label_w}[anchor]
+        x1, x2 = min(x1, label_x), max(x2, label_x + label_w)
+        y1, y2 = min(y1, start_y - lh / 2), max(y2, ly + len(lines) * lh / 2)
         for line in lines:
             g.append(dw.Text(
                 line, 11, lx, start_y,
@@ -1763,6 +1765,7 @@ def _render_ann_box(
                 dominant_baseline="central",
             ))
             start_y += lh
+    return x1, y1, x2, y2
 
 
 def _render_ann_callout(
