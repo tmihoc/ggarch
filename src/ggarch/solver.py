@@ -32,6 +32,7 @@ from ggarch.layout import (
     CONTAINER_BOTTOM_PAD,
     CONTAINER_PAD,
     CONTAINER_PAD_TOP,
+    container_pad_top,
     MIN_NODE_HEIGHT,
     MIN_NODE_WIDTH,
     Rect,
@@ -1342,6 +1343,7 @@ def _add_containment_for_node(
     select: SelectClause,
 ) -> None:
     parent = vars_by_id[node.id]
+    pad_top = container_pad_top(node.label)
     for child in node.children:
         cv = vars_by_id[child.id]
         # Child must sit inside parent with padding — REQUIRED.
@@ -1349,7 +1351,7 @@ def _add_containment_for_node(
             (cv.x >= parent.x + CONTAINER_PAD) | "required"
         )
         solver.addConstraint(
-            (cv.y >= parent.y + CONTAINER_PAD_TOP) | "required"
+            (cv.y >= parent.y + pad_top) | "required"
         )
         solver.addConstraint(
             (cv.x2 <= parent.x2 - CONTAINER_PAD) | "required"
@@ -1374,7 +1376,7 @@ def _add_containment_for_node(
         # The content box runs from the label band to the bottom pad, so
         # the row centres on the box, not on the container's midline.
         solver.addConstraint(
-            (2 * cv.cy == 2 * parent.y + CONTAINER_PAD_TOP
+            (2 * cv.cy == 2 * parent.y + pad_top
              + 2 * parent.h - CONTAINER_BOTTOM_PAD) | "weak"
         )
         # Recurse.

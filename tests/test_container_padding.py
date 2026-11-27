@@ -39,3 +39,15 @@ def test_bottom_pad_is_the_plain_padding_not_the_label_band():
     assert bottom <= CONTAINER_PAD
     assert side == CONTAINER_PAD
     assert bottom < top
+
+
+UNLABELLED = SRC.replace('box [type: entity, label: "Box"]', 'box [type: entity, label: ""]')
+
+
+def test_a_container_without_a_label_pads_its_top_like_its_sides():
+    f = parse(UNLABELLED)
+    layout = solve(f.diagrams[0], f.models[0])
+    box = next(n for n in layout.nodes if n.id == "box")
+    inner = box.children[0]
+    assert inner.rect.y - box.rect.y == CONTAINER_PAD
+    assert inner.rect.x - box.rect.x == CONTAINER_PAD
