@@ -750,9 +750,13 @@ def _render_node_content(
                 stroke=style.stroke, stroke_width=style.stroke_width,
                 rx=style.border_radius, ry=style.border_radius, mask=mask))
     if node.id in getattr(view, "focus_nodes", ()):
-        # Focus without dimming: a heavier outline and a bold label.
+        # Focus without dimming: a heavier outline and a bold label. A light
+        # page needs twice the extra weight: an orange outline one pixel
+        # heavier than its neighbours stands out on a dark page but barely
+        # on a white one.
         import dataclasses as _dc
-        style = _dc.replace(style, stroke_width=style.stroke_width + 1,
+        extra = 1 if dark else 2
+        style = _dc.replace(style, stroke_width=style.stroke_width + extra,
                             font_weight="bold")
     if node.fields and node.type in ("record", "class"):
         _render_structured_node(g, node, style, x, y, w, h, dark)
