@@ -1343,7 +1343,9 @@ def _add_containment_for_node(
     select: SelectClause,
 ) -> None:
     parent = vars_by_id[node.id]
-    pad_top = container_pad_top(node.label)
+    compact = node.properties.get("padding") == "compact"
+    pad_top = container_pad_top(node.label, compact)
+    pad_bottom = CONTAINER_BOTTOM_PAD if compact else pad_top
     for child in node.children:
         cv = vars_by_id[child.id]
         # Child must sit inside parent with padding — REQUIRED.
@@ -1364,7 +1366,7 @@ def _add_containment_for_node(
         # centres on the box and every level of nesting stays on the
         # midline.
         solver.addConstraint(
-            (cv.y2 <= parent.y2 - CONTAINER_BOTTOM_PAD) | "required"
+            (cv.y2 <= parent.y2 - pad_bottom) | "required"
         )
         # The child row CENTRES on the container's midline (weak): the
         # symmetric pads make it possible, and a label-driven growth on
@@ -1373,11 +1375,11 @@ def _add_containment_for_node(
         # row 22px above the shared midline -- every anchor off a
         # midpoint). Weak: containment and the label contract keep
         # their say; the centring takes the slack.
-        # The content box runs from the label band to the bottom pad, so
-        # the row centres on the box, not on the container's midline.
+        # The content box runs from the top pad to the bottom pad; with the
+        # default symmetric pads that is the container's midline.
         solver.addConstraint(
-            (2 * cv.cy == 2 * parent.y + pad_top
-             + 2 * parent.h - CONTAINER_BOTTOM_PAD) | "weak"
+            (2 * cv.cy == 2 * parent.y + parent.h
+             + pad_top - pad_bottom) | "weak"
         )
         # Recurse.
         if child.children and child.id not in select.collapse:

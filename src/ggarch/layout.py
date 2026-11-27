@@ -105,9 +105,10 @@ CHAR_WIDTH        = 7.2     # px — approximate for a 13px sans-serif font
 LINE_HEIGHT       = 18      # px
 PADDING_X         = 16      # px horizontal padding inside a node box
 PADDING_Y         = 12      # px vertical padding inside a node box
-CONTAINER_PAD_TOP = 36      # px — top padding for the container label: the label, about 14 px, centred, with room above and below
+CONTAINER_PAD_TOP = 28      # px — extra top padding for container label (also the bottom pad: the content centres on the box)
+CONTAINER_COMPACT_TOP = 36  # px — compact mode: the label band, with room around the label
 CONTAINER_PAD     = 16      # px — padding around children inside a container
-CONTAINER_BOTTOM_PAD = 16   # px — bottom padding: no label there, so no more than the side padding
+CONTAINER_BOTTOM_PAD = 16   # px — compact mode: bottom padding (no label there)
 MIN_NODE_WIDTH    = 80      # px
 MIN_NODE_HEIGHT   = 36      # px
 
@@ -131,14 +132,20 @@ FIELD_ROW_H   = 20    # px — height of one field row in a record/class node
 FIELD_HEADER_H = 28   # px — header compartment height for record/class nodes
 
 
-def container_pad_top(label: str) -> float:
-    """Top padding of a container: room for its label, or the plain padding.
+def container_pad_top(label: str, compact: bool = False) -> float:
+    """Top padding of a container.
 
-    Padding is spent where a label needs it. A container with a label keeps
-    the label band (room around the label); one without a label has nothing
-    to clear, so its children sit at the same minimal padding as at the sides.
+    The default keeps the label band (28 px) and pads the bottom to match, so
+    the content sits on the container's midline: edges that must stay straight
+    between a nested child and a node aligned with the container rely on it.
+    A container that opts in with `padding: compact` spends padding where a
+    label needs it: the label band with room around the label (36 px) when it
+    has a label, the plain padding when it has none; its bottom is the plain
+    padding, and its content centres on the box between the two.
     """
-    return CONTAINER_PAD_TOP if label else CONTAINER_PAD
+    if not compact:
+        return CONTAINER_PAD_TOP
+    return CONTAINER_COMPACT_TOP if label else CONTAINER_PAD
 
 
 def min_size(label: str, is_container: bool = False) -> tuple[float, float]:
@@ -150,7 +157,7 @@ def min_size(label: str, is_container: bool = False) -> tuple[float, float]:
     tw, th = _text_size(label)
     w = max(tw + PADDING_X * 2, MIN_NODE_WIDTH)
     if is_container:
-        h = max(th + container_pad_top(label), MIN_NODE_HEIGHT)
+        h = max(th + CONTAINER_PAD_TOP, MIN_NODE_HEIGHT)
     else:
         h = max(th + PADDING_Y * 2, MIN_NODE_HEIGHT)
     return w, h

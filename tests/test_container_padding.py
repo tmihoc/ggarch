@@ -4,14 +4,16 @@ The top pad carries the container's label band. The bottom and side pads have
 no label, so they are the plain container padding: a nested box does not float
 in empty space under its content (Juju docs, Storage pool figure, 2026-11-27).
 """
-from ggarch.layout import CONTAINER_BOTTOM_PAD, CONTAINER_PAD, CONTAINER_PAD_TOP
+from ggarch.layout import (
+    CONTAINER_BOTTOM_PAD, CONTAINER_COMPACT_TOP, CONTAINER_PAD, CONTAINER_PAD_TOP,
+)
 from ggarch.parser import parse
 from ggarch.solver import solve
 
 SRC = """\
 model "M" {
   nodes {
-    box [type: entity, label: "Box"] {
+    box [type: entity, label: "Box", padding: compact] {
       inner [type: entity, label: "Inner"]
     }
     out [type: external, label: "Out"]
@@ -34,14 +36,14 @@ def test_bottom_pad_is_the_plain_padding_not_the_label_band():
     top = inner.rect.y - box.rect.y
     bottom = (box.rect.y + box.rect.h) - (inner.rect.y + inner.rect.h)
     side = inner.rect.x - box.rect.x
-    assert top >= CONTAINER_PAD_TOP
+    assert top >= CONTAINER_COMPACT_TOP
     assert bottom == CONTAINER_BOTTOM_PAD
     assert bottom <= CONTAINER_PAD
     assert side == CONTAINER_PAD
     assert bottom < top
 
 
-UNLABELLED = SRC.replace('box [type: entity, label: "Box"]', 'box [type: entity, label: ""]')
+UNLABELLED = SRC.replace('box [type: entity, label: "Box", padding: compact]', 'box [type: entity, label: "", padding: compact]')
 
 
 def test_a_container_without_a_label_pads_its_top_like_its_sides():
@@ -109,3 +111,50 @@ def test_a_box_label_can_be_italic_and_readable_on_a_pale_border():
     svg = svg if isinstance(svg, str) else str(svg)
     assert 'font-style="italic"' in svg
     assert "#595959" in svg
+
+
+DEEP = """\
+model "M" {
+  nodes {
+    controller [type: juju-software, label: "Controller"]
+    outer [type: entity, label: "Outer"] {
+      mid [type: entity, label: "Mid"] {
+        inner [type: node, label: "Inner"] {
+          leaf [type: juju-software, label: "Leaf"]
+          other [type: charm, label: "Other"]
+        }
+      }
+    }
+  }
+  edges { leaf -> controller [type: stream, label: "watches"] }
+  style { extends: juju }
+}
+diagram "D" from "M" {
+  select { nodes: controller outer edges: type stream }
+  positions {
+    outer right-of controller gap: 100
+    outer align-middle controller
+  }
+}
+"""
+
+
+def test_default_containers_keep_nested_rows_on_the_midline():
+    """The default pads are symmetric so a nested child lines up with a node
+    aligned to the outermost container (the Juju architecture topology)."""
+    f = parse(DEEP)
+    layout = solve(f.diagrams[0], f.models[0])
+    controller = next(n for n in layout.nodes if n.id == "controller")
+
+    def find(n, nid):
+        if n.id == nid:
+            return n
+        for c in n.children:
+            r = find(c, nid)
+            if r:
+                return r
+
+    outer = next(n for n in layout.nodes if n.id == "outer")
+    leaf = find(outer, "leaf")
+    cy = lambda n: n.rect.y + n.rect.h / 2
+    assert abs(cy(leaf) - cy(controller)) < 0.5
