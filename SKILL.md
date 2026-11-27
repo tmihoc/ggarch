@@ -487,10 +487,11 @@ select {
   without any of its descendants keeps its whole subtree. Prefer this to
   an annotation box when the group is itself a model entity: the
   container keeps the entity's border and badge.
-- A container whose children the view positions against each other (a
-  constraint or a `fan` naming two of them) is laid out by those
-  positions alone; `direction:` and the default left-to-right placement
-  apply only to containers the view does not position inside.
+- A container whose children the view places against each other (a
+  `left-of`, `right-of`, `above` or `below`, or a `fan`, naming two of
+  them) and that has no `direction:` is laid out by those placements
+  alone. A declared `direction:` always applies, and alignment or size
+  constraints never switch the default placement off.
 - `routing: orthogonal` — the router rejects diagonal legs; every route
   is straight-axis-aligned, an L, or a U. For worker-tree / dependency
   views that read better on a grid.
