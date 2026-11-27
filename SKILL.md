@@ -640,6 +640,9 @@ annotations {
 The box is layout-transparent: it does not affect constraint solving.
 The canvas expands automatically to fit boxes that extend beyond node bounds.
 
+**Colour** -- `color` is a colour, or `quiet`, a grouping line that is readable on both a
+light page and a dark one (a single pale grey fades on white).
+
 **Label typesetting** -- a grouping label is a different kind of text from a
 node label. By default it takes the box colour and is upright. `label-style:
 italic` sets it in italics, and `label-color` sets its colour: `text` is the

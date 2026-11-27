@@ -1751,6 +1751,10 @@ def _render_ann_box(
     w = br.w + pl + pr
     h = br.h + pt + pb
     color = ann.color or ("#888888" if dark else "#666666")
+    if color == "quiet":
+        # A quiet grouping line that reads on both pages: darker on a light
+        # page (3.5:1 against white), lighter on a dark one.
+        color = "#B4B4B4" if dark else "#8A8A8A"
     dash = "6,4" if ann.style == "dashed" else ""
 
     # A circling has no gates: annotation boxes are meta elements

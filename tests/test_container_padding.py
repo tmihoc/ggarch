@@ -158,3 +158,17 @@ def test_default_containers_keep_nested_rows_on_the_midline():
     leaf = find(outer, "leaf")
     cy = lambda n: n.rect.y + n.rect.h / 2
     assert abs(cy(leaf) - cy(controller)) < 0.5
+
+
+def test_a_quiet_box_colour_depends_on_the_page_theme():
+    from ggarch.renderer import render
+    from ggarch.router import route
+    from ggarch.validator import validate
+    f = parse(LABELLED_BOX.replace('color: "#B4B4B4"', 'color: "quiet"'))
+    validate(f)
+    d, m = f.diagrams[0], f.models[0]
+    routed = route(solve(d, m), m, d.select)
+    light = str(render(routed, m, d, dark=False))
+    dark = str(render(routed, m, d, dark=True))
+    assert "#8A8A8A" in light and "#B4B4B4" not in light
+    assert "#B4B4B4" in dark and "#8A8A8A" not in dark
