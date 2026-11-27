@@ -18,6 +18,7 @@ table) and lifecycle by the border dash, never by colour.
 """
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 
 
@@ -169,13 +170,17 @@ def resolve_style(model_style, dark: bool = False) -> dict[str, NodeStyle]:
     for type_name, rule in rules.items():
         existing = bank.get(type_name, NodeStyle())
         # Override only fields that were explicitly set in the model.
-        merged = NodeStyle(
+        # Every other field (the dash, the badge, ...) is kept from the
+        # preset: an override of one property must not reset the rest.
+        merged = dataclasses.replace(
+            existing,
             fill=rule.fill or existing.fill,
             stroke=rule.stroke or existing.stroke,
             font_color=rule.font_color or existing.font_color,
             font_size=rule.font_size or existing.font_size,
             shape=rule.shape or existing.shape,
-            border_radius=existing.border_radius,
+            stroke_width=rule.stroke_width or existing.stroke_width,
+            stroke_dash=rule.stroke_dash or existing.stroke_dash,
         )
         bank[type_name] = merged
     return bank

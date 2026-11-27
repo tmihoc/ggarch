@@ -172,3 +172,35 @@ def test_a_quiet_box_colour_depends_on_the_page_theme():
     dark = str(render(routed, m, d, dark=True))
     assert "#8A8A8A" in light and "#B4B4B4" not in light
     assert "#B4B4B4" in dark and "#8A8A8A" not in dark
+
+
+THICK = """\
+model "M" {
+  nodes {
+    a [type: entity, label: "A"]
+    b [type: entity, label: "B"]
+  }
+  edges { a -> b [type: api, label: "x"] }
+  style {
+    extends: juju
+    entity { stroke-width: 2 }
+  }
+}
+diagram "D" from "M" {
+  select { nodes: a b edges: type api }
+  positions { b right-of a gap: 40 }
+}
+"""
+
+
+def test_a_node_style_override_changes_only_what_it_sets():
+    """Setting stroke-width on entity keeps the preset's dotted border."""
+    from ggarch.renderer import render
+    from ggarch.router import route
+    from ggarch.validator import validate
+    f = parse(THICK)
+    validate(f)
+    d, m = f.diagrams[0], f.models[0]
+    svg = str(render(route(solve(d, m), m, d.select), m, d))
+    assert 'stroke-width="2"' in svg
+    assert 'stroke-dasharray="2,2"' in svg
