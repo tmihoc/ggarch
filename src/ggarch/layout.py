@@ -176,7 +176,7 @@ def field_node_min_size(label: str, n_fields: int) -> tuple[float, float]:
 # ---------------------------------------------------------------------------
 
 PORT_SIZE        = 12   # px — side of a port's square, centred on the border
-PORT_ROW_H       = 30   # px — one row per left/right port; one band per top/bottom side
+PORT_ROW_H       = 24   # px — one row per left/right port; one band per top/bottom side
 PORT_LABEL_BAND  = 32   # px — the node's own label band above the port rows
 PORT_BOTTOM_PAD  = 8    # px
 PORT_LABEL_GAP   = 8    # px — between a port's square and its label

@@ -1006,6 +1006,18 @@ def _port_side(node, field_id: str) -> str:
                  if f.id == field_id and f.port), "")
 
 
+PORT_SOURCE_MARGIN = 6   # px — keep a level source anchor off the corners
+
+
+def _level_source_anchor(src: Rect, port_pt: Point, port_side: str) -> Point:
+    """Where an edge into a left (right) port leaves its source: on the
+    source's right (left) side, at the port's height, clamped to stay
+    PORT_SOURCE_MARGIN px inside that side."""
+    y = min(max(port_pt.y, src.y + PORT_SOURCE_MARGIN),
+            src.y2 - PORT_SOURCE_MARGIN)
+    return Point(src.x2 if port_side == "left" else src.x, y)
+
+
 def _port_stub_route(src: Point, tgt: Point, src_side: str,
                      tgt_side: str) -> list[Point]:
     """An orthogonal path from src to tgt whose port ends run straight out
@@ -1019,9 +1031,9 @@ def _port_stub_route(src: Point, tgt: Point, src_side: str,
 
     a = stub(src, src_side) if src_side else src
     b = stub(tgt, tgt_side) if tgt_side else tgt
-    # Into a port: run level from the source, turn at the stub's start, so
-    # edges into several ports of one node share a trunk and fork late.
-    # Out of a port only: turn right after the stub, arrive level.
+    # Into a port: run level from the source and turn, if at all, at the
+    # stub's start. Out of a port only: turn right after the stub, arrive
+    # level.
     corner = Point(b.x, a.y) if tgt_side else Point(a.x, b.y)
     out: list[Point] = []
     for p in (src, a, corner, b, tgt):
@@ -2117,12 +2129,17 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                 _face_point(tgt_rect, _dominant_face(tgt_rect, src_rect)),
             ]
         # Ports: the edge arrives (or leaves) perpendicular to the port's
-        # side, on a short stub, so two edges from one node into two ports
-        # of another read as a fork with one arrow into each socket.
+        # side, on a short stub. An edge into a left or right port leaves
+        # its source level with the port where the source's facing side
+        # allows, so edges from one node into several ports are separate,
+        # parallel arrows, each straight when the geometry permits.
         tgt_port = _port_side(tgt_node, edge.target_field)
         src_port = _port_side(src_node, edge.source_field)
         if tgt_port or src_port:
-            pts = _port_stub_route(pts[0], pts[-1], src_port, tgt_port)
+            start = pts[0]
+            if tgt_port in ("left", "right") and not src_port:
+                start = _level_source_anchor(src_rect, pts[-1], tgt_port)
+            pts = _port_stub_route(start, pts[-1], src_port, tgt_port)
 
         # Record the final anchors' face coordinates so later edges
         # sharing a face prefer distinct offsets (deliberate, not

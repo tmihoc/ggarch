@@ -213,9 +213,10 @@ offer -> offer_app.endpoint_b [type: control]
   canvas colour so it reads as a socket, with its label inside the node next
   to it. A port that no edge reaches is drawn the same way: an unused socket.
 - An edge into a port ends on the outer face of its square and arrives on a
-  short straight stub perpendicular to the port's side. Several edges from
-  one node into ports of another share a trunk and fork at the stubs, so
-  label only one of them.
+  short straight stub perpendicular to the port's side. An edge into a left
+  or right port leaves its source level with the port where the source's
+  facing side reaches that height, so several edges from one node into
+  ports of another are separate, parallel arrows: label each one.
 - The node grows to fit its ports and their labels. Ports go on a leaf node
   (put them on the child that owns them), a node cannot declare both `ports`
   and `fields`, and `side` is only valid on a port. A `fields: hidden` view

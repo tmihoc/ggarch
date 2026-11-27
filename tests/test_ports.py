@@ -19,7 +19,7 @@ model "M" {
   }
   edges {
     offer -> app.a [type: control, label: "includes"]
-    offer -> app.b [type: control]
+    offer -> app.b [type: control, label: "includes"]
   }
   style { extends: juju }
 }
@@ -106,6 +106,18 @@ def test_edges_end_on_the_outer_face_of_their_port_and_arrive_level():
         assert end.y == pytest.approx(cy)
         assert before.y == pytest.approx(end.y)          # horizontal approach
         assert before.x < end.x                           # from the outside
+
+
+def test_edges_into_two_ports_are_separate_level_arrows():
+    _d, _m, layout, routed = _solved()
+    offer = layout.find("offer")
+    into_app = [e for e in routed.edges if e.target_id == "app"]
+    starts = {round(e.points[0].y, 1) for e in into_app}
+    assert len(starts) == 2                               # no shared trunk
+    for e in into_app:
+        assert e.points[0].x == pytest.approx(offer.rect.x2)
+        if offer.rect.y + 6 <= e.points[-1].y <= offer.rect.y2 - 6:
+            assert len(e.points) == 2                     # straight across
 
 
 def test_rendered_svg_draws_every_port_and_its_label():
