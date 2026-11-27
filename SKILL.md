@@ -689,6 +689,21 @@ and the label should read as a caption for the whole region. `top` (the
 default) works when there is clear space above the box. `bottom` works when
 the label can live outside below the diagram content.
 
+### Focus a node without dimming
+
+`emphasize { nodes [..] }` and `path [..]` draw the named nodes loud and dim
+everything else to 35%. To show which node a figure is about while keeping
+its context fully readable, use `focus`: the named nodes get a bold label and
+an outline one pixel heavier, and nothing is dimmed. It works in both themes
+and in grayscale, and it names nodes nested in a selected container.
+
+```
+diagram "Storage pool in a deployment" from "Juju" {
+  select { nodes: pool_model edges: type control }
+  emphasize { focus [pool] }
+}
+```
+
 ### Legend annotation
 
 Documents the visual grammar used in this view:

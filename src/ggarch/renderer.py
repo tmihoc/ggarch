@@ -749,6 +749,11 @@ def _render_node_content(
                 x + depth, y - depth, w, h, fill="none",
                 stroke=style.stroke, stroke_width=style.stroke_width,
                 rx=style.border_radius, ry=style.border_radius, mask=mask))
+    if node.id in getattr(view, "focus_nodes", ()):
+        # Focus without dimming: a heavier outline and a bold label.
+        import dataclasses as _dc
+        style = _dc.replace(style, stroke_width=style.stroke_width + 1,
+                            font_weight="bold")
     if node.fields and node.type in ("record", "class"):
         _render_structured_node(g, node, style, x, y, w, h, dark)
     elif style.shape == "person":
@@ -1075,6 +1080,7 @@ def _render_label(
             fill=style.font_color,
             text_anchor=anchor,
             dominant_baseline=baseline if i == 0 else "central",
+            **({"font_weight": style.font_weight} if style.font_weight else {}),
         ))
 
 

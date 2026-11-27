@@ -149,6 +149,7 @@ emphasize_block: EMPHASIZE_KW "{" emphasize_item* "}"
 
 emphasize_item: "path" "[" ID+ "]"            -> emph_path
               | "nodes" "[" ID+ "]"           -> emph_nodes
+              | "focus" "[" ID+ "]"           -> emph_focus
 
 annotation: "box"       attrs_inline -> ann_box
           | "callout"   attrs_inline -> ann_callout

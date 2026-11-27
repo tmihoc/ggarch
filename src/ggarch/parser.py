@@ -423,6 +423,7 @@ class _GgarchTransformer(Transformer):
             annotations=annotations,
             emphasize_path=emphasize.get("path", []),
             emphasize_nodes=emphasize.get("nodes", []),
+            focus_nodes=emphasize.get("focus", []),
         )
 
     def diagram_body(self, *items):
@@ -446,7 +447,7 @@ class _GgarchTransformer(Transformer):
         return select, constraints, annotations, emphasize
 
     def emphasize_block(self, *items) -> dict:
-        out: dict[str, list[str]] = {"path": [], "nodes": []}
+        out: dict[str, list[str]] = {"path": [], "nodes": [], "focus": []}
         for item in items:
             if not isinstance(item, tuple):
                 continue  # the EMPHASIZE_KW terminal rides the tree
@@ -459,6 +460,9 @@ class _GgarchTransformer(Transformer):
 
     def emph_nodes(self, *ids) -> tuple:
         return ("nodes", [_str(i) for i in ids])
+
+    def emph_focus(self, *ids) -> tuple:
+        return ("focus", [_str(i) for i in ids])
 
     def select_block(self, *items) -> SelectClause:
         s = SelectClause()

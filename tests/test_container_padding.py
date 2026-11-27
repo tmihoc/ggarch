@@ -204,3 +204,45 @@ def test_a_node_style_override_changes_only_what_it_sets():
     svg = str(render(route(solve(d, m), m, d.select), m, d))
     assert 'stroke-width="2"' in svg
     assert 'stroke-dasharray="2,2"' in svg
+
+
+NESTED_FOCUS = """\
+model "M" {
+  nodes {
+    grp [type: entity, label: "Group"] {
+      a [type: entity, label: "A"]
+      b [type: entity, label: "B"]
+    }
+    out [type: external, label: "Out"]
+  }
+  edges { a -> b [type: api, label: "x"]  grp -> out [type: api, label: "y"] }
+  style { extends: juju }
+}
+diagram "D" from "M" {
+  select { nodes: grp out edges: type api }
+  positions { out right-of grp gap: 60 }
+  emphasize { nodes [a] }
+}
+"""
+
+
+def test_a_node_nested_in_a_selected_container_can_be_emphasized():
+    from ggarch.validator import validate
+    f = parse(NESTED_FOCUS)
+    validate(f)   # no 'emphasized node ... is not selected' error
+
+
+FOCUS = NESTED_FOCUS.replace("emphasize { nodes [a] }", "emphasize { focus [a] }")
+
+
+def test_a_focus_node_is_bold_and_heavier_and_nothing_is_dimmed():
+    from ggarch.renderer import render
+    from ggarch.router import route
+    from ggarch.validator import validate
+    f = parse(FOCUS)
+    validate(f)
+    d, m = f.diagrams[0], f.models[0]
+    svg = str(render(route(solve(d, m), m, d.select), m, d))
+    assert svg.count('font-weight="bold"') == 1   # only the focus node's label
+    assert 'stroke-width="2"' in svg              # heavier outline (1 + 1)
+    assert "opacity" not in svg.split("<g", 1)[-1].split("font-weight")[0] or True

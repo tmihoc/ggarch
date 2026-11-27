@@ -490,6 +490,9 @@ class DiagramView:
     # validated (a path through non-adjacent nodes is a lie).
     emphasize_path: list[str] = field(default_factory=list)
     emphasize_nodes: list[str] = field(default_factory=list)
+    # Focus without dimming: these nodes are drawn heavier (a bolder label and a
+    # thicker outline) and everything else stays at full strength.
+    focus_nodes: list[str] = field(default_factory=list)
 
 
 @dataclass

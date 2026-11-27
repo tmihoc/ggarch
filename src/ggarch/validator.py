@@ -526,11 +526,26 @@ def _validate_emphasize(diagram: DiagramView, model: Model) -> None:
     connection, not an arrow direction."""
     from ggarch.instances import materialize_instances
 
-    if not diagram.emphasize_path and not diagram.emphasize_nodes:
+    if not (diagram.emphasize_path or diagram.emphasize_nodes
+            or diagram.focus_nodes):
         return
     view_name = diagram.name
     nodes, edges = materialize_instances(diagram.select, model)
-    sel_ids = {n.id for n in nodes}
+    # A node nested in a selected container is drawn (unless the container is
+    # collapsed), so it can be emphasized: the renderer already dims by the
+    # whole layout tree.
+    collapsed = set(diagram.select.collapse)
+    sel_ids: set[str] = set()
+
+    def _collect(n) -> None:
+        sel_ids.add(n.id)
+        if n.id in collapsed:
+            return
+        for c in n.children:
+            _collect(c)
+
+    for n in nodes:
+        _collect(n)
     except_pairs = {(s, t, ty) for s, t, ty in diagram.select.except_pairs}
     types = set(diagram.select.edge_types) if diagram.select.edge_types else None
 
@@ -544,7 +559,8 @@ def _validate_emphasize(diagram: DiagramView, model: Model) -> None:
                         for es, et, ty in except_pairs)
             for e in edges)
 
-    for nid in diagram.emphasize_nodes + diagram.emphasize_path:
+    for nid in (diagram.emphasize_nodes + diagram.emphasize_path
+                + diagram.focus_nodes):
         if nid not in sel_ids:
             raise ValidationError(
                 f"view {view_name!r}: emphasized node {nid!r} is not "

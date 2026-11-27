@@ -31,6 +31,7 @@ class NodeStyle:
     shape: str = "rectangle"   # rectangle | person | cylinder | diamond
     stroke_width: int = 1
     stroke_dash: str = ""      # "" | "4" | "2"
+    font_weight: str = ""      # "" | "bold" (a focus node)
     border_radius: int = 4
     badge: str = ""            # kind badge (round 24 verdict A): "" |
                                # "juju" | "charm" | "record" — the ~14px
