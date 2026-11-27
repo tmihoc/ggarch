@@ -435,6 +435,8 @@ class AnnotationBox:
     padding_right: int | None = None
     padding_bottom: int | None = None
     padding_left: int | None = None
+    label_color: str = ""          # "" = the box colour; "text" = the theme's readable grey; or a colour
+    label_style: str = ""          # "" = upright; "italic"
 
 
 @dataclass

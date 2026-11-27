@@ -76,3 +76,36 @@ def test_a_single_container_with_internal_edges_is_not_an_orphan():
     validate(f)
     layout = solve(f.diagrams[0], f.models[0])
     assert [n.id for n in layout.nodes] == ["box"]
+
+
+LABELLED_BOX = """\
+model "M" {
+  nodes {
+    a [type: entity, label: "A"]
+    b [type: entity, label: "B"]
+  }
+  edges { a -> b [type: api, label: "x"] }
+  style { extends: juju }
+}
+diagram "D" from "M" {
+  select { nodes: a b edges: type api }
+  positions { b right-of a gap: 40 }
+  annotations {
+    box [nodes: "a b", label: "Group", style: "solid", color: "#B4B4B4",
+         label-color: "text", label-style: "italic"]
+  }
+}
+"""
+
+
+def test_a_box_label_can_be_italic_and_readable_on_a_pale_border():
+    from ggarch.renderer import render
+    from ggarch.router import route
+    from ggarch.validator import validate
+    f = parse(LABELLED_BOX)
+    validate(f)
+    d, m = f.diagrams[0], f.models[0]
+    svg = render(route(solve(d, m), m, d.select), m, d)
+    svg = svg if isinstance(svg, str) else str(svg)
+    assert 'font-style="italic"' in svg
+    assert "#595959" in svg

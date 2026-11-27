@@ -1780,13 +1780,23 @@ def _render_ann_box(
         lines = ann.label.split("\\n")
         lh = ANN_LABEL_LINE_H
         start_y = ly - lh * (len(lines) - 1) / 2
+        # A grouping label is a different kind of text from a node label:
+        # opt-in italics, and a readable colour that does not follow a pale
+        # border ("text" = the theme's secondary text grey).
+        label_fill = ann.label_color or color
+        if label_fill == "text":
+            label_fill = "#BDBDBD" if dark else "#595959"
+        text_kwargs: dict = {}
+        if ann.label_style == "italic":
+            text_kwargs["font_style"] = "italic"
         for line in lines:
             g.append(dw.Text(
                 line, 11, lx, start_y,
                 font_family=ANNOTATION_FONT,
-                fill=color,
+                fill=label_fill,
                 text_anchor=anchor,
                 dominant_baseline="central",
+                **text_kwargs,
             ))
             start_y += lh
 

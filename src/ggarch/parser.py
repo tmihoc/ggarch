@@ -632,6 +632,8 @@ class _GgarchTransformer(Transformer):
             padding_right=int(attrs.pop("padding-right", pad)),
             padding_bottom=int(attrs.pop("padding-bottom", pad)),
             padding_left=int(attrs.pop("padding-left", pad)),
+            label_color=attrs.pop("label-color", ""),
+            label_style=attrs.pop("label-style", ""),
         )
 
     def ann_callout(self, attrs) -> AnnotationCallout:

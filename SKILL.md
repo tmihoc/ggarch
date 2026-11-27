@@ -640,6 +640,17 @@ annotations {
 The box is layout-transparent: it does not affect constraint solving.
 The canvas expands automatically to fit boxes that extend beyond node bounds.
 
+**Label typesetting** -- a grouping label is a different kind of text from a
+node label. By default it takes the box colour and is upright. `label-style:
+italic` sets it in italics, and `label-color` sets its colour: `text` is the
+theme's readable secondary grey (dark in light mode, light in dark mode), so a
+pale border (for a quiet grouping) does not make a pale label.
+
+```
+box [nodes: "a b", label: "What you declare", style: "solid", color: "#B4B4B4",
+     label-color: "text", label-style: "italic"]
+```
+
 **Padding** -- `padding` sets uniform space (px) between the annotated nodes'
 bounding rect and the box edge. Default is 10. Per-side overrides
 `padding-top`, `padding-right`, `padding-bottom`, `padding-left` take
