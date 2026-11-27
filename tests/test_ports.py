@@ -120,6 +120,22 @@ def test_edges_into_two_ports_are_separate_level_arrows():
             assert len(e.points) == 2                     # straight across
 
 
+def test_edges_out_of_two_ports_are_separate_level_arrows():
+    src = (SRC.replace('a [label: "Endpoint A"]', 'a [label: "Endpoint A", side: right]')
+              .replace('b [label: "Endpoint B"]', 'b [label: "Endpoint B", side: right]')
+              .replace('c [label: "Endpoint C"]', 'c [label: "Endpoint C", side: right]')
+              .replace("offer -> app.a", "app.a -> offer")
+              .replace("offer -> app.b", "app.b -> offer")
+              .replace("offer left-of app", "offer right-of app"))
+    _d, _m, layout, routed = _solved(src)
+    offer = layout.find("offer")
+    out_of_app = [e for e in routed.edges if e.source_id == "app"]
+    assert len({round(e.points[-1].y, 1) for e in out_of_app}) == 2   # no merge
+    for e in out_of_app:
+        assert e.points[-1].x == pytest.approx(offer.rect.x)
+        assert len(e.points) == 2                                     # straight across
+
+
 def test_rendered_svg_draws_every_port_and_its_label():
     d, m, _layout, routed = _solved()
     for dark in (False, True):
