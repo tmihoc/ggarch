@@ -687,6 +687,12 @@ def _validate_orphans(diagram: DiagramView, model: Model) -> None:
                 if rec_top:
                     touched.add(rec_top)
 
+    # A single selected container has nothing outside it to connect to: its
+    # own children are connected by the edges inside it, which are drawn but
+    # are not counted above (same-top edges).
+    if len(nodes) == 1 and nodes[0].children:
+        return
+
     for n in nodes:
         if n.id not in touched:
             raise ValidationError(

@@ -51,3 +51,28 @@ def test_a_container_without_a_label_pads_its_top_like_its_sides():
     inner = box.children[0]
     assert inner.rect.y - box.rect.y == CONTAINER_PAD
     assert inner.rect.x - box.rect.x == CONTAINER_PAD
+
+
+ALONE = """\
+model "M" {
+  nodes {
+    box [type: entity, label: "Box"] {
+      a [type: entity, label: "A"]
+      b [type: entity, label: "B"]
+    }
+  }
+  edges { a -> b [type: api, label: "x"] }
+  style { extends: juju }
+}
+diagram "D" from "M" {
+  select { nodes: box edges: type api }
+}
+"""
+
+
+def test_a_single_container_with_internal_edges_is_not_an_orphan():
+    from ggarch.validator import validate
+    f = parse(ALONE)
+    validate(f)
+    layout = solve(f.diagrams[0], f.models[0])
+    assert [n.id for n in layout.nodes] == ["box"]
