@@ -232,12 +232,20 @@ class _GgarchTransformer(Transformer):
             if isinstance(item, Node):
                 children.append(item)
             elif isinstance(item, list) and item and isinstance(item[0], NodeField):
-                fields = item
+                fields.extend(item)
         return ("__node_body__", children, fields)
 
     def fields_block(self, *items) -> list[NodeField]:
         # items[0] is the FIELDS_KW token — discard it; rest are NodeField
         return [f for f in items if isinstance(f, NodeField)]
+
+    def ports_block(self, *items) -> list[NodeField]:
+        # items[0] is the PORTS_KW token; a port defaults to the left face.
+        ports = [f for f in items if isinstance(f, NodeField)]
+        for p in ports:
+            p.port = True
+            p.side = p.side or "left"
+        return ports
 
     def field_decl(self, id_token, *rest) -> NodeField:
         attrs = rest[0] if rest and isinstance(rest[0], dict) else {}
@@ -250,6 +258,7 @@ class _GgarchTransformer(Transformer):
             fk=attrs.pop("fk", False) in (True, "true", "yes", 1),
             uk=attrs.pop("uk", False) in (True, "true", "yes", 1),
             nullable=attrs.pop("null", False) in (True, "true", "yes", 1),
+            side=str(attrs.pop("side", "")),
         )
 
     def node_leaf(self, id_token, *rest) -> Node:

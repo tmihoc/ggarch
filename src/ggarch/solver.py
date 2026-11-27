@@ -40,6 +40,7 @@ from ggarch.layout import (
     SolvedNode,
     field_node_min_size,
     min_size,
+    port_node_min_size,
 )
 from ggarch.instances import materialize_instances
 from ggarch.geometry import annotation_label_rect
@@ -1305,7 +1306,9 @@ def _add_min_size_for_node(
     solver.addConstraint((v.w >= MIN_NODE_WIDTH) | "required")
     solver.addConstraint((v.h >= MIN_NODE_HEIGHT) | "required")
 
-    if node.fields:
+    if node.fields and any(f.port for f in node.fields):
+        min_w, min_h = port_node_min_size(node.label, node.fields)
+    elif node.fields:
         min_w, min_h = field_node_min_size(node.label, len(node.fields))
     else:
         min_w, min_h = min_size(node.label, is_container and not collapsed)

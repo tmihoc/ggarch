@@ -66,15 +66,29 @@ def validate(f: GgarchFile, *, check_orphans: bool = False,
 
 
 def _validate_node_fields(node, model_name: str) -> None:
-    """Check field ids are unique within the node; recurse into children."""
+    """Check field and port ids are unique within the node, that ports and
+    fields are not mixed, that a port's side is valid and that no port id
+    names a child; recurse into children."""
+    from ggarch.model import PORT_SIDES
+    where = f"model {model_name!r}, node {node.id!r}"
     seen: set[str] = set()
     for f in node.fields:
+        kind = "port" if f.port else "field"
         if f.id in seen:
-            raise ValidationError(
-                f"model {model_name!r}, node {node.id!r}: "
-                f"duplicate field id {f.id!r}",
-            )
+            raise ValidationError(f"{where}: duplicate {kind} id {f.id!r}")
         seen.add(f.id)
+        if f.port and f.side not in PORT_SIDES:
+            raise ValidationError(
+                f"{where}: port {f.id!r} has side {f.side!r}; "
+                f"expected one of {', '.join(PORT_SIDES)}")
+        if not f.port and f.side:
+            raise ValidationError(
+                f"{where}: field {f.id!r} has a side; only ports take one")
+    if any(f.port for f in node.fields) and any(not f.port for f in node.fields):
+        raise ValidationError(f"{where}: a node cannot declare both ports and fields")
+    if node.children and any(f.port for f in node.fields):
+        raise ValidationError(
+            f"{where}: ports go on a leaf node; put them on the child that owns them")
     for child in node.children:
         _validate_node_fields(child, model_name)
 
@@ -325,8 +339,8 @@ def _validate_model(model: Model) -> None:
                 if ep_field not in node_fields:
                     raise ValidationError(
                         f"model {model.name!r}: edge {role} {ep_node!r}.{ep_field!r} "
-                        f"references undeclared field",
-                        hint=f"declared fields on {ep_node!r}: {sorted(node_fields)}",
+                        f"references undeclared field or port",
+                        hint=f"declared fields and ports on {ep_node!r}: {sorted(node_fields)}",
                     )
 
     # FK completeness on record nodes: declared data edges must mirror

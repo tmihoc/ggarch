@@ -169,3 +169,75 @@ def field_node_min_size(label: str, n_fields: int) -> tuple[float, float]:
     w = max(tw + PADDING_X * 2, 160)  # wider default for table nodes
     h = FIELD_HEADER_H + max(n_fields, 1) * FIELD_ROW_H + 4  # 4px bottom pad
     return w, h
+
+
+# ---------------------------------------------------------------------------
+# Ports
+# ---------------------------------------------------------------------------
+
+PORT_SIZE        = 12   # px — side of a port's square, centred on the border
+PORT_ROW_H       = 30   # px — one row per left/right port; one band per top/bottom side
+PORT_LABEL_BAND  = 32   # px — the node's own label band above the port rows
+PORT_BOTTOM_PAD  = 8    # px
+PORT_LABEL_GAP   = 8    # px — between a port's square and its label
+PORT_LABEL_FONT  = 12   # px
+
+
+def _side_ports(ports, side):
+    return [p for p in ports if p.side == side]
+
+
+def port_top_extra(ports) -> float:
+    """Height of the band that top ports' labels take above the node label."""
+    return PORT_ROW_H if _side_ports(ports, "top") else 0
+
+
+def port_label_y(rect: Rect, ports) -> float:
+    """Centre y of the node's own label in a node with ports."""
+    return rect.y + port_top_extra(ports) + PORT_LABEL_BAND / 2
+
+
+def port_node_min_size(label: str, ports) -> tuple[float, float]:
+    """Min size for a node with ports: its label band, one row per
+    left/right port (the two sides share rows), and a band for each of the
+    top and bottom sides that has ports; wide enough for the labels."""
+    tw, _ = _text_size(label)
+    left, right = _side_ports(ports, "left"), _side_ports(ports, "right")
+    top, bottom = _side_ports(ports, "top"), _side_ports(ports, "bottom")
+    label_w = lambda ps: max((len(p.label) * CHAR_WIDTH for p in ps), default=0)
+    inset = PORT_SIZE / 2 + PORT_LABEL_GAP
+    side_w = (inset + label_w(left) if left else 0) + (inset + label_w(right) if right else 0)
+    if left and right:
+        side_w += PADDING_X
+    across = max(len(top), len(bottom))
+    across_w = (across + 1) * max(label_w(top + bottom) + PADDING_X, 0) if across else 0
+    w = max(tw + PADDING_X * 2, side_w + PADDING_X, across_w, MIN_NODE_WIDTH)
+    rows = max(len(left), len(right))
+    h = (port_top_extra(ports) + PORT_LABEL_BAND
+         + rows * PORT_ROW_H + PORT_BOTTOM_PAD
+         + (PORT_ROW_H if bottom else 0))
+    return w, max(h, MIN_NODE_HEIGHT)
+
+
+def port_center(rect: Rect, ports, port_id: str) -> tuple[float, float, str]:
+    """Centre (x, y) of a port's square on the node's border, and its side.
+    Left and right ports sit in rows below the node label, in declaration
+    order per side; top and bottom ports spread evenly along their face."""
+    port = next(p for p in ports if p.id == port_id)
+    same = _side_ports(ports, port.side)
+    i = same.index(port)
+    if port.side in ("left", "right"):
+        cy = (rect.y + port_top_extra(ports) + PORT_LABEL_BAND
+              + i * PORT_ROW_H + PORT_ROW_H / 2)
+        return (rect.x if port.side == "left" else rect.x2), cy, port.side
+    cx = rect.x + rect.w * (i + 1) / (len(same) + 1)
+    return cx, (rect.y if port.side == "top" else rect.y2), port.side
+
+
+def port_anchor(rect: Rect, ports, port_id: str) -> tuple[float, float, str]:
+    """Where an edge ends on a port: the midpoint of the square's outer face."""
+    cx, cy, side = port_center(rect, ports, port_id)
+    half = PORT_SIZE / 2
+    dx, dy = {"left": (-half, 0), "right": (half, 0),
+              "top": (0, -half), "bottom": (0, half)}[side]
+    return cx + dx, cy + dy, side

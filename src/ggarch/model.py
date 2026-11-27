@@ -63,6 +63,19 @@ class NodeField:
     fk: bool = False       # foreign key marker
     uk: bool = False       # unique key marker
     nullable: bool = False # nullable marker (shown as "?")
+    # Ports: a field declared in a `ports { ... }` block is a socket drawn on
+    # the node's border, on `side` (left, right, top or bottom), that edges
+    # address as `node.port_id` like any field.
+    port: bool = False
+    side: str = ""
+
+
+PORT_SIDES = ("left", "right", "top", "bottom")
+
+
+def node_ports(node) -> list["NodeField"]:
+    """The node's ports, in declaration order (empty for a node without)."""
+    return [f for f in node.fields if f.port]
 
 
 # ---------------------------------------------------------------------------
@@ -558,11 +571,21 @@ def mask_fields(model: "Model") -> "Model":
         return unique, bool(f.nullable)
 
     def strip(nodes):
-        return [dataclasses.replace(n, fields=[], children=strip(n.children))
+        # Ports are not fields of a record: they stay on the node.
+        return [dataclasses.replace(n, fields=[f for f in n.fields if f.port],
+                                    children=strip(n.children))
                 for n in nodes]
+
+    def is_port(node_id, field_id):
+        n = find(model.nodes, node_id)
+        return bool(field_id) and n is not None and any(
+            f.id == field_id and f.port for f in n.fields)
 
     edges = []
     for e in model.edges:
+        if is_port(e.source, e.source_field) or is_port(e.target, e.target_field):
+            edges.append(e)
+            continue
         if e.source_field or e.target_field:
             sw = witness(find(model.nodes, e.source), e.source_field)
             tw = witness(find(model.nodes, e.target), e.target_field)

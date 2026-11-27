@@ -756,6 +756,8 @@ def _render_node_content(
                             font_weight="bold")
     if node.fields and node.type in ("record", "class"):
         _render_structured_node(g, node, style, x, y, w, h, dark)
+    elif node.fields and any(f.port for f in node.fields):
+        _render_ported_node(g, node, style, x, y, w, h, dark)
     elif style.shape == "person":
         _render_person(g, x, y, w, h, style, node.label)
     elif style.shape == "cylinder":
@@ -830,6 +832,52 @@ def _render_box(
         _render_label(g, x + w / 2, label_y, label, style, font_size=fs)
     else:
         _render_label(g, x + w / 2, y + h / 2, label, style, font_size=fs)
+
+
+def _render_ported_node(
+    g: dw.Group,
+    node: SolvedNode,
+    style: NodeStyle,
+    x: float, y: float, w: float, h: float,
+    dark: bool,
+) -> None:
+    """A node with ports: its box and label band, then each port as a small
+    square centred on its side of the border (filled with the canvas colour,
+    so it reads as a socket) with its label inside the node next to it."""
+    from ggarch.layout import (PORT_LABEL_FONT, PORT_LABEL_GAP, PORT_SIZE,
+                               port_center, port_label_y)
+    rect = Rect(x, y, w, h)
+    ports = [f for f in node.fields if f.port]
+    stroke_dash = style.stroke_dash or _lifecycle_stroke_dash(node.lifecycle)
+    box = dict(fill=style.fill if style.fill != "none" else "none",
+               stroke=style.stroke, stroke_width=style.stroke_width,
+               rx=style.border_radius, ry=style.border_radius)
+    if stroke_dash:
+        box["stroke_dasharray"] = stroke_dash
+    g.append(dw.Rectangle(x, y, w, h, **box))
+    fs = _fit_label_font(node.label, w - 2 * PADDING_X, style.font_size)
+    _render_label(g, x + w / 2, port_label_y(rect, ports), node.label, style,
+                  font_size=fs)
+    bg = "#1E1E2E" if dark else "#FFFFFF"
+    text = style.font_color or ("#CDD6F4" if dark else "#333333")
+    half = PORT_SIZE / 2
+    inset = half + PORT_LABEL_GAP
+    for p in ports:
+        cx, cy, side = port_center(rect, ports, p.id)
+        g.append(dw.Rectangle(cx - half, cy - half, PORT_SIZE, PORT_SIZE,
+                              fill=bg, stroke=style.stroke,
+                              stroke_width=max(style.stroke_width, 1.5)))
+        if side == "left":
+            tx, ty, anchor = cx + inset, cy, "start"
+        elif side == "right":
+            tx, ty, anchor = cx - inset, cy, "end"
+        elif side == "top":
+            tx, ty, anchor = cx, cy + inset + PORT_LABEL_FONT / 2, "middle"
+        else:
+            tx, ty, anchor = cx, cy - inset - PORT_LABEL_FONT / 2, "middle"
+        g.append(dw.Text(p.label, PORT_LABEL_FONT, tx, ty,
+                         font_family=LABEL_FONT, fill=text,
+                         text_anchor=anchor, dominant_baseline="central"))
 
 
 def _render_structured_node(

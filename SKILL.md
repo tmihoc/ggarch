@@ -186,6 +186,41 @@ unit_pod [type: node, label: "Unit pod"] {
 }
 ```
 
+### Ports
+
+A port is a labelled socket on a node's border: an application's
+endpoints, a service's listeners. Declare ports in a `ports { ... }` block
+inside the node body, and address one in an edge as `node.port_id`, the
+same syntax as a record field:
+
+```
+offer_app [type: entity, label: "Application"] {
+  ports {
+    endpoint_a [label: "Endpoint A"]
+    endpoint_b [label: "Endpoint B"]
+    endpoint_c [label: "Endpoint C", side: left]
+  }
+}
+
+offer -> offer_app.endpoint_a [type: control, label: "includes"]
+offer -> offer_app.endpoint_b [type: control]
+```
+
+- `side` is `left` (the default), `right`, `top` or `bottom`. Left and right
+  ports stack in rows below the node's label, in declaration order; top and
+  bottom ports spread evenly along their face.
+- Each port draws as a small square centred on the border, filled with the
+  canvas colour so it reads as a socket, with its label inside the node next
+  to it. A port that no edge reaches is drawn the same way: an unused socket.
+- An edge into a port ends on the outer face of its square and arrives on a
+  short straight stub perpendicular to the port's side. Several edges from
+  one node into ports of another share a trunk and fork at the stubs, so
+  label only one of them.
+- The node grows to fit its ports and their labels. Ports go on a leaf node
+  (put them on the child that owns them), a node cannot declare both `ports`
+  and `fields`, and `side` is only valid on a port. A `fields: hidden` view
+  keeps ports.
+
 ---
 
 ## Edge types

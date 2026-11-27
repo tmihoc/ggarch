@@ -173,6 +173,9 @@ from the Juju architecture doc suggests the following hard cases:
   topology views (verified against a machine-agent/machine-record rendering).
   Field-qualified edge endpoints (`node.field_id`) are supported by the
   grammar and validator; no current Juju view needs them in a topology.
+  Ports (`ports { ... }` in a node body) reuse the same `node.port_id`
+  endpoint syntax for sockets drawn on a node's border (an application's
+  endpoints); see SKILL.md, "Ports".
 
 - **Lifecycle on workers.** The compute provisioner runs as a persistent worker;
   hook execution is ephemeral (runs once per hook invocation, then exits).

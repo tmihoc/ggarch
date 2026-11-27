@@ -967,7 +967,14 @@ def _field_anchor(
     face: "right" | "left" | "top" | "bottom"
     The y (for left/right) or x (for top/bottom) is centred on the field row.
     """
-    from ggarch.layout import FIELD_HEADER_H, FIELD_ROW_H
+    from ggarch.layout import FIELD_HEADER_H, FIELD_ROW_H, port_anchor
+    port = next((f for f in node.fields if f.id == field_id and f.port), None)
+    if port is not None:
+        # A port is a socket on its own side: the edge ends on the outer
+        # face of the port's square, whatever face the geometry suggests.
+        ax, ay, _side = port_anchor(
+            node.rect, [f for f in node.fields if f.port], field_id)
+        return Point(ax, ay)
     field_index = next(
         (i for i, f in enumerate(node.fields) if f.id == field_id), 0
     )
@@ -986,6 +993,49 @@ def _field_anchor(
         n = max(len(node.fields), 1)
         x = node.rect.x + node.rect.w * (field_index + 1) / (n + 1)
         return Point(x, node.rect.y if face == "top" else node.rect.y2)
+
+
+PORT_STUB = 24   # px — the straight approach into (or out of) a port
+
+
+def _port_side(node, field_id: str) -> str:
+    """The side of the port that field_id names on node, or ''."""
+    if not field_id:
+        return ""
+    return next((f.side for f in node.fields
+                 if f.id == field_id and f.port), "")
+
+
+def _port_stub_route(src: Point, tgt: Point, src_side: str,
+                     tgt_side: str) -> list[Point]:
+    """An orthogonal path from src to tgt whose port ends run straight out
+    of their port's side for PORT_STUB px: src, the source stub's end, the
+    corner, the target stub's start, tgt. A port on a left or right side
+    takes a horizontal stub; on top or bottom, a vertical one."""
+    def stub(p: Point, side: str) -> Point:
+        dx, dy = {"left": (-PORT_STUB, 0), "right": (PORT_STUB, 0),
+                  "top": (0, -PORT_STUB), "bottom": (0, PORT_STUB)}[side]
+        return Point(p.x + dx, p.y + dy)
+
+    a = stub(src, src_side) if src_side else src
+    b = stub(tgt, tgt_side) if tgt_side else tgt
+    # Into a port: run level from the source, turn at the stub's start, so
+    # edges into several ports of one node share a trunk and fork late.
+    # Out of a port only: turn right after the stub, arrive level.
+    corner = Point(b.x, a.y) if tgt_side else Point(a.x, b.y)
+    out: list[Point] = []
+    for p in (src, a, corner, b, tgt):
+        if not out or abs(p.x - out[-1].x) > 0.5 or abs(p.y - out[-1].y) > 0.5:
+            out.append(p)
+    i = 1
+    while i < len(out) - 1:   # drop collinear interior points
+        p, q, r = out[i - 1], out[i], out[i + 1]
+        if (abs(p.x - q.x) < 0.5 and abs(q.x - r.x) < 0.5) or (
+                abs(p.y - q.y) < 0.5 and abs(q.y - r.y) < 0.5):
+            out.pop(i)
+        else:
+            i += 1
+    return out
 
 
 def _pinned_field_anchors(edge, src_node, tgt_node):
@@ -2066,6 +2116,13 @@ def route(layout: SolvedLayout, model: Model, select) -> RoutedLayout:
                 _face_point(src_rect, _dominant_face(src_rect, tgt_rect)),
                 _face_point(tgt_rect, _dominant_face(tgt_rect, src_rect)),
             ]
+        # Ports: the edge arrives (or leaves) perpendicular to the port's
+        # side, on a short stub, so two edges from one node into two ports
+        # of another read as a fork with one arrow into each socket.
+        tgt_port = _port_side(tgt_node, edge.target_field)
+        src_port = _port_side(src_node, edge.source_field)
+        if tgt_port or src_port:
+            pts = _port_stub_route(pts[0], pts[-1], src_port, tgt_port)
 
         # Record the final anchors' face coordinates so later edges
         # sharing a face prefer distinct offsets (deliberate, not

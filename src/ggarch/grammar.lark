@@ -25,11 +25,15 @@ nodes_block: "nodes" "{" node* "}"
 node: ID attrs_inline? "{" node_body "}"  -> node_with_children
     | ID attrs_inline?                    -> node_leaf
 
-node_body: (node | fields_block)*
+node_body: (node | fields_block | ports_block)*
 
 fields_block: FIELDS_KW "{" field_decl* "}"
 
+ports_block: PORTS_KW "{" field_decl* "}"
+
 FIELDS_KW.2: "fields"
+
+PORTS_KW.2: "ports"
 
 field_decl: ID attrs_inline?
 
