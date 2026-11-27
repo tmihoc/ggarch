@@ -1494,15 +1494,19 @@ def _add_auto_layout_pass(
     """Add sequential placement for container children.
 
     Uses the direction declared in the positions block (default: right).
-    A container whose children the view positions against each other
-    (a declared constraint or fan with two of them as subject and
-    object) is laid out by those declarations alone: the sequential
-    placement's required ordering would contradict them (a fan stacking
-    two children in one column against "each child right of the
-    previous").
+    A container whose children the view places against each other (a
+    `left-of`, `right-of`, `above` or `below` with two of them as subject
+    and object, including those a `fan` expands into) and that has no
+    declared `direction:` is laid out by those placements alone: the
+    sequential placement's required ordering would contradict them (a fan
+    stacking two children in one column against "each child right of the
+    previous"). Alignment and size constraints do not count; a declared
+    direction always applies.
     """
     pairs: set[frozenset] = set()
     for c in declared or []:
+        if getattr(c, "kind", None) not in _PLACEMENT_KINDS:
+            continue
         subject = getattr(c, "subject", None)
         obj = getattr(c, "object", None)
         if subject and obj and subject != obj:
@@ -1511,13 +1515,17 @@ def _add_auto_layout_pass(
                       model, pairs)
 
 
+_PLACEMENT_KINDS = frozenset({"left-of", "right-of", "above", "below"})
+
+
 def _auto_layout_pass(solver, nodes, vars_by_id, select, direction_map,
                       model, pairs) -> None:
     for node in nodes:
         if node.children and node.id not in select.collapse:
             child_ids = {c.id for c in node.children}
-            positioned = any(p <= child_ids for p in pairs)
-            if not positioned:
+            placed = (node.id not in direction_map
+                      and any(p <= child_ids for p in pairs))
+            if not placed:
                 direction = direction_map.get(node.id, "right")
                 _auto_layout_children(solver, node, vars_by_id, direction,
                                       model)
