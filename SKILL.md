@@ -533,6 +533,9 @@ root left-of child_b gap: 100       // (equal gaps = exact centring)
 // Container children ordered left to right
 container_id direction: right
 
+// Centre a vertical stack as a group, without extra height unless constraints need it.
+stack_id direction: down
+
 // Size constraints
 a same-width b
 a min-width: 160

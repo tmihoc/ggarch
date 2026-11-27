@@ -3,6 +3,7 @@ import pytest
 from ggarch import parse, validate
 from ggarch.solver import solve
 from ggarch.errors import ValidationError
+from ggarch.layout import CONTAINER_PAD_TOP
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +297,41 @@ diagram "D" from "M" {
         child = layout.find("a")
         # Parent must be at least as wide as child plus padding.
         assert pod.rect.w >= child.rect.w
+
+    @pytest.mark.parametrize("minimum", [0, 220])
+    def test_vertical_stack_has_balanced_container_padding(self, minimum):
+        src = """\
+model "M" {
+  nodes {
+    machine [type: node, label: "Machine"] {
+      api [type: juju-software, label: "API server"]
+      db [type: database, label: "Dqlite"]
+    }
+  }
+}
+diagram "D" from "M" {
+  select {
+    nodes: machine
+    instances: machine [ { id: a, label: "Machine A" } ]
+  }
+  positions {
+    a direction: down
+    a min-height: %d
+  }
+}
+""" % minimum
+        layout = solve_src(src)
+        machine = layout.find("a").rect
+        api = layout.find("a/api").rect
+        db = layout.find("a/db").rect
+        assert api.y2 < db.y
+        top = api.y - machine.y
+        bottom = machine.y2 - db.y2
+        assert top == pytest.approx(bottom)
+        if minimum:
+            assert machine.h == pytest.approx(minimum)
+        else:
+            assert bottom == pytest.approx(CONTAINER_PAD_TOP)
 
 
 # ---------------------------------------------------------------------------

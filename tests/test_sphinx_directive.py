@@ -49,6 +49,7 @@ def built_app(tmp_path):
         ".. ggarch::\n"
         '   :file: model.ggarch\n'
         '   :slides: Topology | Lifecycle\n'
+        '   :slide-captions: Topology caption. | Lifecycle caption.\n'
         '   :alt: two views\n'
     )
     (srcdir / "model.ggarch").write_text(STATE_MODEL)
@@ -81,6 +82,54 @@ class TestSlideshow:
         state_svgs = [p.read_text() for p in images if "st-arrow" in p.read_text()]
         assert len(state_svgs) == 2  # light + dark state machine
         assert any("start" in svg for svg in state_svgs)
+
+    def test_expanded_navigation_returns_to_last_viewed_slide(self, built_app):
+        from pathlib import Path
+
+        playwright = pytest.importorskip("playwright.sync_api")
+        with playwright.sync_playwright() as pw, pw.chromium.launch() as browser:
+            page = browser.new_page()
+            page.goto((Path(built_app.outdir) / "index.html").as_uri())
+            figure = page.locator("figure.ggarch-figure")
+            expand = figure.get_by_role("button", name="View diagram fullscreen")
+            figure.get_by_role("button", name="Next slide").click()
+            expand.click()
+
+            modal = page.get_by_role("dialog")
+            counter = modal.locator(".ggarch-slide-counter")
+            prev = modal.get_by_role("button", name="Previous slide")
+            next_ = modal.get_by_role("button", name="Next slide")
+            image = modal.locator("img")
+            caption = modal.locator(".ggarch-modal-caption")
+            expect = playwright.expect
+            expect(counter).to_have_text("2 / 2")
+            expect(image).to_have_attribute("alt", "Lifecycle (slide 2 of 2)")
+            expect(next_).to_be_disabled()
+            page.keyboard.press("ArrowRight")
+            expect(counter).to_have_text("2 / 2")
+
+            prev.click()
+            expect(counter).to_have_text("1 / 2")
+            expect(image).to_have_attribute("alt", "Topology (slide 1 of 2)")
+            expect(caption).to_have_text("Topology caption.")
+            expect(prev).to_be_disabled()
+            next_.click()
+            expect(counter).to_have_text("2 / 2")
+            page.keyboard.press("ArrowLeft")
+            expect(counter).to_have_text("1 / 2")
+            page.keyboard.press("ArrowRight")
+            expect(caption).to_have_text("Lifecycle caption.")
+            page.keyboard.press("ArrowLeft")
+            expect(counter).to_have_text("1 / 2")
+            page.keyboard.press("Escape")
+
+            expect(modal).to_be_hidden()
+            expect(expand).to_be_focused()
+            expect(figure.locator(".ggarch-slide-counter")).to_have_text("1 / 2")
+            expect(figure.locator("figcaption")).to_have_text("Topology caption.")
+            expect(figure.locator(".ggarch-slide.active img").first).to_have_attribute(
+                "alt", "Topology (slide 1 of 2)"
+            )
 
 
 # ---------------------------------------------------------------------------

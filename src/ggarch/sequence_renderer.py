@@ -20,7 +20,9 @@ from dataclasses import dataclass, field
 
 import drawsvg as dw
 
+from ggarch.layout import Rect
 from ggarch.model import (
+    AnnotationBox,
     Behaviour,
     Block,
     GgarchFile,
@@ -31,10 +33,11 @@ from ggarch.model import (
     Step,
     StepKind,
 )
-from ggarch.presets import NodeStyle, get_preset, resolve_edge_style, resolve_style
+from ggarch.presets import NodeStyle, resolve_edge_style, resolve_style
 from ggarch.renderer import (
     ANNOTATION_FONT,
     LABEL_FONT,
+    _render_ann_box,
     _render_box,
     _render_cylinder,
     _render_kind_badge,
@@ -147,7 +150,6 @@ def render_sequence(
     if not participants:
         raise ValueError(f"behaviour {behaviour.name!r} has no participants")
 
-    preset = get_preset(model.style.extends)
     node_styles = resolve_style(model.style, dark=dark)
     edge_styles = resolve_edge_style(model.style, dark=dark)
 
@@ -177,12 +179,6 @@ def render_sequence(
     for i, pid in enumerate(participants):
         col_cx[pid] = MARGIN_SIDE + i * col_step + LIFELINE_WIDTH / 2
 
-    bg = "#1E1E2E" if dark else "#FFFFFF"
-    drawing = dw.Drawing(diagram_w, diagram_h, origin=(0, 0))
-
-    # Arrowhead marker.
-    _add_sequence_arrowhead(drawing, dark, edge_styles["default"].arrowhead_size)
-
     content = dw.Group()
 
     # Lifeline headers — the node's type shape, not just its colours
@@ -197,6 +193,7 @@ def render_sequence(
     # can be drawn behind them once the actual final y is known. That
     # returned y places the lifeline bottom and the footer boxes, so
     # they can never overlap the last row.
+    boxes = [ann for ann in view.annotations if isinstance(ann, AnnotationBox)]
     bars_group = dw.Group()
     ctx = _RenderCtx(
         col_cx=col_cx,
@@ -209,6 +206,7 @@ def render_sequence(
         activation_stack=[],
         bg="#1E1E2E" if dark else "#FFFFFF",
         holes=[],
+        box_holes=[] if boxes else None,
     )
     steps_group = dw.Group()
     y_final = _render_steps(steps_group, behaviour.steps, y_start, ctx)
@@ -217,15 +215,7 @@ def render_sequence(
     # Vertical dashed lifelines — behind the arrows, ending at the
     # footer tops.
     line_color = "#666666" if dark else "#CCCCCC"
-    mask = None
-    if ctx.holes:
-        # An explicit user-space region: a vertical line has a zero-width
-        # bounding box, which would otherwise hide it entirely.
-        mask = dw.Mask(maskUnits="userSpaceOnUse", x=0, y=0,
-                       width=diagram_w, height=diagram_h)
-        mask.append(dw.Rectangle(0, 0, diagram_w, diagram_h, fill="white"))
-        for hx, hy, hw, hh in ctx.holes:
-            mask.append(dw.Rectangle(hx, hy, hw, hh, fill="black"))
+    mask = _text_mask(0, 0, diagram_w, diagram_h, ctx.holes) if ctx.holes else None
     for pid in participants:
         line = dw.Line(
             col_cx[pid], MARGIN_TOP + header_h, col_cx[pid], lifeline_bot_y,
@@ -247,8 +237,46 @@ def render_sequence(
             content, col_cx[pid], lifeline_bot_y, header_h,
             model.find_node(pid), node_styles,
         )
+
+    # Annotation bounds follow the rendered columns, including their footer
+    # boxes. Expand the viewBox rather than moving the participants or steps.
+    x1 = y1 = 0
+    x2, y2 = diagram_w, diagram_h
+    annotations = dw.Group(id="ggarch-annotations")
+    for ann in boxes:
+        columns = [col_cx[pid] for pid in ann.nodes if pid in col_cx]
+        if not columns:
+            continue
+        left, right = min(columns), max(columns)
+        bounds = Rect(left - LIFELINE_WIDTH / 2, MARGIN_TOP,
+                      right - left + LIFELINE_WIDTH, lifeline_bot_y + header_h - MARGIN_TOP)
+        bx1, by1, bx2, by2 = _render_ann_box(annotations, ann, bounds, 0, 0, dark)
+        x1, y1 = min(x1, bx1 - 1), min(y1, by1 - 1)
+        x2, y2 = max(x2, bx2 + 1), max(y2, by2 + 1)
+
+    drawing = dw.Drawing(x2 - x1, y2 - y1, origin=(x1, y1))
+    _add_sequence_arrowhead(drawing, dark, edge_styles["default"].arrowhead_size)
+    if annotations.children:
+        # Keep labels legible where messages cross the outline. Mask only
+        # the annotation layer, without moving messages or filling the canvas.
+        if ctx.holes or ctx.box_holes:
+            annotations.args["mask"] = _text_mask(
+                x1, y1, x2 - x1, y2 - y1, ctx.holes, ctx.box_holes or (),
+            )
+        drawing.append(annotations)
     drawing.append(content)
     return drawing.as_svg()
+
+
+def _text_mask(x, y, w, h, *hole_sets) -> dw.Mask:
+    # A vertical lifeline has a zero-width object bounding box, so masks
+    # use the diagram's coordinate space instead.
+    mask = dw.Mask(maskUnits="userSpaceOnUse", x=x, y=y, width=w, height=h)
+    mask.append(dw.Rectangle(x, y, w, h, fill="white"))
+    for holes in hole_sets:
+        for hx, hy, hw, hh in holes:
+            mask.append(dw.Rectangle(hx, hy, hw, hh, fill="black"))
+    return mask
 
 
 def render_sequence_both(
@@ -337,6 +365,7 @@ class _RenderCtx:
     activation_stack: list       # [(lifeline_id, open_y), ...]
     bg: str                      # canvas colour (no longer painted)
     holes: list                  # (x, y, w, h) cut out of the lifelines
+    box_holes: list | None       # additional message-label clearance for boxes
 
 
 # ---------------------------------------------------------------------------
@@ -472,8 +501,12 @@ def _render_arrow(
         lh = 13
         n = len(wrapped)
         for i, line in enumerate(wrapped):
+            label_y = y - LABEL_CLEAR - (n - 1 - i) * lh
+            if ctx.box_holes is not None and line:
+                width = len(line) * 6 + 4
+                ctx.box_holes.append((mx - width / 2, label_y - 6, width, 12))
             g.append(dw.Text(
-                line, 11, mx, y - LABEL_CLEAR - (n - 1 - i) * lh,
+                line, 11, mx, label_y,
                 font_family=LABEL_FONT,
                 fill=ctx.text_color,
                 text_anchor="middle",
