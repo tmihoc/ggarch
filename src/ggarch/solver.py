@@ -287,7 +287,8 @@ def _solve_constraints(
 
     # Auto-layout container children using direction constraints.
     # This runs before user constraints so user constraints can override.
-    _add_auto_layout_pass(solver, selected, vars_by_id, diagram.select, direction_map, model)
+    _add_auto_layout_pass(solver, selected, vars_by_id, diagram.select,
+                          direction_map, model, expanded_constraints)
     # Add user-declared constraints, with label-aware gap expansion.
     _add_user_constraints(solver, expanded_constraints, vars_by_id,
                           diagram.name, model,
@@ -1256,7 +1257,41 @@ def _selected_nodes(
                     if rec_node is not None:
                         result.append(rec_node)
                         present.add(rec)
-    return result
+    return _prune_to_selected(result)
+
+
+def _prune_to_selected(result: list[Node]) -> list[Node]:
+    """A selected container with selected descendants draws only them.
+
+    Selecting a container brings its whole subtree. When the view also
+    selects some of the container's descendants, the view means the
+    container holding just those (the offering model drawn around the
+    offer alone): each such container is pruned to the paths that lead
+    to its selected descendants, and the descendants are not drawn a
+    second time as top-level nodes. A selected descendant keeps its own
+    subtree unless it is pruned the same way. A container with no
+    selected descendant keeps its whole subtree, as before.
+    """
+    ids = {n.id for n in result}
+
+    def _has_selected_below(n: Node) -> bool:
+        return any(c.id in ids or _has_selected_below(c) for c in n.children)
+
+    def _prune(n: Node) -> Node:
+        if not _has_selected_below(n):
+            return n
+        kept = [_prune(c) for c in n.children
+                if c.id in ids or _has_selected_below(c)]
+        return _dc_replace(n, children=kept)
+
+    nested: set[str] = set()
+    for n in result:
+        stack = list(n.children)
+        while stack:
+            cur = stack.pop()
+            nested.add(cur.id)
+            stack.extend(cur.children)
+    return [_prune(n) for n in result if n.id not in nested]
 
 
 def _find_in_tree(nodes: list[Node], node_id: str) -> Node | None:
@@ -1454,19 +1489,40 @@ def _add_auto_layout_pass(
     select: SelectClause,
     direction_map: dict[str, str],
     model: "Model | None" = None,
+    declared: list | None = None,
 ) -> None:
-    """Add MEDIUM-priority sequential placement for container children.
+    """Add sequential placement for container children.
 
     Uses the direction declared in the positions block (default: right).
-    MEDIUM priority means user REQUIRED constraints override these.
+    A container whose children the view positions against each other
+    (a declared constraint or fan with two of them as subject and
+    object) is laid out by those declarations alone: the sequential
+    placement's required ordering would contradict them (a fan stacking
+    two children in one column against "each child right of the
+    previous").
     """
+    pairs: set[frozenset] = set()
+    for c in declared or []:
+        subject = getattr(c, "subject", None)
+        obj = getattr(c, "object", None)
+        if subject and obj and subject != obj:
+            pairs.add(frozenset((subject, obj)))
+    _auto_layout_pass(solver, nodes, vars_by_id, select, direction_map,
+                      model, pairs)
+
+
+def _auto_layout_pass(solver, nodes, vars_by_id, select, direction_map,
+                      model, pairs) -> None:
     for node in nodes:
         if node.children and node.id not in select.collapse:
-            direction = direction_map.get(node.id, "right")
-            _auto_layout_children(solver, node, vars_by_id, direction, model)
-            _add_auto_layout_pass(
-                solver, node.children, vars_by_id, select, direction_map, model
-            )
+            child_ids = {c.id for c in node.children}
+            positioned = any(p <= child_ids for p in pairs)
+            if not positioned:
+                direction = direction_map.get(node.id, "right")
+                _auto_layout_children(solver, node, vars_by_id, direction,
+                                      model)
+            _auto_layout_pass(solver, node.children, vars_by_id, select,
+                              direction_map, model, pairs)
 
 
 # ---------------------------------------------------------------------------
