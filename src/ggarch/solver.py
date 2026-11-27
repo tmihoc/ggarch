@@ -29,6 +29,7 @@ from kiwisolver import Solver, Variable, UnsatisfiableConstraint  # type: ignore
 
 from ggarch.errors import ValidationError
 from ggarch.layout import (
+    CONTAINER_BOTTOM_PAD,
     CONTAINER_PAD,
     CONTAINER_PAD_TOP,
     MIN_NODE_HEIGHT,
@@ -1361,7 +1362,7 @@ def _add_containment_for_node(
         # centres on the box and every level of nesting stays on the
         # midline.
         solver.addConstraint(
-            (cv.y2 <= parent.y2 - CONTAINER_PAD_TOP) | "required"
+            (cv.y2 <= parent.y2 - CONTAINER_BOTTOM_PAD) | "required"
         )
         # The child row CENTRES on the container's midline (weak): the
         # symmetric pads make it possible, and a label-driven growth on
@@ -1370,7 +1371,12 @@ def _add_containment_for_node(
         # row 22px above the shared midline -- every anchor off a
         # midpoint). Weak: containment and the label contract keep
         # their say; the centring takes the slack.
-        solver.addConstraint((cv.cy == parent.cy) | "weak")
+        # The content box runs from the label band to the bottom pad, so
+        # the row centres on the box, not on the container's midline.
+        solver.addConstraint(
+            (2 * cv.cy == 2 * parent.y + CONTAINER_PAD_TOP
+             + 2 * parent.h - CONTAINER_BOTTOM_PAD) | "weak"
+        )
         # Recurse.
         if child.children and child.id not in select.collapse:
             _add_containment_for_node(solver, child, vars_by_id, select)

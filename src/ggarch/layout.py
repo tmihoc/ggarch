@@ -107,6 +107,7 @@ PADDING_X         = 16      # px horizontal padding inside a node box
 PADDING_Y         = 12      # px vertical padding inside a node box
 CONTAINER_PAD_TOP = 28      # px — extra top padding for container label
 CONTAINER_PAD     = 16      # px — padding around children inside a container
+CONTAINER_BOTTOM_PAD = 16   # px — bottom padding: no label there, so no more than the side padding
 MIN_NODE_WIDTH    = 80      # px
 MIN_NODE_HEIGHT   = 36      # px
 
