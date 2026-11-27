@@ -245,4 +245,5 @@ def test_a_focus_node_is_bold_and_heavier_and_nothing_is_dimmed():
     svg = str(render(route(solve(d, m), m, d.select), m, d))
     assert svg.count('font-weight="bold"') == 1   # only the focus node's label
     assert 'stroke-width="2"' in svg              # heavier outline (1 + 1)
-    assert "opacity" not in svg.split("<g", 1)[-1].split("font-weight")[0] or True
+    # nothing is dimmed: the dim factor of the emphasize block never appears
+    assert 'opacity="0.35"' not in svg
