@@ -467,6 +467,17 @@ aligned in a row get straight, aligned edges.
 A `diagram` view selects nodes and edges, positions them, and optionally
 annotates. Start with a minimal select and add constraints one at a time.
 
+Use `comparison` instead of `diagram` when the reader needs to compare independent subjects. For example:
+
+```
+comparison "Registered keys by model" from "Juju" {
+  select { nodes: staging production }
+  positions { production right-of staging gap: 24 }
+}
+```
+
+The subjects may stand alone: don't add a common parent or an edge just to connect them. A comparison uses the same selections, positions and rendering as a diagram; it skips only the orphan check. It does not hide existing edges. Use `diagram` for a topology so a missing relationship is still reported.
+
 **View options (0.26.1):**
 
 ```

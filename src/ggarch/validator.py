@@ -516,7 +516,7 @@ def _validate_diagram_view(diagram: DiagramView, f: GgarchFile,
                            check_labels: bool = False) -> None:
     model = _resolve_model(diagram.name, diagram.model_name, f)
     _validate_select(diagram.select, model, diagram.name)
-    if check_orphans:
+    if check_orphans and not diagram.comparison:
         _validate_orphans(diagram, model)
     if check_labels:
         _validate_labels(diagram, model)

@@ -1533,6 +1533,8 @@ When a `diagram` view is rendered, layers are evaluated in this order:
 3. edge routing -- uses solved positions, never influences them
 4. `annotations` -- drawn last, on top, without affecting layout
 
+A `comparison "Name" from "Model" { ... }` uses the same diagram body and rendering pipeline. It permits independent top-level subjects: validation skips the orphan check for that view alone. It neither introduces nor suppresses edges. Ordinary `diagram` views retain their orphan check.
+
 
 ## Design principles
 

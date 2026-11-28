@@ -492,6 +492,32 @@ model "M" {
     # -- orphan nodes (reviewer round 24 V4: a diagram means everything
     # -- is connected) -------------------------------------------------
 
+    def test_comparison_allows_independent_subjects_only_in_its_own_view(self):
+        from ggarch.solver import solve
+
+        src = MINIMAL_MODEL + '''
+comparison "Side by side" from "Sys" {
+  select { nodes: a b except: a -> b }
+  positions { b right-of a gap: 20 }
+}
+'''
+        f = parse(src)
+        validate(f, check_orphans=True)
+        layout = solve(f.diagrams[0], f.models[0])
+        a, b = sorted(layout.nodes, key=lambda n: n.rect.x)
+        assert (a.id, b.id) == ("a", "b")
+        assert a.rect.x + a.rect.w < b.rect.x
+
+        plain = 'diagram "Topology" from "Sys" { select { nodes: a b except: a -> b } }'
+        with pytest.raises(ValidationError, match="Topology.*no edges"):
+            validate(parse(src + plain), check_orphans=True)
+
+    def test_comparison_still_rejects_unknown_subject(self):
+        with pytest.raises(ValidationError, match="selected node 'typo'"):
+            validate(parse(MINIMAL_MODEL + '''
+comparison "Side by side" from "Sys" { select { nodes: a typo } }
+'''), check_orphans=True)
+
     def test_orphan_node_rejected(self):
         src = """\
 model "M" {

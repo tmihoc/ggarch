@@ -422,7 +422,7 @@ class _GgarchTransformer(Transformer):
     # Diagram view
     # ------------------------------------------------------------------
 
-    def diagram(self, name, model_name, body) -> DiagramView:
+    def diagram(self, kind, name, model_name, body) -> DiagramView:
         select, constraints, annotations, emphasize = body
         return DiagramView(
             name=_str(name),
@@ -433,6 +433,7 @@ class _GgarchTransformer(Transformer):
             emphasize_path=emphasize.get("path", []),
             emphasize_nodes=emphasize.get("nodes", []),
             focus_nodes=emphasize.get("focus", []),
+            comparison=(kind == "comparison"),
         )
 
     def diagram_body(self, *items):

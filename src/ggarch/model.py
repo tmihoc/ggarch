@@ -506,6 +506,7 @@ class DiagramView:
     # Focus without dimming: these nodes are drawn heavier (a bolder label and a
     # thicker outline) and everything else stays at full strength.
     focus_nodes: list[str] = field(default_factory=list)
+    comparison: bool = False  # Independent subjects need no connecting edge.
 
 
 @dataclass

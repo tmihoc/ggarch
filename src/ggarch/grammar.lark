@@ -94,7 +94,8 @@ style_rule: ID ":" attr_value
 // Diagram view
 // -----------------------------------------------------------------------
 
-diagram: "diagram" STRING "from" STRING "{" diagram_body "}"
+diagram: DIAGRAM_KIND STRING "from" STRING "{" diagram_body "}"
+DIAGRAM_KIND: "diagram" | "comparison"
 
 diagram_body: (select_block | positions_block | annotations_block | emphasize_block)*
 
